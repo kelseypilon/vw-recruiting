@@ -1,19 +1,9 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DashboardShell from "./dashboard-shell";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  // Fetch stats from the database
   const [totalResult, reviewResult, interviewResult, onboardingResult] =
     await Promise.all([
       supabase
@@ -41,5 +31,5 @@ export default async function DashboardPage() {
     onboarding: onboardingResult.count ?? 0,
   };
 
-  return <DashboardShell email={user.email ?? ""} stats={stats} />;
+  return <DashboardShell stats={stats} />;
 }
