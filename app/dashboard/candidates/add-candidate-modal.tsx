@@ -5,11 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 import type { CandidateCard } from "@/lib/types";
 
 interface Props {
+  teamId: string;
   onClose: () => void;
   onAdded: (candidate: CandidateCard) => void;
 }
 
-export default function AddCandidateModal({ onClose, onAdded }: Props) {
+export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -34,7 +35,7 @@ export default function AddCandidateModal({ onClose, onAdded }: Props) {
     const { data, error: insertError } = await supabase
       .from("candidates")
       .insert({
-        team_id: "00000000-0000-0000-0000-000000000001",
+        team_id: teamId,
         first_name: formData.first_name,
         last_name: formData.last_name,
         email: formData.email || null,

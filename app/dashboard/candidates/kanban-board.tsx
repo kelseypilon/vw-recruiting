@@ -8,11 +8,13 @@ import AddCandidateModal from "./add-candidate-modal";
 interface Props {
   stages: PipelineStage[];
   candidates: CandidateCard[];
+  teamId: string;
 }
 
 export default function KanbanBoard({
   stages,
   candidates: initialCandidates,
+  teamId,
 }: Props) {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [searchQuery, setSearchQuery] = useState("");
@@ -145,6 +147,7 @@ export default function KanbanBoard({
       {/* Add Candidate Modal */}
       {showAddModal && (
         <AddCandidateModal
+          teamId={teamId}
           onClose={() => setShowAddModal(false)}
           onAdded={handleCandidateAdded}
         />
