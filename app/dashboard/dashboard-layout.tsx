@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
@@ -54,7 +55,7 @@ export default function DashboardLayout({
                   ? pathname === "/dashboard"
                   : pathname.startsWith(item.href);
               return (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
@@ -65,7 +66,7 @@ export default function DashboardLayout({
                 >
                   <item.icon active={active} />
                   {item.label}
-                </a>
+                </Link>
               );
             })}
           </nav>

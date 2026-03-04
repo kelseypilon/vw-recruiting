@@ -1,26 +1,44 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DashboardShell from "./dashboard-shell";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("team_id")
+    .eq("id", user.id)
+    .single();
+
+  const teamId = profile?.team_id;
+  if (!teamId) redirect("/login");
+
   const [totalResult, reviewResult, interviewResult, onboardingResult] =
     await Promise.all([
       supabase
         .from("candidates")
-        .select("*", { count: "exact", head: true }),
+        .select("*", { count: "exact", head: true })
+        .eq("team_id", teamId),
       supabase
         .from("candidates")
         .select("*", { count: "exact", head: true })
+        .eq("team_id", teamId)
         .eq("stage", "Under Review"),
       supabase
         .from("candidates")
         .select("*", { count: "exact", head: true })
-        .eq("stage", "Group Interview")
-        .or("stage.eq.1on1 Interview"),
+        .eq("team_id", teamId)
+        .in("stage", ["Group Interview", "1on1 Interview"]),
       supabase
         .from("candidates")
         .select("*", { count: "exact", head: true })
+        .eq("team_id", teamId)
         .eq("stage", "Onboarding"),
     ]);
 
