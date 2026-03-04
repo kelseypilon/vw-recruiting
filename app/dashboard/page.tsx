@@ -1,23 +1,12 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DashboardShell from "./dashboard-shell";
 
+// TODO: look up from authenticated user's profile once users table is populated
+const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
+
 export default async function DashboardPage() {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("team_id")
-    .eq("id", user.id)
-    .single();
-
-  const teamId = profile?.team_id;
-  if (!teamId) redirect("/login");
+  const teamId = TEAM_ID;
 
   const [totalResult, reviewResult, interviewResult, onboardingResult] =
     await Promise.all([
