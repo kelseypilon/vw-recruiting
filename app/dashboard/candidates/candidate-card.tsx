@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { CandidateCard, PipelineStage } from "@/lib/types";
 
@@ -108,9 +109,12 @@ export default function CandidateCardComponent({
 
       {/* Action buttons */}
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#a59494]/10">
-        <button className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition">
+        <Link
+          href={`/dashboard/candidates/${candidate.id}`}
+          className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+        >
           View Profile
-        </button>
+        </Link>
         <div className="relative ml-auto" ref={menuRef}>
           <button
             onClick={() => setShowMoveMenu(!showMoveMenu)}

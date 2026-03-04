@@ -41,3 +41,22 @@ export interface Candidate {
 export interface CandidateCard extends Candidate {
   daysInStage: number;
 }
+
+export interface CandidateNote {
+  id: string;
+  candidate_id: string;
+  author_id: string;
+  note_text: string;
+  created_at: string;
+  author?: { name: string; email: string };
+}
+
+export interface StageHistoryEntry {
+  id: string;
+  candidate_id: string;
+  from_stage: string | null;
+  to_stage: string;
+  changed_by: string | null;
+  created_at: string;
+  changer?: { name: string } | null;
+}
