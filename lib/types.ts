@@ -60,3 +60,60 @@ export interface StageHistoryEntry {
   created_at: string;
   changer?: { name: string } | null;
 }
+
+export interface Interview {
+  id: string;
+  team_id: string;
+  candidate_id: string;
+  interview_type: string;
+  scheduled_at: string | null;
+  status: "scheduled" | "completed" | "cancelled" | "no_show";
+  notes: string | null;
+  created_at: string;
+  candidate?: { first_name: string; last_name: string; role_applied: string | null; stage: string };
+}
+
+export interface ScoringCriterion {
+  id: string;
+  team_id: string;
+  name: string;
+  weight_percent: number;
+  min_threshold: number | null;
+  order_index: number;
+}
+
+export interface InterviewScore {
+  id: string;
+  candidate_id: string;
+  evaluator_id: string;
+  criterion_id: string;
+  interview_id: string | null;
+  score: number;
+  notes: string | null;
+  created_at: string;
+  evaluator?: { name: string };
+  criterion?: { name: string; weight_percent: number };
+}
+
+export interface OnboardingTask {
+  id: string;
+  team_id: string;
+  title: string;
+  owner_role: string;
+  applies_to: string | null;
+  timing: string | null;
+  order_index: number;
+  is_active: boolean;
+}
+
+export interface CandidateOnboarding {
+  id: string;
+  candidate_id: string;
+  task_id: string;
+  assigned_to: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  notes: string | null;
+  task?: OnboardingTask;
+  assignee?: { name: string } | null;
+}
