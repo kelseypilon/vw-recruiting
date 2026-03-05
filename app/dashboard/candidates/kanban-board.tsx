@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -27,6 +27,10 @@ export default function KanbanBoard({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // @hello-pangea/dnd requires client-only rendering to avoid SSR hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => { setIsMounted(true); }, []);
 
   const filtered = candidates.filter((c) => {
     const matchesSearch =
@@ -138,50 +142,44 @@ export default function KanbanBoard({
         </div>
       </div>
 
-      {/* Kanban columns with DnD */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {stages.map((stage) => {
-            const stageCards = grouped[stage.name] ?? [];
-            return (
-              <div
-                key={stage.id}
-                className="min-w-[272px] w-[272px] shrink-0 flex flex-col"
-              >
-                {/* Column header */}
-                <div className="flex items-center gap-2 mb-3 px-1">
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: stage.color ?? "#6B7280" }}
-                  />
-                  <h3 className="text-sm font-semibold text-[#272727] truncate">
-                    {stage.name}
-                  </h3>
-                  <span className="ml-auto text-xs font-medium text-[#a59494] bg-white px-2 py-0.5 rounded-full border border-[#a59494]/20">
-                    {stageCards.length}
-                  </span>
-                </div>
-
-                {/* Droppable column */}
-                <Droppable droppableId={stage.name}>
-                  {(provided, snapshot) => (
+      {/* Kanban columns with DnD — only render DnD after client hydration */}
+      {isMounted ? (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {stages.map((stage) => {
+              const stageCards = grouped[stage.name] ?? [];
+              return (
+                <div
+                  key={stage.id}
+                  className="min-w-[272px] w-[272px] shrink-0 flex flex-col"
+                >
+                  {/* Column header */}
+                  <div className="flex items-center gap-2 mb-3 px-1">
                     <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`flex flex-col gap-3 flex-1 overflow-y-auto max-h-[calc(100vh-240px)] pr-1 rounded-lg transition-colors min-h-[80px] ${
-                        snapshot.isDraggingOver
-                          ? "bg-[#1c759e]/5 ring-2 ring-[#1c759e]/20"
-                          : ""
-                      }`}
-                    >
-                      {stageCards.length === 0 && !snapshot.isDraggingOver ? (
-                        <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center">
-                          <p className="text-xs text-[#a59494]">
-                            Drop candidates here
-                          </p>
-                        </div>
-                      ) : (
-                        stageCards.map((candidate, index) => (
+                      className="w-3 h-3 rounded-full shrink-0"
+                      style={{ backgroundColor: stage.color ?? "#6B7280" }}
+                    />
+                    <h3 className="text-sm font-semibold text-[#272727] truncate">
+                      {stage.name}
+                    </h3>
+                    <span className="ml-auto text-xs font-medium text-[#a59494] bg-white px-2 py-0.5 rounded-full border border-[#a59494]/20">
+                      {stageCards.length}
+                    </span>
+                  </div>
+
+                  {/* Droppable column */}
+                  <Droppable droppableId={stage.name}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`flex flex-col gap-3 flex-1 overflow-y-auto max-h-[calc(100vh-240px)] pr-1 rounded-lg transition-colors min-h-[80px] p-1 ${
+                          snapshot.isDraggingOver
+                            ? "bg-[#1c759e]/5 ring-2 ring-[#1c759e]/20"
+                            : ""
+                        }`}
+                      >
+                        {stageCards.map((candidate, index) => (
                           <Draggable
                             key={candidate.id}
                             draggableId={candidate.id}
@@ -206,17 +204,45 @@ export default function KanbanBoard({
                               </div>
                             )}
                           </Draggable>
-                        ))
-                      )}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
+                        ))}
+                        {provided.placeholder}
+                        {stageCards.length === 0 && !snapshot.isDraggingOver && (
+                          <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center">
+                            <p className="text-xs text-[#a59494]">
+                              Drop candidates here
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              );
+            })}
+          </div>
+        </DragDropContext>
+      ) : (
+        /* Static fallback during SSR / before hydration */
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {stages.map((stage) => {
+            const stageCards = grouped[stage.name] ?? [];
+            return (
+              <div key={stage.id} className="min-w-[272px] w-[272px] shrink-0 flex flex-col">
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: stage.color ?? "#6B7280" }} />
+                  <h3 className="text-sm font-semibold text-[#272727] truncate">{stage.name}</h3>
+                  <span className="ml-auto text-xs font-medium text-[#a59494] bg-white px-2 py-0.5 rounded-full border border-[#a59494]/20">{stageCards.length}</span>
+                </div>
+                <div className="flex flex-col gap-3 flex-1 min-h-[80px] p-1">
+                  {stageCards.map((candidate) => (
+                    <CandidateCardComponent key={candidate.id} candidate={candidate} stages={stages} onStageChange={handleStageChange} />
+                  ))}
+                </div>
               </div>
             );
           })}
         </div>
-      </DragDropContext>
+      )}
 
       {/* Add Candidate Modal */}
       {showAddModal && (
