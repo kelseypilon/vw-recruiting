@@ -110,6 +110,17 @@ export interface OnboardingTask {
   is_active: boolean;
 }
 
+export interface EmailTemplate {
+  id: string;
+  team_id: string;
+  name: string;
+  trigger: string | null;
+  subject: string;
+  body: string;
+  merge_tags: string[];
+  is_active: boolean;
+}
+
 export interface CandidateOnboarding {
   id: string;
   candidate_id: string;

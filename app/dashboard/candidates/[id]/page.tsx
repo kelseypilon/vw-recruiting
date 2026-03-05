@@ -6,6 +6,7 @@ import type {
   PipelineStage,
   CandidateNote,
   StageHistoryEntry,
+  EmailTemplate,
 } from "@/lib/types";
 
 // TODO: look up from authenticated user's profile once users table is populated
@@ -20,7 +21,7 @@ export default async function CandidateProfilePage({ params }: Props) {
   const supabase = await createClient();
 
   // Fetch candidate, stages, notes, and stage history in parallel
-  const [candidateResult, stagesResult, notesResult, historyResult] =
+  const [candidateResult, stagesResult, notesResult, historyResult, templatesResult] =
     await Promise.all([
       supabase
         .from("candidates")
@@ -44,6 +45,12 @@ export default async function CandidateProfilePage({ params }: Props) {
         .select("*, changer:users(name)")
         .eq("candidate_id", id)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("email_templates")
+        .select("*")
+        .eq("team_id", TEAM_ID)
+        .eq("is_active", true)
+        .order("name"),
     ]);
 
   if (!candidateResult.data) {
@@ -54,6 +61,7 @@ export default async function CandidateProfilePage({ params }: Props) {
   const stages: PipelineStage[] = stagesResult.data ?? [];
   const notes: CandidateNote[] = notesResult.data ?? [];
   const history: StageHistoryEntry[] = historyResult.data ?? [];
+  const emailTemplates: EmailTemplate[] = templatesResult.data ?? [];
 
   return (
     <CandidateProfile
@@ -61,6 +69,7 @@ export default async function CandidateProfilePage({ params }: Props) {
       stages={stages}
       notes={notes}
       history={history}
+      emailTemplates={emailTemplates}
       teamId={TEAM_ID}
     />
   );

@@ -8,6 +8,7 @@ import type {
   PipelineStage,
   CandidateNote,
   StageHistoryEntry,
+  EmailTemplate,
 } from "@/lib/types";
 
 /* ── Props ─────────────────────────────────────────────────────── */
@@ -17,6 +18,7 @@ interface Props {
   stages: PipelineStage[];
   notes: CandidateNote[];
   history: StageHistoryEntry[];
+  emailTemplates: EmailTemplate[];
   teamId: string;
 }
 
@@ -27,12 +29,14 @@ export default function CandidateProfile({
   stages,
   notes: initialNotes,
   history: initialHistory,
+  emailTemplates,
   teamId,
 }: Props) {
   const [candidate, setCandidate] = useState(initialCandidate);
   const [notes, setNotes] = useState(initialNotes);
   const [history, setHistory] = useState(initialHistory);
   const [isMoving, setIsMoving] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
 
@@ -92,6 +96,7 @@ export default function CandidateProfile({
           candidate={candidate}
           stages={stages}
           isMoving={isMoving}
+          onSendEmail={() => setShowEmailModal(true)}
           onMoveStage={async (newStage) => {
             setIsMoving(true);
             const supabase = createClient();
@@ -159,6 +164,15 @@ export default function CandidateProfile({
           <StageTimeline history={history} stages={stages} />
         </div>
       </div>
+
+      {/* Email Modal */}
+      {showEmailModal && candidate.email && (
+        <SendEmailModal
+          candidate={candidate}
+          templates={emailTemplates}
+          onClose={() => setShowEmailModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -784,11 +798,13 @@ function ActionButtons({
   stages,
   isMoving,
   onMoveStage,
+  onSendEmail,
 }: {
   candidate: Candidate;
   stages: PipelineStage[];
   isMoving: boolean;
   onMoveStage: (newStage: string) => void;
+  onSendEmail?: () => void;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
 
@@ -830,6 +846,16 @@ function ActionButtons({
         )}
       </div>
 
+      {/* Send Email */}
+      {candidate.email && (
+        <button
+          onClick={() => onSendEmail?.()}
+          className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+        >
+          Send Email
+        </button>
+      )}
+
       {/* Schedule Interview */}
       <button className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition">
         Schedule Interview
@@ -843,6 +869,176 @@ function ActionButtons({
       >
         Move to Onboarding
       </button>
+    </div>
+  );
+}
+
+/* ── Send Email Modal ─────────────────────────────────────────── */
+
+function SendEmailModal({
+  candidate,
+  templates,
+  onClose,
+}: {
+  candidate: Candidate;
+  templates: EmailTemplate[];
+  onClose: () => void;
+}) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState("");
+
+  function replaceMergeTags(text: string) {
+    return text
+      .replace(/\{\{first_name\}\}/g, candidate.first_name)
+      .replace(/\{\{last_name\}\}/g, candidate.last_name)
+      .replace(/\{\{team_name\}\}/g, "Vantage West")
+      .replace(/\{\{sender_name\}\}/g, "Vantage West Recruiting");
+  }
+
+  function handleTemplateChange(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const tmpl = templates.find((t) => t.id === templateId);
+    if (tmpl) {
+      setSubject(replaceMergeTags(tmpl.subject));
+      setBody(replaceMergeTags(tmpl.body));
+    }
+  }
+
+  async function handleSend() {
+    if (!subject.trim() || !body.trim()) {
+      setSendStatus("Please fill in subject and body");
+      return;
+    }
+    setIsSending(true);
+    setSendStatus("");
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: candidate.email,
+          subject,
+          body,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        setSendStatus(`Error: ${data.error}`);
+      } else {
+        setSendStatus("Email sent successfully!");
+        setTimeout(() => onClose(), 1500);
+      }
+    } catch {
+      setSendStatus("Failed to send email");
+    }
+    setIsSending(false);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10">
+          <div>
+            <h3 className="text-lg font-bold text-[#272727]">Send Email</h3>
+            <p className="text-sm text-[#a59494]">
+              To: {candidate.first_name} {candidate.last_name} ({candidate.email})
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#a59494] hover:text-[#272727] transition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Template selector */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Use Template
+            </label>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+            >
+              <option value="">Blank email (no template)</option>
+              {templates
+                .filter((t) => t.is_active)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Subject */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Subject
+            </label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+            />
+          </div>
+
+          {/* Body */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Message
+            </label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={10}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition resize-none"
+            />
+          </div>
+
+          {sendStatus && (
+            <p
+              className={`text-sm ${
+                sendStatus.startsWith("Error") || sendStatus.startsWith("Failed")
+                  ? "text-red-600"
+                  : sendStatus.includes("success")
+                  ? "text-green-600"
+                  : "text-[#a59494]"
+              }`}
+            >
+              {sendStatus}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={isSending || !subject.trim() || !body.trim()}
+              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+            >
+              {isSending ? "Sending..." : "Send Email"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
