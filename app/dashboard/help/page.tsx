@@ -5,163 +5,163 @@ import { useState } from "react";
 /* ── Help sections ──────────────────────────────────────────────── */
 const SECTIONS = [
   {
-    id: "overview",
-    title: "Platform Overview",
-    icon: "🏠",
+    id: "getting-started",
+    title: "Getting Started",
+    icon: "🚀",
     content: [
       {
-        heading: "What is VW Recruiting?",
-        body: "VW Recruiting is the internal talent acquisition platform for Vantage West Real Estate. It helps your team manage the entire recruiting pipeline — from first lead to fully onboarded agent — in one centralized dashboard.",
+        heading: "Welcome to VW Recruiting",
+        body: "VW Recruiting is the internal talent acquisition platform for Vantage West Real Estate. It manages your entire recruiting pipeline — from first lead to fully onboarded agent — in one centralized dashboard.",
       },
       {
-        heading: "Dashboard Home",
-        body: "The main Dashboard shows high-level stats at a glance: total candidates, interviews scheduled, offers pending, and agents onboarding. Use this as your daily snapshot of recruiting health.",
+        heading: "Navigating the Dashboard",
+        body: 'Use the sidebar on the left to navigate between sections: Dashboard (stats overview), Candidates (Kanban pipeline board), Interviews (schedule & track), Onboarding (task checklists), Settings (team configuration), and this Help page. On the Dashboard home page you\'ll see high-level stats: total candidates, interviews scheduled, offers pending, and agents onboarding.',
       },
       {
-        heading: "Navigation",
-        body: "Use the sidebar on the left to navigate between sections: Dashboard (stats overview), Candidates (pipeline board), Interviews (schedule & track), Onboarding (task checklists), Settings (team config), and this Help page.",
+        heading: "Your First Steps",
+        body: '1. Go to Settings → Team to verify your team name and admin email.\n2. Go to Settings → Team Members and update each member\'s name, from-email, phone, and Google Booking URL.\n3. Go to Candidates and click "Add Candidate" to add your first lead.\n4. Drag the candidate card through the pipeline stages as they progress.',
       },
     ],
   },
   {
-    id: "candidates",
-    title: "Candidates & Pipeline",
-    icon: "👥",
-    content: [
-      {
-        heading: "Kanban Board",
-        body: "The Candidates page displays a drag-and-drop Kanban board. Each column represents a pipeline stage (e.g. New Lead, Application Sent, Under Review, Group Interview, Offer, Not a Fit). Drag candidate cards between columns to advance them through your pipeline.",
-      },
-      {
-        heading: "Adding a Candidate",
-        body: 'Click the "Add Candidate" button at the top of the Kanban board. Fill in the candidate\'s name, email, phone, and role applied. New candidates start in the first pipeline stage automatically.',
-      },
-      {
-        heading: "Candidate Profile",
-        body: "Click any candidate card to open their full profile. Here you can see all their details: contact info, application data, DISC assessment results, AQ score, composite score, interview history, notes, and stage history timeline.",
-      },
-      {
-        heading: "Moving Stages",
-        body: 'You can move candidates between pipeline stages in two ways: (1) Drag and drop on the Kanban board, or (2) Use the "Move Stage" dropdown on a candidate\'s profile page. Both methods record the change in the stage history.',
-      },
-      {
-        heading: "Search & Filter",
-        body: "Use the search bar at the top of the Kanban board to find candidates by name. Use the stage filter dropdown to show only candidates in a specific pipeline stage.",
-      },
-    ],
-  },
-  {
-    id: "assessments",
-    title: "Assessments & Scoring",
-    icon: "📊",
-    content: [
-      {
-        heading: "DISC Assessment",
-        body: "Each candidate can have DISC personality scores (D, I, S, C ranging 0–100). The system identifies primary and secondary DISC types and checks if the candidate meets the configured threshold. DISC results appear as color-coded badges on candidate cards.",
-      },
-      {
-        heading: "AQ Score (Attraction Quotient)",
-        body: "The AQ score measures a candidate's market presence and attractiveness as a recruit. Raw scores are normalized to a 0–100 scale and categorized into tiers: Elite (90+), Strong (70–89), Developing (50–69), or Emerging (below 50).",
-      },
-      {
-        heading: "Composite Score",
-        body: "The composite score is a weighted combination of all scoring criteria configured in Settings. Each criterion has a weight percentage and optional minimum threshold. Candidates receive a verdict based on their composite: Strong Hire, Hire, Borderline, or No Hire.",
-      },
-      {
-        heading: "Interview Scores",
-        body: "During interviews, evaluators can score candidates on each configured criterion (1–10 scale). Multiple evaluators can score the same candidate. Average scores per criterion are displayed on the candidate profile.",
-      },
-    ],
-  },
-  {
-    id: "interviews",
-    title: "Interviews",
+    id: "google-scheduling",
+    title: "Google Appointment Scheduling",
     icon: "📅",
     content: [
       {
-        heading: "Scheduling Interviews",
-        body: 'Navigate to the Interviews page to see all scheduled, completed, and cancelled interviews. Use the "Schedule Interview" button to create a new interview for a candidate. Select the interview type, date/time, and any notes.',
+        heading: "What is Google Appointment Scheduling?",
+        body: "Google Appointment Scheduling (part of Google Calendar) lets candidates book 1-on-1 interviews directly on a team leader's calendar. Each leader gets a unique booking URL that candidates click to choose an available time slot.",
       },
       {
-        heading: "Interview Types",
-        body: "The system supports multiple interview types: Phone Screen, Video Call, In-Person, Group Interview, and Panel Interview. The Group Interview type ties into the group interview settings configured under Settings → Team.",
+        heading: "Step 1: Open Google Calendar",
+        body: 'Go to calendar.google.com and sign in with your Google Workspace or personal Google account. Make sure you\'re on the account you use for work.',
       },
       {
-        heading: "Group Interviews",
-        body: "Group interviews are configured in Settings → Team tab. Set a recurring Zoom link and a scheduled date. When you send the Group Interview Invite email template, it automatically includes the Zoom link and date.",
+        heading: "Step 2: Create an Appointment Schedule",
+        body: 'Click the "+" button or click on a time slot on your calendar. In the dropdown that appears, select "Appointment schedule" (not a regular event). If you don\'t see this option, you may need Google Workspace or a Google One subscription.',
       },
       {
-        heading: "Interview Status",
-        body: 'Each interview has a status: Scheduled, Completed, Cancelled, or No Show. Update the status as interviews happen to keep your records accurate. Mark interviews as "Completed" to unlock scoring.',
+        heading: "Step 3: Configure Your Availability",
+        body: 'Give your schedule a title (e.g. "1-on-1 Interview — [Your Name]"). Set your available hours for each day of the week. Set the appointment duration (we recommend 30 or 45 minutes for interviews). Add buffer time between appointments if you need a break (5–15 minutes is typical).',
+      },
+      {
+        heading: "Step 4: Customize Booking Settings",
+        body: 'Under "Booking page", you can customize the photo, description, and what information to collect from the candidate (name, email, phone). Enable "Require email verification" for security. Under "Reminders", enable email reminders to reduce no-shows.',
+      },
+      {
+        heading: "Step 5: Get Your Booking URL",
+        body: 'After saving your appointment schedule, open it from your calendar. Click "Open booking page" — this opens a preview. Copy the URL from your browser\'s address bar. It will look something like: https://calendar.google.com/calendar/appointments/XXXXXX',
+      },
+      {
+        heading: "Step 6: Add Your URL to VW Recruiting",
+        body: 'Go to Settings → Team Members in VW Recruiting. Click "Edit" next to your name. Paste the booking URL into the "Google Booking URL" field. Click Save. Now when anyone schedules a 1-on-1 interview and selects you as the leader, your booking URL will appear for the candidate to click.',
+      },
+      {
+        heading: "Tips for a Great Setup",
+        body: '• Block off lunch hours, team meetings, and personal time on your Google Calendar so those slots don\'t show as available.\n• Set a minimum scheduling notice (e.g. 24 hours) so candidates can\'t book last-minute.\n• Add a confirmation message that includes your Zoom/office address.\n• Test your booking page yourself by opening the URL in an incognito window.',
       },
     ],
   },
   {
-    id: "emails",
-    title: "Email System",
+    id: "group-interviews",
+    title: "Group Interviews",
+    icon: "👥",
+    content: [
+      {
+        heading: "How Group Interviews Work",
+        body: 'Group interviews are a recurring event where multiple candidates join a single Zoom call to learn about the team and culture. They\'re typically held weekly or bi-weekly. The Zoom link and date are configured once in Settings → Team, and the system uses them automatically in email templates.',
+      },
+      {
+        heading: "Setting Up Group Interviews",
+        body: '1. Go to Settings → Team tab.\n2. Paste your recurring Zoom meeting link into the "Zoom Link" field.\n3. Set the "Next Group Interview Date" to your next scheduled session.\n4. Click Save Changes.\n\nThis information is stored on your team record and used by the "Group Interview Invite" email template.',
+      },
+      {
+        heading: "Inviting Candidates",
+        body: 'When a candidate is ready for the group interview stage:\n1. Move them to the "Group Interview" stage on the Kanban board.\n2. Open their profile and click "Send Email".\n3. Select the "Group Interview Invite" template.\n4. The template auto-fills with the candidate\'s name and your team\'s Zoom link.\n5. Review and send.',
+      },
+    ],
+  },
+  {
+    id: "moving-candidates",
+    title: "Moving Candidates Through the Pipeline",
+    icon: "🔄",
+    content: [
+      {
+        heading: "Pipeline Stages",
+        body: 'Your recruiting pipeline has these stages by default: New Lead → Application Sent → Under Review → Group Interview → 1-on-1 Interview → Offer → Onboarding → Not a Fit. Each stage is a column on the Kanban board.',
+      },
+      {
+        heading: "Drag and Drop",
+        body: 'On the Candidates page, grab any candidate card and drag it to a different column to change their stage. The stage change is saved to the database immediately and recorded in the candidate\'s stage history timeline.',
+      },
+      {
+        heading: "Move Stage Dropdown",
+        body: 'On a candidate\'s profile page, click the "Move Stage" button to see a dropdown of all available stages. Select the target stage. Both the Kanban drag-and-drop and the dropdown record the change in the stage history.',
+      },
+      {
+        heading: "Stage History",
+        body: 'Every stage change is logged with a timestamp on the candidate\'s profile page under "Stage History". This creates an audit trail showing exactly when each candidate moved through your pipeline.',
+      },
+    ],
+  },
+  {
+    id: "email-templates",
+    title: "Email Templates",
     icon: "✉️",
     content: [
       {
-        heading: "Sending Emails",
-        body: 'From any candidate\'s profile, click "Send Email" to open the email composer. Select a template or start from scratch. The system uses merge tags to personalize messages automatically.',
+        heading: "Using Email Templates",
+        body: 'From any candidate\'s profile, click "Send Email" to open the email composer. Select a template from the dropdown to auto-fill the subject and body, or start from scratch. The system replaces merge tags with real data before sending.',
       },
       {
-        heading: "Merge Tags",
-        body: "Available merge tags: {{first_name}} — candidate's first name, {{last_name}} — last name, {{team_name}} — your team name, {{sender_name}} — your name. Tags are automatically replaced when the email is sent.",
+        heading: "Available Merge Tags",
+        body: 'Templates support these merge tags:\n• {{first_name}} — candidate\'s first name\n• {{last_name}} — candidate\'s last name\n• {{team_name}} — your team\'s name\n• {{sender_name}} — your name (the logged-in user)\n• {{booking_link}} — the selected leader\'s Google Booking URL (for 1-on-1 interviews)',
       },
       {
-        heading: "Email Templates",
-        body: "Manage templates in Settings → Email Templates. The system comes with 7 pre-built templates: Application Received, Interview Invitation, Group Interview Invite, Offer Extended, Rejection Notice, Onboarding Welcome, and Follow-Up Check-In.",
+        heading: "Managing Templates",
+        body: 'Go to Settings → Email Templates to view and edit all templates. The system comes with 7 pre-built templates: Application Received, Interview Invitation, Group Interview Invite, Offer Extended, Rejection Notice, Onboarding Welcome, and Follow-Up Check-In. Click any template to edit its subject and body, then click Save.',
       },
       {
-        heading: "From Address & BCC",
-        body: "Each team member can set their own \"From Email\" in Settings → Team Members. The team admin email (Settings → Team) can be BCC'd on all outgoing emails when the BCC toggle is enabled.",
-      },
-    ],
-  },
-  {
-    id: "onboarding",
-    title: "Onboarding",
-    icon: "✅",
-    content: [
-      {
-        heading: "Onboarding Checklist",
-        body: "When a candidate is hired, navigate to the Onboarding page to see and manage their onboarding tasks. Each task has an owner role, optional assignee, due date, and completion status.",
-      },
-      {
-        heading: "Task Templates",
-        body: "Onboarding tasks are configured as templates in the database. When a candidate enters the onboarding stage, tasks are automatically generated from the template. Tasks cover areas like paperwork, systems setup, training, and introductions.",
-      },
-      {
-        heading: "Tracking Progress",
-        body: "Check off tasks as they're completed. Add notes to individual tasks to record important details. Filter the onboarding view by candidate to see a specific person's progress.",
+        heading: "BCC Admin on All Emails",
+        body: 'In Settings → Team, you can enable "BCC admin on all candidate emails". When enabled, every outgoing email also copies the admin email address so leadership has visibility into all communications.',
       },
     ],
   },
   {
-    id: "settings",
-    title: "Settings & Configuration",
-    icon: "⚙️",
+    id: "team-members",
+    title: "Adding & Managing Team Members",
+    icon: "🧑‍💼",
     content: [
       {
-        heading: "Team Settings",
-        body: "The Team tab in Settings lets you configure your team name, admin email, BCC preferences, and group interview details (Zoom link + scheduled date). Changes save automatically when you click Save.",
+        heading: "Viewing Team Members",
+        body: 'Go to Settings → Team Members to see everyone on your team. Each member shows their name, email, role (owner/leader), and sending email address.',
       },
       {
-        heading: "Team Members",
-        body: "The Team Members tab shows all users on your team. You can edit each member's display name, from email address, phone number, Calendly URL, and Google Booking URL. These details are used in email templates and scheduling.",
+        heading: "Editing Member Profiles",
+        body: 'Click "Edit" next to a team member to update their:\n• Display Name — shown in emails and notes\n• From Email — the email address used when sending candidate emails\n• Phone — displayed for reference\n• Calendly URL — alternative scheduling link\n• Google Booking URL — for 1-on-1 interview scheduling',
       },
       {
-        heading: "Pipeline Stages",
-        body: "The Pipeline Stages tab shows your recruiting funnel stages in order. Stages are color-coded and determine the columns on the Kanban board. Contact your administrator to add or reorder stages.",
+        heading: "Roles & Permissions",
+        body: 'There are two roles:\n• Owner — full access: can edit settings, manage users, view all data, and delete records\n• Leader — limited access: can view all data but cannot edit team settings or manage users\n\nBoth roles can send emails, schedule interviews, score candidates, and manage the pipeline.',
+      },
+    ],
+  },
+  {
+    id: "multi-team",
+    title: "Multi-Team Support",
+    icon: "🏢",
+    content: [
+      {
+        heading: "Switching Teams",
+        body: 'If you have access to multiple teams, you\'ll see a team switcher dropdown in the top header bar. Click your current team name to see a list of all available teams, then select the one you want to switch to. The page will reload with the selected team\'s data.',
       },
       {
-        heading: "Email Templates",
-        body: "The Email Templates tab lets you create and edit email templates. Each template has a name, trigger condition, subject line, and body with merge tag support. Toggle templates active/inactive as needed.",
+        heading: "How Team Isolation Works",
+        body: 'Each team has its own candidates, pipeline stages, email templates, scoring criteria, users, and onboarding tasks. When you switch teams, everything you see in the dashboard is scoped to that team. A candidate in one team is not visible to another team.',
       },
       {
-        heading: "Scoring Criteria",
-        body: "The Scoring Criteria tab shows the weighted criteria used to evaluate candidates. Criteria are grouped into categories (DISC, AQ, Experience, Interview, Market Presence) with configurable weights and minimum thresholds.",
+        heading: "Your Team ID",
+        body: 'Your active team is remembered via a browser cookie. If you clear your cookies, the system defaults to the primary VW team. The team ID is used in every database query to ensure data isolation.',
       },
     ],
   },
@@ -169,7 +169,7 @@ const SECTIONS = [
 
 /* ── Component ──────────────────────────────────────────────────── */
 export default function HelpPage() {
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useState("getting-started");
 
   const section = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
 
@@ -218,9 +218,9 @@ export default function HelpPage() {
                   <h3 className="text-base font-semibold text-[#272727] mb-2">
                     {item.heading}
                   </h3>
-                  <p className="text-sm text-[#272727]/70 leading-relaxed">
+                  <div className="text-sm text-[#272727]/70 leading-relaxed whitespace-pre-line">
                     {item.body}
-                  </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -228,7 +228,7 @@ export default function HelpPage() {
 
           {/* Quick tips card */}
           <div className="bg-[#1c759e]/5 border border-[#1c759e]/20 rounded-xl p-6 mt-6">
-            <h3 className="text-sm font-semibold text-[#1c759e] mb-3">💡 Quick Tips</h3>
+            <h3 className="text-sm font-semibold text-[#1c759e] mb-3">Quick Tips</h3>
             <ul className="space-y-2 text-sm text-[#272727]/70">
               <li className="flex items-start gap-2">
                 <span className="text-[#1c759e] mt-0.5">•</span>
@@ -247,15 +247,15 @@ export default function HelpPage() {
               <li className="flex items-start gap-2">
                 <span className="text-[#1c759e] mt-0.5">•</span>
                 <span>
-                  <strong>Composite scores</strong> are calculated automatically from your scoring
-                  criteria weights. Configure them in Settings → Scoring Criteria.
+                  <strong>Google Booking URLs</strong> must be set per leader in Settings →
+                  Team Members before 1-on-1 interview scheduling works.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#1c759e] mt-0.5">•</span>
                 <span>
-                  Need help? Contact your team admin or reach out to support at{" "}
-                  <span className="text-[#1c759e] font-medium">support@vantagewestrealestate.com</span>
+                  <strong>Team switching</strong> — use the dropdown in the header to switch
+                  between teams. All data is scoped to the active team.
                 </span>
               </li>
             </ul>
