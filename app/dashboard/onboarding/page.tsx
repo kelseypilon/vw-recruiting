@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeamId } from "@/lib/get-team-id";
 import OnboardingDashboard from "./onboarding-dashboard";
 import type {
@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 export default async function OnboardingPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();
 
   // Fetch candidates and tasks first

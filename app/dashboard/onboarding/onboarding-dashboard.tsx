@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type {
   Candidate,
   OnboardingTask,
@@ -49,22 +48,26 @@ export default function OnboardingDashboard({
     if (!selectedCandidate || isInitializing) return;
     setIsInitializing(true);
 
-    const supabase = createClient();
-    const entries = tasks.map((task) => ({
-      candidate_id: selectedCandidate,
-      task_id: task.id,
-    }));
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "initialize",
+          candidate_id: selectedCandidate,
+          task_ids: tasks.map((t) => t.id),
+        }),
+      });
+      const result = await res.json();
 
-    const { data, error } = await supabase
-      .from("candidate_onboarding")
-      .upsert(entries, { onConflict: "candidate_id,task_id" })
-      .select("*, task:onboarding_tasks(*), assignee:users(name)");
-
-    if (!error && data) {
-      setProgress((prev) => [
-        ...prev.filter((p) => p.candidate_id !== selectedCandidate),
-        ...(data as CandidateOnboarding[]),
-      ]);
+      if (result.data) {
+        setProgress((prev) => [
+          ...prev.filter((p) => p.candidate_id !== selectedCandidate),
+          ...(result.data as CandidateOnboarding[]),
+        ]);
+      }
+    } catch {
+      // silently fail — user can retry
     }
     setIsInitializing(false);
   }
@@ -74,18 +77,44 @@ export default function OnboardingDashboard({
     const existing = progressMap.get(taskId);
     if (!existing) return;
 
-    const supabase = createClient();
     const newCompleted = existing.completed_at ? null : new Date().toISOString();
 
-    const { error } = await supabase
-      .from("candidate_onboarding")
-      .update({ completed_at: newCompleted })
-      .eq("id", existing.id);
+    // Optimistic update
+    setProgress((prev) =>
+      prev.map((p) =>
+        p.id === existing.id ? { ...p, completed_at: newCompleted } : p
+      )
+    );
 
-    if (!error) {
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle",
+          entry_id: existing.id,
+          completed_at: newCompleted,
+        }),
+      });
+      const result = await res.json();
+
+      if (result.error) {
+        // Revert on error
+        setProgress((prev) =>
+          prev.map((p) =>
+            p.id === existing.id
+              ? { ...p, completed_at: existing.completed_at }
+              : p
+          )
+        );
+      }
+    } catch {
+      // Revert on network error
       setProgress((prev) =>
         prev.map((p) =>
-          p.id === existing.id ? { ...p, completed_at: newCompleted } : p
+          p.id === existing.id
+            ? { ...p, completed_at: existing.completed_at }
+            : p
         )
       );
     }
