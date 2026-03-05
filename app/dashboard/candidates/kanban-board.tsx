@@ -1,6 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
+import { createClient } from "@/lib/supabase/client";
 import type { PipelineStage, CandidateCard } from "@/lib/types";
 import CandidateCardComponent from "./candidate-card";
 import AddCandidateModal from "./add-candidate-modal";
@@ -51,6 +58,38 @@ export default function KanbanBoard({
     setCandidates((prev) => [...prev, newCandidate]);
   }
 
+  async function handleDragEnd(result: DropResult) {
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId) return;
+
+    const newStage = destination.droppableId;
+    const candidateId = draggableId;
+
+    // Optimistic update
+    handleStageChange(candidateId, newStage);
+
+    // Persist to DB
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("candidates")
+      .update({ stage: newStage })
+      .eq("id", candidateId);
+
+    if (error) {
+      // Revert on failure
+      const oldStage = source.droppableId;
+      handleStageChange(candidateId, oldStage);
+    } else {
+      // Record stage history
+      await supabase.from("stage_history").insert({
+        candidate_id: candidateId,
+        from_stage: source.droppableId,
+        to_stage: newStage,
+      });
+    }
+  }
+
   return (
     <>
       {/* Top bar */}
@@ -99,50 +138,85 @@ export default function KanbanBoard({
         </div>
       </div>
 
-      {/* Kanban columns */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {stages.map((stage) => {
-          const stageCards = grouped[stage.name] ?? [];
-          return (
-            <div
-              key={stage.id}
-              className="min-w-[272px] w-[272px] shrink-0 flex flex-col"
-            >
-              {/* Column header */}
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <div
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
-                />
-                <h3 className="text-sm font-semibold text-[#272727] truncate">
-                  {stage.name}
-                </h3>
-                <span className="ml-auto text-xs font-medium text-[#a59494] bg-white px-2 py-0.5 rounded-full border border-[#a59494]/20">
-                  {stageCards.length}
-                </span>
-              </div>
+      {/* Kanban columns with DnD */}
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {stages.map((stage) => {
+            const stageCards = grouped[stage.name] ?? [];
+            return (
+              <div
+                key={stage.id}
+                className="min-w-[272px] w-[272px] shrink-0 flex flex-col"
+              >
+                {/* Column header */}
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: stage.color ?? "#6B7280" }}
+                  />
+                  <h3 className="text-sm font-semibold text-[#272727] truncate">
+                    {stage.name}
+                  </h3>
+                  <span className="ml-auto text-xs font-medium text-[#a59494] bg-white px-2 py-0.5 rounded-full border border-[#a59494]/20">
+                    {stageCards.length}
+                  </span>
+                </div>
 
-              {/* Cards container */}
-              <div className="flex flex-col gap-3 flex-1 overflow-y-auto max-h-[calc(100vh-240px)] pr-1">
-                {stageCards.length === 0 ? (
-                  <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center">
-                    <p className="text-xs text-[#a59494]">No candidates</p>
-                  </div>
-                ) : (
-                  stageCards.map((candidate) => (
-                    <CandidateCardComponent
-                      key={candidate.id}
-                      candidate={candidate}
-                      stages={stages}
-                      onStageChange={handleStageChange}
-                    />
-                  ))
-                )}
+                {/* Droppable column */}
+                <Droppable droppableId={stage.name}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`flex flex-col gap-3 flex-1 overflow-y-auto max-h-[calc(100vh-240px)] pr-1 rounded-lg transition-colors min-h-[80px] ${
+                        snapshot.isDraggingOver
+                          ? "bg-[#1c759e]/5 ring-2 ring-[#1c759e]/20"
+                          : ""
+                      }`}
+                    >
+                      {stageCards.length === 0 && !snapshot.isDraggingOver ? (
+                        <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center">
+                          <p className="text-xs text-[#a59494]">
+                            Drop candidates here
+                          </p>
+                        </div>
+                      ) : (
+                        stageCards.map((candidate, index) => (
+                          <Draggable
+                            key={candidate.id}
+                            draggableId={candidate.id}
+                            index={index}
+                          >
+                            {(dragProvided, dragSnapshot) => (
+                              <div
+                                ref={dragProvided.innerRef}
+                                {...dragProvided.draggableProps}
+                                {...dragProvided.dragHandleProps}
+                                className={`transition-shadow ${
+                                  dragSnapshot.isDragging
+                                    ? "shadow-lg ring-2 ring-[#1c759e]/30 rounded-xl"
+                                    : ""
+                                }`}
+                              >
+                                <CandidateCardComponent
+                                  candidate={candidate}
+                                  stages={stages}
+                                  onStageChange={handleStageChange}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))
+                      )}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </DragDropContext>
 
       {/* Add Candidate Modal */}
       {showAddModal && (
