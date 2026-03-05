@@ -1,3 +1,25 @@
+export interface Team {
+  id: string;
+  name: string;
+  admin_email: string | null;
+  admin_bcc: boolean;
+  group_interview_zoom_link: string | null;
+  group_interview_date: string | null;
+  created_at: string;
+}
+
+export interface TeamUser {
+  id: string;
+  team_id: string;
+  name: string;
+  email: string;
+  role: string;
+  from_email: string | null;
+  calendly_url: string | null;
+  google_booking_url: string | null;
+  phone: string | null;
+}
+
 export interface PipelineStage {
   id: string;
   team_id: string;
