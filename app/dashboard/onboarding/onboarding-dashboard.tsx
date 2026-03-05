@@ -103,6 +103,26 @@ export default function OnboardingDashboard({
         </div>
       </div>
 
+      {/* Alert if no onboarding tasks are configured */}
+      {tasks.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">No onboarding tasks configured</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Run the onboarding tasks seed migration (20260304000005) in your Supabase SQL Editor to add 14 default tasks.
+                The tasks must exist in the <code className="bg-amber-100 px-1 rounded">onboarding_tasks</code> table with matching <code className="bg-amber-100 px-1 rounded">team_id</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {candidates.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-[#f5f0f0] flex items-center justify-center mx-auto mb-4">
