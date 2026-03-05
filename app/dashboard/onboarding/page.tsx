@@ -11,7 +11,8 @@ export default async function OnboardingPage() {
   const supabase = await createClient();
   const TEAM_ID = await getTeamId();
 
-  const [candidatesResult, tasksResult, progressResult] = await Promise.all([
+  // Fetch candidates and tasks first
+  const [candidatesResult, tasksResult] = await Promise.all([
     supabase
       .from("candidates")
       .select("*")
@@ -23,15 +24,22 @@ export default async function OnboardingPage() {
       .eq("team_id", TEAM_ID)
       .eq("is_active", true)
       .order("order_index"),
-    supabase
-      .from("candidate_onboarding")
-      .select("*, task:onboarding_tasks(*), assignee:users(name)")
-      .order("created_at"),
   ]);
 
   const candidates: Candidate[] = candidatesResult.data ?? [];
   const tasks: OnboardingTask[] = tasksResult.data ?? [];
-  const progress: CandidateOnboarding[] = (progressResult.data ?? []) as CandidateOnboarding[];
+
+  // Fetch progress scoped to these candidates
+  const candidateIds = candidates.map((c) => c.id);
+  let progress: CandidateOnboarding[] = [];
+  if (candidateIds.length > 0) {
+    const { data } = await supabase
+      .from("candidate_onboarding")
+      .select("*, task:onboarding_tasks(*), assignee:users(name)")
+      .in("candidate_id", candidateIds)
+      .order("created_at");
+    progress = (data ?? []) as CandidateOnboarding[];
+  }
 
   return (
     <OnboardingDashboard
