@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeamId } from "@/lib/get-team-id";
 import SettingsDashboard from "./settings-dashboard";
 import type {
@@ -10,7 +10,7 @@ import type {
 } from "@/lib/types";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();
 
   const [teamResult, usersResult, stagesResult, templatesResult, criteriaResult] =

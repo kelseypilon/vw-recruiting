@@ -7,13 +7,14 @@ import type {
   Candidate,
   TeamUser,
   EmailTemplate,
+  Team,
 } from "@/lib/types";
 
 export default async function InterviewsPage() {
   const supabase = await createClient();
   const TEAM_ID = await getTeamId();
 
-  const [interviewsResult, criteriaResult, candidatesResult, usersResult, templatesResult] =
+  const [interviewsResult, criteriaResult, candidatesResult, usersResult, templatesResult, teamResult] =
     await Promise.all([
       supabase
         .from("interviews")
@@ -41,6 +42,11 @@ export default async function InterviewsPage() {
         .select("*")
         .eq("team_id", TEAM_ID)
         .eq("is_active", true),
+      supabase
+        .from("teams")
+        .select("*")
+        .eq("id", TEAM_ID)
+        .single(),
     ]);
 
   const interviews: Interview[] = interviewsResult.data ?? [];
@@ -50,6 +56,7 @@ export default async function InterviewsPage() {
   const leaders: TeamUser[] = (usersResult.data ?? []) as TeamUser[];
   const emailTemplates: EmailTemplate[] =
     (templatesResult.data ?? []) as EmailTemplate[];
+  const team: Team | null = (teamResult.data as Team) ?? null;
 
   return (
     <InterviewsDashboard
@@ -59,6 +66,7 @@ export default async function InterviewsPage() {
       leaders={leaders}
       emailTemplates={emailTemplates}
       teamId={TEAM_ID}
+      team={team}
     />
   );
 }

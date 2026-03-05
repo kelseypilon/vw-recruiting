@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *
  * Actions:
  *   { action: "initialize", candidate_id, task_ids }
- *     → upserts candidate_onboarding rows for each task
+ *     → creates candidate_onboarding rows for each task
  *
  *   { action: "toggle", entry_id, completed_at }
  *     → sets completed_at on a candidate_onboarding row
@@ -26,6 +26,25 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Check if already initialized
+      const { data: existing } = await supabase
+        .from("candidate_onboarding")
+        .select("id")
+        .eq("candidate_id", candidate_id);
+
+      if (existing && existing.length > 0) {
+        // Already initialized — fetch with joins and return
+        const { data, error } = await supabase
+          .from("candidate_onboarding")
+          .select("*, task:onboarding_tasks(*)")
+          .eq("candidate_id", candidate_id);
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        return NextResponse.json({ data });
+      }
+
+      // Insert new entries (no upsert — avoids unique constraint issues)
       const entries = task_ids.map((task_id: string) => ({
         candidate_id,
         task_id,
@@ -33,8 +52,8 @@ export async function POST(req: NextRequest) {
 
       const { data, error } = await supabase
         .from("candidate_onboarding")
-        .upsert(entries, { onConflict: "candidate_id,task_id" })
-        .select("*, task:onboarding_tasks(*), assignee:users(name)");
+        .insert(entries)
+        .select("*, task:onboarding_tasks(*)");
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -10,6 +10,9 @@ import type {
   StageHistoryEntry,
   EmailTemplate,
   TeamUser,
+  OnboardingTask,
+  CandidateOnboarding,
+  Team,
 } from "@/lib/types";
 import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
 
@@ -23,6 +26,9 @@ interface Props {
   emailTemplates: EmailTemplate[];
   leaders: TeamUser[];
   teamId: string;
+  onboardingTasks: OnboardingTask[];
+  onboardingProgress: CandidateOnboarding[];
+  team: Team | null;
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -35,6 +41,9 @@ export default function CandidateProfile({
   emailTemplates,
   leaders,
   teamId,
+  onboardingTasks,
+  onboardingProgress: initialOnboardingProgress,
+  team,
 }: Props) {
   const [candidate, setCandidate] = useState(initialCandidate);
   const [notes, setNotes] = useState(initialNotes);
@@ -42,8 +51,14 @@ export default function CandidateProfile({
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<"profile" | "onboarding">("profile");
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
+
+  const tabs = [
+    { key: "profile" as const, label: "Profile" },
+    { key: "onboarding" as const, label: "Onboarding" },
+  ];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -59,7 +74,7 @@ export default function CandidateProfile({
       </Link>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
@@ -136,40 +151,67 @@ export default function CandidateProfile({
         />
       </div>
 
-      {/* Grid layout: left = details, right = scoring + notes */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: contact + application + resume */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          <ContactCard candidate={candidate} />
-          <ApplicationCard candidate={candidate} />
-          <ResumeCard
-            candidate={candidate}
-            onResumeUploaded={(url) =>
-              setCandidate((prev) => ({ ...prev, resume_url: url }))
-            }
-          />
-        </div>
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-6 border-b border-[#a59494]/10">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px ${
+              activeTab === tab.key
+                ? "text-[#1c759e] border-[#1c759e]"
+                : "text-[#a59494] border-transparent hover:text-[#272727]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Right column: scoring + notes + timeline */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Scoring row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <DISCCard candidate={candidate} />
-            <AQCard candidate={candidate} />
-            <CompositeCard candidate={candidate} />
+      {/* Tab content */}
+      {activeTab === "profile" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left column: contact + application + resume */}
+          <div className="lg:col-span-1 flex flex-col gap-6">
+            <ContactCard candidate={candidate} />
+            <ApplicationCard candidate={candidate} />
+            <ResumeCard
+              candidate={candidate}
+              onResumeUploaded={(url) =>
+                setCandidate((prev) => ({ ...prev, resume_url: url }))
+              }
+            />
           </div>
 
-          {/* Notes */}
-          <NotesSection
-            candidateId={candidate.id}
-            notes={notes}
-            onNoteAdded={(note) => setNotes((prev) => [note, ...prev])}
-          />
+          {/* Right column: scoring + notes + timeline */}
+          <div className="lg:col-span-2 flex flex-col gap-6">
+            {/* Scoring row */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <DISCCard candidate={candidate} />
+              <AQCard candidate={candidate} />
+              <CompositeCard candidate={candidate} />
+            </div>
 
-          {/* Stage History */}
-          <StageTimeline history={history} stages={stages} />
+            {/* Notes */}
+            <NotesSection
+              candidateId={candidate.id}
+              notes={notes}
+              onNoteAdded={(note) => setNotes((prev) => [note, ...prev])}
+            />
+
+            {/* Stage History */}
+            <StageTimeline history={history} stages={stages} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === "onboarding" && (
+        <OnboardingTab
+          candidateId={candidate.id}
+          tasks={onboardingTasks}
+          initialProgress={initialOnboardingProgress}
+        />
+      )}
 
       {/* Email Modal */}
       {showEmailModal && candidate.email && (
@@ -187,11 +229,243 @@ export default function CandidateProfile({
           leaders={leaders}
           emailTemplates={emailTemplates}
           teamId={teamId}
+          team={team}
           preselectedCandidateId={candidate.id}
           onClose={() => setShowScheduleModal(false)}
           onScheduled={() => setShowScheduleModal(false)}
         />
       )}
+    </div>
+  );
+}
+
+/* ── Onboarding Tab ───────────────────────────────────────────── */
+
+function OnboardingTab({
+  candidateId,
+  tasks,
+  initialProgress,
+}: {
+  candidateId: string;
+  tasks: OnboardingTask[];
+  initialProgress: CandidateOnboarding[];
+}) {
+  const [progress, setProgress] = useState(initialProgress);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [error, setError] = useState("");
+
+  const progressMap = new Map<string, CandidateOnboarding>();
+  progress.forEach((p) => progressMap.set(p.task_id, p));
+
+  const completedCount = progress.filter((p) => p.completed_at).length;
+  const totalTasks = tasks.length;
+  const progressPercent = totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
+
+  async function handleInitialize() {
+    if (isInitializing) return;
+    setIsInitializing(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "initialize",
+          candidate_id: candidateId,
+          task_ids: tasks.map((t) => t.id),
+        }),
+      });
+      const result = await res.json();
+
+      if (result.error) {
+        setError(result.error);
+      } else if (result.data) {
+        setProgress(result.data as CandidateOnboarding[]);
+      }
+    } catch {
+      setError("Network error — please try again");
+    }
+    setIsInitializing(false);
+  }
+
+  async function handleToggleTask(taskId: string) {
+    const existing = progressMap.get(taskId);
+    if (!existing) return;
+
+    const newCompleted = existing.completed_at ? null : new Date().toISOString();
+
+    // Optimistic update
+    setProgress((prev) =>
+      prev.map((p) =>
+        p.id === existing.id ? { ...p, completed_at: newCompleted } : p
+      )
+    );
+
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle",
+          entry_id: existing.id,
+          completed_at: newCompleted,
+        }),
+      });
+      const result = await res.json();
+
+      if (result.error) {
+        // Revert on error
+        setProgress((prev) =>
+          prev.map((p) =>
+            p.id === existing.id
+              ? { ...p, completed_at: existing.completed_at }
+              : p
+          )
+        );
+      }
+    } catch {
+      // Revert on network error
+      setProgress((prev) =>
+        prev.map((p) =>
+          p.id === existing.id
+            ? { ...p, completed_at: existing.completed_at }
+            : p
+        )
+      );
+    }
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-12 text-center">
+        <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </div>
+        <p className="text-[#272727] font-medium mb-1">No onboarding tasks configured</p>
+        <p className="text-sm text-[#a59494]">
+          Run the onboarding tasks seed migration in your Supabase SQL Editor.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+      {/* Progress header */}
+      <div className="px-6 py-4 border-b border-[#a59494]/10">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-[#272727]">Onboarding Progress</h3>
+          <div className="text-right">
+            <span className="text-lg font-bold text-[#1c759e]">
+              {Math.round(progressPercent)}%
+            </span>
+            <span className="text-xs text-[#a59494] ml-2">
+              {completedCount} of {totalTasks} tasks
+            </span>
+          </div>
+        </div>
+        <div className="h-2 bg-[#f5f0f0] rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${progressPercent}%`,
+              backgroundColor: progressPercent === 100 ? "#10B981" : "#1c759e",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Task list */}
+      <div className="px-6 py-4">
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {progress.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-[#a59494] mb-3">
+              Onboarding hasn&apos;t been started yet
+            </p>
+            <button
+              onClick={handleInitialize}
+              disabled={isInitializing}
+              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
+            >
+              {isInitializing ? "Initializing..." : `Initialize ${totalTasks} Tasks`}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tasks.map((task) => {
+              const entry = progressMap.get(task.id);
+              const isCompleted = !!entry?.completed_at;
+
+              return (
+                <div
+                  key={task.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg transition ${
+                    isCompleted ? "bg-green-50/50" : "hover:bg-[#f5f0f0]/50"
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => handleToggleTask(task.id)}
+                    disabled={!entry}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${
+                      isCompleted
+                        ? "bg-[#10B981] border-[#10B981]"
+                        : "border-[#a59494]/40 hover:border-[#1c759e]"
+                    } disabled:opacity-40`}
+                  >
+                    {isCompleted && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Task info */}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`text-sm ${
+                        isCompleted ? "text-[#a59494] line-through" : "text-[#272727]"
+                      }`}
+                    >
+                      {task.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-[#a59494]">{task.owner_role}</span>
+                      {task.timing && (
+                        <>
+                          <span className="text-[10px] text-[#a59494]">·</span>
+                          <span className="text-[10px] text-[#a59494]">{task.timing}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Completed date */}
+                  {isCompleted && entry?.completed_at && (
+                    <span className="text-xs text-[#10B981] whitespace-nowrap">
+                      {new Date(entry.completed_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -732,7 +1006,7 @@ function StageTimeline({
           <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-[#a59494]/20" />
 
           <div className="space-y-4">
-            {history.map((entry, i) => (
+            {history.map((entry) => (
               <div key={entry.id} className="relative flex gap-3 pl-1">
                 {/* Dot */}
                 <div

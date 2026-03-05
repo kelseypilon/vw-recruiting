@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeamId } from "@/lib/get-team-id";
 import CandidateProfile from "./candidate-profile";
 import type {
@@ -9,6 +9,9 @@ import type {
   StageHistoryEntry,
   EmailTemplate,
   TeamUser,
+  OnboardingTask,
+  CandidateOnboarding,
+  Team,
 } from "@/lib/types";
 
 interface Props {
@@ -17,10 +20,10 @@ interface Props {
 
 export default async function CandidateProfilePage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();
 
-  // Fetch candidate, stages, notes, stage history, templates, and leaders in parallel
+  // Fetch candidate, stages, notes, stage history, templates, leaders, onboarding data, and team in parallel
   const [
     candidateResult,
     stagesResult,
@@ -28,6 +31,9 @@ export default async function CandidateProfilePage({ params }: Props) {
     historyResult,
     templatesResult,
     usersResult,
+    tasksResult,
+    onboardingResult,
+    teamResult,
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -63,6 +69,21 @@ export default async function CandidateProfilePage({ params }: Props) {
         "id, team_id, name, email, role, from_email, google_booking_url, phone"
       )
       .eq("team_id", TEAM_ID),
+    supabase
+      .from("onboarding_tasks")
+      .select("*")
+      .eq("team_id", TEAM_ID)
+      .eq("is_active", true)
+      .order("order_index"),
+    supabase
+      .from("candidate_onboarding")
+      .select("*, task:onboarding_tasks(*)")
+      .eq("candidate_id", id),
+    supabase
+      .from("teams")
+      .select("*")
+      .eq("id", TEAM_ID)
+      .single(),
   ]);
 
   if (!candidateResult.data) {
@@ -75,6 +96,10 @@ export default async function CandidateProfilePage({ params }: Props) {
   const history: StageHistoryEntry[] = historyResult.data ?? [];
   const emailTemplates: EmailTemplate[] = templatesResult.data ?? [];
   const leaders: TeamUser[] = (usersResult.data ?? []) as TeamUser[];
+  const onboardingTasks: OnboardingTask[] = tasksResult.data ?? [];
+  const onboardingProgress: CandidateOnboarding[] =
+    (onboardingResult.data ?? []) as CandidateOnboarding[];
+  const team: Team | null = (teamResult.data as Team) ?? null;
 
   return (
     <CandidateProfile
@@ -85,6 +110,9 @@ export default async function CandidateProfilePage({ params }: Props) {
       emailTemplates={emailTemplates}
       leaders={leaders}
       teamId={TEAM_ID}
+      onboardingTasks={onboardingTasks}
+      onboardingProgress={onboardingProgress}
+      team={team}
     />
   );
 }

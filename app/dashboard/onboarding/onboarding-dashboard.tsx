@@ -29,6 +29,7 @@ export default function OnboardingDashboard({
     candidates[0]?.id ?? ""
   );
   const [isInitializing, setIsInitializing] = useState(false);
+  const [initError, setInitError] = useState("");
 
   const candidate = candidates.find((c) => c.id === selectedCandidate);
   const candidateProgress = progress.filter(
@@ -47,6 +48,7 @@ export default function OnboardingDashboard({
   async function handleInitialize() {
     if (!selectedCandidate || isInitializing) return;
     setIsInitializing(true);
+    setInitError("");
 
     try {
       const res = await fetch("/api/onboarding", {
@@ -60,14 +62,16 @@ export default function OnboardingDashboard({
       });
       const result = await res.json();
 
-      if (result.data) {
+      if (result.error) {
+        setInitError(result.error);
+      } else if (result.data) {
         setProgress((prev) => [
           ...prev.filter((p) => p.candidate_id !== selectedCandidate),
           ...(result.data as CandidateOnboarding[]),
         ]);
       }
     } catch {
-      // silently fail — user can retry
+      setInitError("Network error — please try again");
     }
     setIsInitializing(false);
   }
@@ -263,6 +267,12 @@ export default function OnboardingDashboard({
 
                 {/* Tasks */}
                 <div className="px-6 py-4">
+                  {initError && (
+                    <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                      <p className="text-sm text-red-700">{initError}</p>
+                    </div>
+                  )}
+
                   {candidateProgress.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-sm text-[#a59494] mb-3">

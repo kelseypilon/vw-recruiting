@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Candidate, Interview, TeamUser, EmailTemplate } from "@/lib/types";
+import type { Candidate, Interview, TeamUser, EmailTemplate, Team } from "@/lib/types";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -11,6 +11,7 @@ interface Props {
   leaders: TeamUser[];
   emailTemplates: EmailTemplate[];
   teamId: string;
+  team?: Team | null;
   onClose: () => void;
   onScheduled: (interview: Interview) => void;
   preselectedCandidateId?: string;
@@ -23,10 +24,12 @@ export default function ScheduleModal({
   leaders,
   emailTemplates,
   teamId,
+  team,
   onClose,
   onScheduled,
   preselectedCandidateId,
 }: Props) {
+  const [interviewType, setInterviewType] = useState<"1on1" | "group">("1on1");
   const [candidateId, setCandidateId] = useState(preselectedCandidateId ?? "");
   const [leaderId, setLeaderId] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -37,13 +40,22 @@ export default function ScheduleModal({
   const selectedLeader = leaders.find((l) => l.id === leaderId);
   const selectedCandidate = eligibleCandidates.find((c) => c.id === candidateId);
 
-  // Find the 1-on-1 interview email template
+  const hasGroupInterview = !!(team?.group_interview_zoom_link && team?.group_interview_date);
+
+  // Find the relevant email template
   const inviteTemplate = emailTemplates.find(
     (t) =>
       t.is_active &&
       (t.name.toLowerCase().includes("interview invitation") ||
         t.name.toLowerCase().includes("1on1") ||
         t.name.toLowerCase().includes("1-on-1"))
+  );
+
+  const groupTemplate = emailTemplates.find(
+    (t) =>
+      t.is_active &&
+      (t.name.toLowerCase().includes("group interview") ||
+        t.name.toLowerCase().includes("group_interview"))
   );
 
   // Fetch previous interviews when candidate changes
@@ -71,19 +83,29 @@ export default function ScheduleModal({
       setError("Please select a candidate");
       return;
     }
-    if (!leaderId) {
-      setError("Please select a leader");
-      return;
-    }
-    if (!selectedLeader?.google_booking_url) {
-      setError(
-        "Selected leader has no booking URL configured. Update it in Settings → Team Members."
-      );
-      return;
-    }
     if (!selectedCandidate?.email) {
       setError("Selected candidate has no email address");
       return;
+    }
+
+    if (interviewType === "1on1") {
+      if (!leaderId) {
+        setError("Please select a leader");
+        return;
+      }
+      if (!selectedLeader?.google_booking_url) {
+        setError(
+          "Selected leader has no booking URL configured. Update it in Settings → Team Members."
+        );
+        return;
+      }
+    } else {
+      if (!team?.group_interview_zoom_link || !team?.group_interview_date) {
+        setError(
+          "Group interview Zoom link or date not configured. Update in Settings → Team."
+        );
+        return;
+      }
     }
 
     setIsSending(true);
@@ -92,15 +114,24 @@ export default function ScheduleModal({
 
     const supabase = createClient();
 
+    const interviewTypeLabel =
+      interviewType === "1on1" ? "1on1 Interview" : "Group Interview";
+    const scheduledAt =
+      interviewType === "group" ? team!.group_interview_date : null;
+
     // 1. Create interview record in DB
     const { data: interviewData, error: dbError } = await supabase
       .from("interviews")
       .insert({
         team_id: teamId,
         candidate_id: candidateId,
-        interview_type: "1on1 Interview",
+        interview_type: interviewTypeLabel,
         status: "scheduled",
-        notes: `Leader: ${selectedLeader.name}`,
+        scheduled_at: scheduledAt,
+        notes:
+          interviewType === "1on1"
+            ? `Leader: ${selectedLeader!.name}`
+            : `Group interview via Zoom`,
       })
       .select(
         "*, candidate:candidates(first_name, last_name, role_applied, stage)"
@@ -113,24 +144,58 @@ export default function ScheduleModal({
       return;
     }
 
-    // 2. Build email from template (or fallback)
-    const bookingUrl = selectedLeader.google_booking_url;
-    let emailSubject = `1-on-1 Interview Invitation — Vantage West`;
-    let emailBody = `Hi ${selectedCandidate.first_name},\n\nYou're invited to schedule your 1-on-1 interview with ${selectedLeader.name} at Vantage West Real Estate.\n\nClick the link below to choose a time that works for you:\n${bookingUrl}\n\nWe look forward to speaking with you!\n\nBest,\nVantage West Recruiting`;
+    // 2. Build email
+    let emailSubject: string;
+    let emailBody: string;
+    let fromEmail: string | undefined;
 
-    if (inviteTemplate) {
-      emailSubject = inviteTemplate.subject
-        .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
-        .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
-        .replace(/\{\{team_name\}\}/g, "Vantage West")
-        .replace(/\{\{sender_name\}\}/g, selectedLeader.name)
-        .replace(/\{\{booking_link\}\}/g, bookingUrl);
-      emailBody = inviteTemplate.body
-        .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
-        .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
-        .replace(/\{\{team_name\}\}/g, "Vantage West")
-        .replace(/\{\{sender_name\}\}/g, selectedLeader.name)
-        .replace(/\{\{booking_link\}\}/g, bookingUrl);
+    if (interviewType === "1on1") {
+      const bookingUrl = selectedLeader!.google_booking_url!;
+      emailSubject = `1-on-1 Interview Invitation — Vantage West`;
+      emailBody = `Hi ${selectedCandidate.first_name},\n\nYou're invited to schedule your 1-on-1 interview with ${selectedLeader!.name} at Vantage West Real Estate.\n\nClick the link below to choose a time that works for you:\n${bookingUrl}\n\nWe look forward to speaking with you!\n\nBest,\nVantage West Recruiting`;
+
+      if (inviteTemplate) {
+        emailSubject = inviteTemplate.subject
+          .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
+          .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
+          .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+          .replace(/\{\{sender_name\}\}/g, selectedLeader!.name)
+          .replace(/\{\{booking_link\}\}/g, bookingUrl);
+        emailBody = inviteTemplate.body
+          .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
+          .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
+          .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+          .replace(/\{\{sender_name\}\}/g, selectedLeader!.name)
+          .replace(/\{\{booking_link\}\}/g, bookingUrl);
+      }
+      fromEmail = selectedLeader!.from_email || undefined;
+    } else {
+      const zoomLink = team!.group_interview_zoom_link!;
+      const dateFormatted = new Date(team!.group_interview_date!).toLocaleString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      emailSubject = `Group Interview Invitation — Vantage West`;
+      emailBody = `Hi ${selectedCandidate.first_name},\n\nYou're invited to our upcoming group interview at Vantage West Real Estate.\n\nDate & Time: ${dateFormatted}\nZoom Link: ${zoomLink}\n\nPlease join a few minutes early and be prepared to introduce yourself.\n\nWe look forward to meeting you!\n\nBest,\nVantage West Recruiting`;
+
+      if (groupTemplate) {
+        emailSubject = groupTemplate.subject
+          .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
+          .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
+          .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+          .replace(/\{\{zoom_link\}\}/g, zoomLink)
+          .replace(/\{\{interview_date\}\}/g, dateFormatted);
+        emailBody = groupTemplate.body
+          .replace(/\{\{first_name\}\}/g, selectedCandidate.first_name)
+          .replace(/\{\{last_name\}\}/g, selectedCandidate.last_name)
+          .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+          .replace(/\{\{zoom_link\}\}/g, zoomLink)
+          .replace(/\{\{interview_date\}\}/g, dateFormatted);
+      }
     }
 
     // 3. Send email via API
@@ -142,7 +207,7 @@ export default function ScheduleModal({
           to: selectedCandidate.email,
           subject: emailSubject,
           body: emailBody,
-          from_email: selectedLeader.from_email || undefined,
+          from_email: fromEmail,
         }),
       });
       const result = await res.json();
@@ -173,7 +238,7 @@ export default function ScheduleModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10 sticky top-0 bg-white rounded-t-xl z-10">
           <h3 className="text-lg font-bold text-[#272727]">
-            Schedule 1-on-1 Interview
+            Schedule Interview
           </h3>
           <button
             onClick={onClose}
@@ -194,6 +259,43 @@ export default function ScheduleModal({
         </div>
 
         <form onSubmit={handleSendInvite} className="p-6 space-y-5">
+          {/* Interview Type Toggle */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-2">
+              Interview Type
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setInterviewType("1on1")}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition ${
+                  interviewType === "1on1"
+                    ? "bg-[#1c759e] text-white border-[#1c759e]"
+                    : "text-[#272727] border-[#a59494]/40 hover:bg-[#f5f0f0]"
+                }`}
+              >
+                1-on-1 Interview
+              </button>
+              <button
+                type="button"
+                onClick={() => setInterviewType("group")}
+                disabled={!hasGroupInterview}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition ${
+                  interviewType === "group"
+                    ? "bg-[#1c759e] text-white border-[#1c759e]"
+                    : "text-[#272727] border-[#a59494]/40 hover:bg-[#f5f0f0]"
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                Group Interview
+              </button>
+            </div>
+            {!hasGroupInterview && (
+              <p className="text-xs text-[#a59494] mt-1.5">
+                Configure group interview settings in Settings → Team to enable this option.
+              </p>
+            )}
+          </div>
+
           {/* Candidate selector */}
           <div>
             <label className="block text-sm font-medium text-[#272727] mb-1">
@@ -213,53 +315,101 @@ export default function ScheduleModal({
             </select>
           </div>
 
-          {/* Leader selector */}
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Interview Leader
-            </label>
-            <select
-              value={leaderId}
-              onChange={(e) => setLeaderId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
-            >
-              <option value="">Select a leader...</option>
-              {leaders.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.role})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* 1-on-1: Leader selector */}
+          {interviewType === "1on1" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-[#272727] mb-1">
+                  Interview Leader
+                </label>
+                <select
+                  value={leaderId}
+                  onChange={(e) => setLeaderId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+                >
+                  <option value="">Select a leader...</option>
+                  {leaders.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Booking URL display */}
-          {selectedLeader && (
-            <div className="bg-[#f5f0f0] rounded-lg p-4">
-              <p className="text-xs font-medium text-[#a59494] mb-1.5">
-                {selectedLeader.name}&apos;s Booking Page
+              {/* Booking URL display */}
+              {selectedLeader && (
+                <div className="bg-[#f5f0f0] rounded-lg p-4">
+                  <p className="text-xs font-medium text-[#a59494] mb-1.5">
+                    {selectedLeader.name}&apos;s Booking Page
+                  </p>
+                  {selectedLeader.google_booking_url ? (
+                    <a
+                      href={selectedLeader.google_booking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-[#1c759e] hover:text-[#155f82] underline break-all transition"
+                    >
+                      {selectedLeader.google_booking_url}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-amber-600">
+                      No booking URL configured.{" "}
+                      <span className="text-xs">
+                        Go to Settings → Team Members to add one.
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Group Interview details */}
+          {interviewType === "group" && hasGroupInterview && (
+            <div className="bg-[#f5f0f0] rounded-lg p-4 space-y-2">
+              <p className="text-xs font-medium text-[#a59494]">
+                Group Interview Details
               </p>
-              {selectedLeader.google_booking_url ? (
+              <div className="flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c759e" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <span className="text-sm text-[#272727]">
+                  {new Date(team!.group_interview_date!).toLocaleString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <div className="flex items-start gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c759e" strokeWidth="2" className="shrink-0 mt-0.5">
+                  <path d="M15 10l5 5-5 5" />
+                  <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+                </svg>
                 <a
-                  href={selectedLeader.google_booking_url}
+                  href={team!.group_interview_zoom_link!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-[#1c759e] hover:text-[#155f82] underline break-all transition"
                 >
-                  {selectedLeader.google_booking_url}
+                  {team!.group_interview_zoom_link}
                 </a>
-              ) : (
-                <p className="text-sm text-amber-600">
-                  No booking URL configured.{" "}
-                  <span className="text-xs">
-                    Go to Settings → Team Members to add one.
-                  </span>
-                </p>
-              )}
+              </div>
             </div>
           )}
 
           {/* What happens when you click Send */}
-          {selectedCandidate && selectedLeader?.google_booking_url && (
+          {selectedCandidate && (
+            (interviewType === "1on1" && selectedLeader?.google_booking_url) ||
+            (interviewType === "group" && hasGroupInterview)
+          ) && (
             <div className="bg-[#1c759e]/5 border border-[#1c759e]/20 rounded-lg p-4">
               <p className="text-xs font-semibold text-[#1c759e] mb-1">
                 What happens when you send:
@@ -280,14 +430,17 @@ export default function ScheduleModal({
                   <span>
                     Email sent to{" "}
                     <strong>{selectedCandidate.email}</strong> with{" "}
-                    {selectedLeader.name}&apos;s booking link
+                    {interviewType === "1on1"
+                      ? `${selectedLeader!.name}'s booking link`
+                      : "group interview Zoom link & date"}
                   </span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-[#1c759e] mt-0.5">3.</span>
                   <span>
-                    Candidate books a time directly on{" "}
-                    {selectedLeader.name}&apos;s Google Calendar
+                    {interviewType === "1on1"
+                      ? `Candidate books a time directly on ${selectedLeader!.name}'s Google Calendar`
+                      : "Candidate joins the group Zoom call at the scheduled time"}
                   </span>
                 </li>
               </ul>
@@ -361,8 +514,8 @@ export default function ScheduleModal({
               disabled={
                 isSending ||
                 !candidateId ||
-                !leaderId ||
-                !selectedLeader?.google_booking_url ||
+                (interviewType === "1on1" && (!leaderId || !selectedLeader?.google_booking_url)) ||
+                (interviewType === "group" && !hasGroupInterview) ||
                 !!successMessage
               }
               className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type {
   Team,
   TeamUser,
@@ -33,6 +32,20 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+/* ── Helper: call /api/settings ────────────────────────────────── */
+
+async function saveSettings(
+  action: string,
+  payload: Record<string, unknown>
+): Promise<{ success?: boolean; data?: unknown; error?: string }> {
+  const res = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, payload }),
+  });
+  return res.json();
+}
+
 /* ── Main Component ────────────────────────────────────────────── */
 
 export default function SettingsDashboard({
@@ -46,9 +59,9 @@ export default function SettingsDashboard({
   const [activeTab, setActiveTab] = useState<TabId>("team");
   const [team, setTeam] = useState(initialTeam);
   const [users, setUsers] = useState(initialUsers);
-  const [stages] = useState(initialStages);
+  const [stages, setStages] = useState(initialStages);
   const [templates, setTemplates] = useState(initialTemplates);
-  const [criteria] = useState(initialCriteria);
+  const [criteria, setCriteria] = useState(initialCriteria);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -83,19 +96,23 @@ export default function SettingsDashboard({
       {activeTab === "members" && (
         <MembersTab users={users} onUsersUpdated={setUsers} />
       )}
-      {activeTab === "stages" && <StagesTab stages={stages} />}
+      {activeTab === "stages" && (
+        <StagesTab stages={stages} onStagesUpdated={setStages} />
+      )}
       {activeTab === "templates" && (
         <TemplatesTab
           templates={templates}
           onTemplatesUpdated={setTemplates}
         />
       )}
-      {activeTab === "criteria" && <CriteriaTab criteria={criteria} />}
+      {activeTab === "criteria" && (
+        <CriteriaTab criteria={criteria} onCriteriaUpdated={setCriteria} />
+      )}
     </div>
   );
 }
 
-/* ── Team Tab (Section 4: Group Interview Settings) ───────────── */
+/* ── Team Tab ──────────────────────────────────────────────────── */
 
 function TeamTab({
   team,
@@ -123,26 +140,21 @@ function TeamTab({
     setIsSaving(true);
     setSaveStatus("");
 
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("teams")
-      .update({
-        name: teamName,
-        admin_email: adminEmail || null,
-        admin_bcc: adminBcc,
-        group_interview_zoom_link: zoomLink || null,
-        group_interview_date: interviewDate
-          ? new Date(interviewDate).toISOString()
-          : null,
-      })
-      .eq("id", team.id)
-      .select("*")
-      .single();
+    const result = await saveSettings("update_team", {
+      id: team.id,
+      name: teamName,
+      admin_email: adminEmail || null,
+      admin_bcc: adminBcc,
+      group_interview_zoom_link: zoomLink || null,
+      group_interview_date: interviewDate
+        ? new Date(interviewDate).toISOString()
+        : null,
+    });
 
-    if (error) {
-      setSaveStatus(`Error: ${error.message}`);
-    } else if (data) {
-      onTeamUpdated(data as Team);
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else if (result.data) {
+      onTeamUpdated(result.data as Team);
       setSaveStatus("Saved!");
       setTimeout(() => setSaveStatus(""), 2000);
     }
@@ -254,7 +266,7 @@ function TeamTab({
   );
 }
 
-/* ── Members Tab (Section 5: User Profiles) ───────────────────── */
+/* ── Members Tab ───────────────────────────────────────────────── */
 
 function MembersTab({
   users,
@@ -288,19 +300,16 @@ function MembersTab({
     if (!editingId) return;
     setIsSaving(true);
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("users")
-      .update({
-        name: editForm.name,
-        from_email: editForm.from_email || null,
-        phone: editForm.phone || null,
-        calendly_url: editForm.calendly_url || null,
-        google_booking_url: editForm.google_booking_url || null,
-      })
-      .eq("id", editingId);
+    const result = await saveSettings("update_user", {
+      id: editingId,
+      name: editForm.name,
+      from_email: editForm.from_email || null,
+      phone: editForm.phone || null,
+      calendly_url: editForm.calendly_url || null,
+      google_booking_url: editForm.google_booking_url || null,
+    });
 
-    if (!error) {
+    if (!result.error) {
       onUsersUpdated(
         users.map((u) =>
           u.id === editingId
@@ -480,9 +489,53 @@ function MembersTab({
   );
 }
 
-/* ── Stages Tab ────────────────────────────────────────────────── */
+/* ── Stages Tab (Editable) ─────────────────────────────────────── */
 
-function StagesTab({ stages }: { stages: PipelineStage[] }) {
+const STAGE_COLORS = [
+  "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
+  "#EC4899", "#06B6D4", "#F97316", "#6366F1", "#14B8A6",
+  "#6B7280", "#DC2626",
+];
+
+function StagesTab({
+  stages,
+  onStagesUpdated,
+}: {
+  stages: PipelineStage[];
+  onStagesUpdated: (stages: PipelineStage[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  function startEditing(stage: PipelineStage) {
+    setEditingId(stage.id);
+    setEditName(stage.name);
+    setEditColor(stage.color ?? "#6B7280");
+  }
+
+  async function handleSave() {
+    if (!editingId) return;
+    setIsSaving(true);
+
+    const result = await saveSettings("update_stage", {
+      id: editingId,
+      name: editName,
+      color: editColor,
+    });
+
+    if (!result.error) {
+      onStagesUpdated(
+        stages.map((s) =>
+          s.id === editingId ? { ...s, name: editName, color: editColor } : s
+        )
+      );
+      setEditingId(null);
+    }
+    setIsSaving(false);
+  }
+
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
       <div className="px-6 py-4 border-b border-[#a59494]/10">
@@ -490,32 +543,83 @@ function StagesTab({ stages }: { stages: PipelineStage[] }) {
           Pipeline Stages
         </h3>
         <p className="text-xs text-[#a59494] mt-0.5">
-          {stages.length} stages configured
+          {stages.length} stages configured · click Edit to rename or change color
         </p>
       </div>
       <div className="divide-y divide-[#a59494]/10">
         {stages.map((stage, i) => (
-          <div key={stage.id} className="px-6 py-3 flex items-center gap-3">
-            <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
-            <div
-              className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: stage.color ?? "#6B7280" }}
-            />
-            <span className="text-sm text-[#272727] flex-1">{stage.name}</span>
-            {stage.ghl_tag && (
-              <span className="text-[10px] text-[#a59494] font-mono">
-                {stage.ghl_tag}
-              </span>
+          <div key={stage.id} className="px-6 py-3">
+            {editingId === stage.id ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                  />
+                </div>
+                <div className="flex items-center gap-2 ml-9">
+                  {STAGE_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setEditColor(c)}
+                      className={`w-6 h-6 rounded-full border-2 transition ${
+                        editColor === c ? "border-[#272727] scale-110" : "border-transparent"
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
+                  >
+                    {isSaving ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
+                <div
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
+                />
+                <span className="text-sm text-[#272727] flex-1">
+                  {stage.name}
+                </span>
+                {stage.ghl_tag && (
+                  <span className="text-[10px] text-[#a59494] font-mono">
+                    {stage.ghl_tag}
+                  </span>
+                )}
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                    stage.is_active
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {stage.is_active ? "Active" : "Inactive"}
+                </span>
+                <button
+                  onClick={() => startEditing(stage)}
+                  className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                >
+                  Edit
+                </button>
+              </div>
             )}
-            <span
-              className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                stage.is_active
-                  ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-500"
-              }`}
-            >
-              {stage.is_active ? "Active" : "Inactive"}
-            </span>
           </div>
         ))}
       </div>
@@ -552,14 +656,14 @@ function TemplatesTab({
     setIsSaving(true);
     setSaveStatus("");
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("email_templates")
-      .update({ subject: editSubject, body: editBody })
-      .eq("id", selected.id);
+    const result = await saveSettings("update_template", {
+      id: selected.id,
+      subject: editSubject,
+      body: editBody,
+    });
 
-    if (error) {
-      setSaveStatus(`Error: ${error.message}`);
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
     } else {
       setSaveStatus("Saved!");
       const updated = templates.map((t) =>
@@ -601,6 +705,11 @@ function TemplatesTab({
               </p>
             </button>
           ))}
+          {templates.length === 0 && (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-[#a59494]">No templates found</p>
+            </div>
+          )}
         </div>
       </div>
       <div className="lg:col-span-2">
@@ -674,9 +783,20 @@ function TemplatesTab({
   );
 }
 
-/* ── Criteria Tab ──────────────────────────────────────────────── */
+/* ── Criteria Tab (Editable) ───────────────────────────────────── */
 
-function CriteriaTab({ criteria }: { criteria: ScoringCriterion[] }) {
+function CriteriaTab({
+  criteria,
+  onCriteriaUpdated,
+}: {
+  criteria: ScoringCriterion[];
+  onCriteriaUpdated: (criteria: ScoringCriterion[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState(0);
+  const [editThreshold, setEditThreshold] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
   const CATEGORIES = [
     { name: "Mindset & Drive", range: [1, 5] },
     { name: "Communication & People Skills", range: [6, 9] },
@@ -691,6 +811,35 @@ function CriteriaTab({ criteria }: { criteria: ScoringCriterion[] }) {
         return cat.name;
     }
     return "Other";
+  }
+
+  function startEditing(c: ScoringCriterion) {
+    setEditingId(c.id);
+    setEditWeight(c.weight_percent);
+    setEditThreshold(c.min_threshold);
+  }
+
+  async function handleSave() {
+    if (!editingId) return;
+    setIsSaving(true);
+
+    const result = await saveSettings("update_criterion", {
+      id: editingId,
+      weight_percent: editWeight,
+      min_threshold: editThreshold,
+    });
+
+    if (!result.error) {
+      onCriteriaUpdated(
+        criteria.map((c) =>
+          c.id === editingId
+            ? { ...c, weight_percent: editWeight, min_threshold: editThreshold }
+            : c
+        )
+      );
+      setEditingId(null);
+    }
+    setIsSaving(false);
   }
 
   const grouped = criteria.reduce(
@@ -725,23 +874,87 @@ function CriteriaTab({ criteria }: { criteria: ScoringCriterion[] }) {
             </div>
             <div className="divide-y divide-[#a59494]/10">
               {items.map((c) => (
-                <div
-                  key={c.id}
-                  className="px-6 py-2.5 flex items-center gap-3"
-                >
-                  <span className="text-xs text-[#a59494] w-6">
-                    {c.order_index}
-                  </span>
-                  <span className="text-sm text-[#272727] flex-1">
-                    {c.name}
-                  </span>
-                  <span className="text-xs text-[#1c759e] font-medium">
-                    {c.weight_percent}%
-                  </span>
-                  {c.min_threshold !== null && (
-                    <span className="text-[10px] text-[#a59494]">
-                      min: {c.min_threshold}
-                    </span>
+                <div key={c.id} className="px-6 py-2.5">
+                  {editingId === c.id ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-[#a59494] w-6">
+                          {c.order_index}
+                        </span>
+                        <span className="text-sm text-[#272727] flex-1">
+                          {c.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 ml-9">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-[#a59494]">Weight %</label>
+                          <input
+                            type="number"
+                            value={editWeight}
+                            onChange={(e) => setEditWeight(Number(e.target.value))}
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-[#a59494]">Min Threshold</label>
+                          <input
+                            type="number"
+                            value={editThreshold ?? ""}
+                            onChange={(e) =>
+                              setEditThreshold(
+                                e.target.value === "" ? null : Number(e.target.value)
+                              )
+                            }
+                            min={0}
+                            max={10}
+                            step={0.5}
+                            placeholder="None"
+                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                          />
+                        </div>
+                        <div className="flex gap-2 ml-auto">
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="px-3 py-1 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="px-3 py-1 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
+                          >
+                            {isSaving ? "..." : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-[#a59494] w-6">
+                        {c.order_index}
+                      </span>
+                      <span className="text-sm text-[#272727] flex-1">
+                        {c.name}
+                      </span>
+                      <span className="text-xs text-[#1c759e] font-medium">
+                        {c.weight_percent}%
+                      </span>
+                      {c.min_threshold !== null && (
+                        <span className="text-[10px] text-[#a59494]">
+                          min: {c.min_threshold}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => startEditing(c)}
+                        className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

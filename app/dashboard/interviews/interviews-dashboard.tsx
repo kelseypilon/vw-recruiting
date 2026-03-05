@@ -8,6 +8,7 @@ import type {
   Candidate,
   TeamUser,
   EmailTemplate,
+  Team,
 } from "@/lib/types";
 import ScorecardModal from "./scorecard-modal";
 import ScheduleModal from "./schedule-modal";
@@ -21,6 +22,7 @@ interface Props {
   leaders: TeamUser[];
   emailTemplates: EmailTemplate[];
   teamId: string;
+  team: Team | null;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -55,6 +57,7 @@ export default function InterviewsDashboard({
   leaders,
   emailTemplates,
   teamId,
+  team,
 }: Props) {
   const [interviews, setInterviews] = useState(initialInterviews);
   const [filter, setFilter] = useState<"all" | "scheduled" | "completed">("all");
@@ -228,6 +231,7 @@ export default function InterviewsDashboard({
           leaders={leaders}
           emailTemplates={emailTemplates}
           teamId={teamId}
+          team={team}
           onClose={() => setShowSchedule(false)}
           onScheduled={(interview) => {
             setInterviews((prev) => [...prev, interview]);
