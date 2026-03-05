@@ -9,7 +9,9 @@ import type {
   CandidateNote,
   StageHistoryEntry,
   EmailTemplate,
+  TeamUser,
 } from "@/lib/types";
+import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -19,6 +21,7 @@ interface Props {
   notes: CandidateNote[];
   history: StageHistoryEntry[];
   emailTemplates: EmailTemplate[];
+  leaders: TeamUser[];
   teamId: string;
 }
 
@@ -30,6 +33,7 @@ export default function CandidateProfile({
   notes: initialNotes,
   history: initialHistory,
   emailTemplates,
+  leaders,
   teamId,
 }: Props) {
   const [candidate, setCandidate] = useState(initialCandidate);
@@ -37,6 +41,7 @@ export default function CandidateProfile({
   const [history, setHistory] = useState(initialHistory);
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
 
@@ -97,6 +102,7 @@ export default function CandidateProfile({
           stages={stages}
           isMoving={isMoving}
           onSendEmail={() => setShowEmailModal(true)}
+          onScheduleInterview={() => setShowScheduleModal(true)}
           onMoveStage={async (newStage) => {
             setIsMoving(true);
             const supabase = createClient();
@@ -171,6 +177,19 @@ export default function CandidateProfile({
           candidate={candidate}
           templates={emailTemplates}
           onClose={() => setShowEmailModal(false)}
+        />
+      )}
+
+      {/* Schedule Interview Modal */}
+      {showScheduleModal && (
+        <ScheduleModal
+          eligibleCandidates={[candidate]}
+          leaders={leaders}
+          emailTemplates={emailTemplates}
+          teamId={teamId}
+          preselectedCandidateId={candidate.id}
+          onClose={() => setShowScheduleModal(false)}
+          onScheduled={() => setShowScheduleModal(false)}
         />
       )}
     </div>
@@ -799,12 +818,14 @@ function ActionButtons({
   isMoving,
   onMoveStage,
   onSendEmail,
+  onScheduleInterview,
 }: {
   candidate: Candidate;
   stages: PipelineStage[];
   isMoving: boolean;
   onMoveStage: (newStage: string) => void;
   onSendEmail?: () => void;
+  onScheduleInterview?: () => void;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
 
@@ -857,7 +878,10 @@ function ActionButtons({
       )}
 
       {/* Schedule Interview */}
-      <button className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition">
+      <button
+        onClick={() => onScheduleInterview?.()}
+        className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+      >
         Schedule Interview
       </button>
 
