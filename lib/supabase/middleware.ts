@@ -31,9 +31,10 @@ export async function updateSession(request: NextRequest) {
 
   const isLoginPage = request.nextUrl.pathname === "/login";
   const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/");
+  const isApiSeed = request.nextUrl.pathname === "/api/seed";
 
-  // Allow auth callback routes through
-  if (isAuthCallback) {
+  // Allow auth callback routes and seed API through
+  if (isAuthCallback || isApiSeed) {
     return supabaseResponse;
   }
 
