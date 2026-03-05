@@ -2,7 +2,7 @@ export interface Team {
   id: string;
   name: string;
   admin_email: string | null;
-  admin_bcc: boolean;
+  admin_cc: boolean;
   group_interview_zoom_link: string | null;
   group_interview_date: string | null;
   created_at: string;

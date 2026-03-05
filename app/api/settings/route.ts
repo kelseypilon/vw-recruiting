@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * A unified API for all settings writes using the admin client (bypasses RLS).
  *
  * Actions:
- *   update_team      { id, name?, admin_email?, admin_bcc?, group_interview_zoom_link?, group_interview_date? }
+ *   update_team      { id, name?, admin_email?, admin_cc?, group_interview_zoom_link?, group_interview_date? }
  *   update_user      { id, name?, from_email?, phone?, calendly_url?, google_booking_url? }
  *   update_stage     { id, name?, color? }
  *   update_template  { id, subject?, body? }

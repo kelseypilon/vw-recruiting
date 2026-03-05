@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const resend = new Resend(apiKey);
     const body = await req.json();
-    const { to, subject, body: emailBody, from_email, bcc } = body;
+    const { to, subject, body: emailBody, from_email, cc } = body;
 
     if (!to || !subject || !emailBody) {
       return NextResponse.json(
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       to: string[];
       subject: string;
       text: string;
-      bcc?: string[];
+      cc?: string[];
     } = {
       from: fromAddress,
       to: Array.isArray(to) ? to : [to],
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
       text: emailBody,
     };
 
-    if (bcc) {
-      emailPayload.bcc = Array.isArray(bcc) ? bcc : [bcc];
+    if (cc) {
+      emailPayload.cc = Array.isArray(cc) ? cc : [cc];
     }
 
     const { data, error } = await resend.emails.send(emailPayload);

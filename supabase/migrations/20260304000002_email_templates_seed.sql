@@ -1,7 +1,7 @@
 -- Add admin email fields to teams table
 alter table teams
   add column if not exists admin_email text,
-  add column if not exists admin_bcc boolean not null default true;
+  add column if not exists admin_cc boolean not null default true;
 
 -- Add from_email to users table (for per-sender sending)
 alter table users
@@ -75,7 +75,4 @@ values
   )
 on conflict do nothing;
 
--- Set admin email for the team
-update teams
-set admin_email = 'aj@vantagewestrealestate.com'
-where id = '9bdd061b-8f89-4d08-bf19-bed29d129210';
+-- Leave admin_email blank for now (team can set it in Settings → Team)

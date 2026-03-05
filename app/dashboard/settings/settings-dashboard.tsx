@@ -123,7 +123,7 @@ function TeamTab({
 }) {
   const [teamName, setTeamName] = useState(team?.name ?? "");
   const [adminEmail, setAdminEmail] = useState(team?.admin_email ?? "");
-  const [adminBcc, setAdminBcc] = useState(team?.admin_bcc ?? true);
+  const [adminCc, setAdminCc] = useState(team?.admin_cc ?? true);
   const [zoomLink, setZoomLink] = useState(
     team?.group_interview_zoom_link ?? ""
   );
@@ -144,7 +144,7 @@ function TeamTab({
       id: team.id,
       name: teamName,
       admin_email: adminEmail || null,
-      admin_bcc: adminBcc,
+      admin_cc: adminCc,
       group_interview_zoom_link: zoomLink || null,
       group_interview_date: interviewDate
         ? new Date(interviewDate).toISOString()
@@ -195,12 +195,12 @@ function TeamTab({
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={adminBcc}
-              onChange={(e) => setAdminBcc(e.target.checked)}
+              checked={adminCc}
+              onChange={(e) => setAdminCc(e.target.checked)}
               className="w-4 h-4 rounded border-[#a59494]/40 text-[#1c759e] focus:ring-[#1c759e]"
             />
             <span className="text-sm text-[#272727]">
-              BCC admin on all candidate emails
+              CC admin on all candidate emails
             </span>
           </label>
         </div>

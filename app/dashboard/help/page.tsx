@@ -122,8 +122,8 @@ const SECTIONS = [
         body: 'Go to Settings → Email Templates to view and edit all templates. The system comes with 7 pre-built templates: Application Received, Interview Invitation, Group Interview Invite, Offer Extended, Rejection Notice, Onboarding Welcome, and Follow-Up Check-In. Click any template to edit its subject and body, then click Save.',
       },
       {
-        heading: "BCC Admin on All Emails",
-        body: 'In Settings → Team, you can enable "BCC admin on all candidate emails". When enabled, every outgoing email also copies the admin email address so leadership has visibility into all communications.',
+        heading: "CC Admin on All Emails",
+        body: 'In Settings → Team, you can enable "CC admin on all candidate emails". When enabled, every outgoing email also copies the admin email address so leadership has visibility into all communications.',
       },
     ],
   },

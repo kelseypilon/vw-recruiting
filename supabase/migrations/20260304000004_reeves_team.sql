@@ -3,7 +3,7 @@
 -- =============================================================================
 
 -- Team
-insert into teams (id, name, slug, settings, admin_email, admin_bcc)
+insert into teams (id, name, slug, settings, admin_email, admin_cc)
 values (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   'Reeves & Associates',
