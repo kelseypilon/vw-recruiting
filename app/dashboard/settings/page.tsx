@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
 import SettingsDashboard from "./settings-dashboard";
 import type {
   Team,
@@ -8,10 +9,9 @@ import type {
   ScoringCriterion,
 } from "@/lib/types";
 
-const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
-
 export default async function SettingsPage() {
   const supabase = await createClient();
+  const TEAM_ID = await getTeamId();
 
   const [teamResult, usersResult, stagesResult, templatesResult, criteriaResult] =
     await Promise.all([

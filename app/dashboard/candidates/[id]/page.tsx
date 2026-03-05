@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
 import CandidateProfile from "./candidate-profile";
 import type {
   Candidate,
@@ -9,9 +10,6 @@ import type {
   EmailTemplate,
 } from "@/lib/types";
 
-// TODO: look up from authenticated user's profile once users table is populated
-const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
-
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -19,6 +17,7 @@ interface Props {
 export default async function CandidateProfilePage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
+  const TEAM_ID = await getTeamId();
 
   // Fetch candidate, stages, notes, and stage history in parallel
   const [candidateResult, stagesResult, notesResult, historyResult, templatesResult] =

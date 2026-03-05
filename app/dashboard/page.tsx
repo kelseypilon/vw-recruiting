@@ -1,12 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
 import DashboardShell from "./dashboard-shell";
 import type { Candidate, Interview } from "@/lib/types";
 
-const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
-
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const teamId = TEAM_ID;
+  const teamId = await getTeamId();
 
   // Calculate this week's date range
   const now = new Date();

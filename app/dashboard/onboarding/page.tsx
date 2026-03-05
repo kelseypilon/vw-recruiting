@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
 import OnboardingDashboard from "./onboarding-dashboard";
 import type {
   Candidate,
@@ -6,10 +7,9 @@ import type {
   CandidateOnboarding,
 } from "@/lib/types";
 
-const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
-
 export default async function OnboardingPage() {
   const supabase = await createClient();
+  const TEAM_ID = await getTeamId();
 
   const [candidatesResult, tasksResult, progressResult] = await Promise.all([
     supabase

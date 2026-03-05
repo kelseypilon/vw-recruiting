@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTeam } from "@/lib/team-context";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
@@ -20,6 +21,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { teamId, teamName, teams, switchTeam } = useTeam();
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f0f0]">
@@ -30,8 +32,23 @@ export default function DashboardLayout({
             <span className="text-white text-sm font-bold">VW</span>
           </div>
           <span className="text-lg font-bold text-[#272727] tracking-tight">
-            Vantage West Recruiting
+            {teamName || "VW Recruiting"}
           </span>
+
+          {/* Team Switcher */}
+          {teams.length > 1 && (
+            <select
+              value={teamId}
+              onChange={(e) => switchTeam(e.target.value)}
+              className="ml-3 text-sm border border-[#a59494]/30 rounded-lg px-2.5 py-1.5 bg-[#f5f0f0] text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e]/30 cursor-pointer"
+            >
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-[#a59494]">{email}</span>

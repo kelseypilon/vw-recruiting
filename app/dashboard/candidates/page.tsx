@@ -1,13 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
 import KanbanBoard from "./kanban-board";
 import type { PipelineStage, Candidate, CandidateCard } from "@/lib/types";
 
-// TODO: look up from authenticated user's profile once users table is populated
-const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
-
 export default async function CandidatesPage() {
   const supabase = await createClient();
-  const teamId = TEAM_ID;
+  const teamId = await getTeamId();
 
   const [stagesResult, candidatesResult] = await Promise.all([
     supabase

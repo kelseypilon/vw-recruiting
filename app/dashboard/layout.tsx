@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getTeamId } from "@/lib/get-team-id";
+import { TeamProvider } from "@/lib/team-context";
 import DashboardLayout from "./dashboard-layout";
 
 export default async function DashboardRootLayout({
@@ -16,5 +18,17 @@ export default async function DashboardRootLayout({
     redirect("/login");
   }
 
-  return <DashboardLayout email={user.email ?? ""}>{children}</DashboardLayout>;
+  // Fetch all teams for the team switcher
+  const { data: teams } = await supabase
+    .from("teams")
+    .select("id, name")
+    .order("name");
+
+  const teamId = await getTeamId();
+
+  return (
+    <TeamProvider initialTeamId={teamId} teams={teams ?? []}>
+      <DashboardLayout email={user.email ?? ""}>{children}</DashboardLayout>
+    </TeamProvider>
+  );
 }
