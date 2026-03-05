@@ -127,10 +127,16 @@ export default function CandidateProfile({
 
       {/* Grid layout: left = details, right = scoring + notes */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: contact + application */}
+        {/* Left column: contact + application + resume */}
         <div className="lg:col-span-1 flex flex-col gap-6">
           <ContactCard candidate={candidate} />
           <ApplicationCard candidate={candidate} />
+          <ResumeCard
+            candidate={candidate}
+            onResumeUploaded={(url) =>
+              setCandidate((prev) => ({ ...prev, resume_url: url }))
+            }
+          />
         </div>
 
         {/* Right column: scoring + notes + timeline */}
@@ -167,7 +173,21 @@ function ContactCard({ candidate }: { candidate: Candidate }) {
         <InfoRow label="Email" value={candidate.email} />
         <InfoRow label="Phone" value={candidate.phone} />
         <InfoRow label="Current Role" value={candidate.current_role} />
+        <InfoRow label="Current Brokerage" value={candidate.current_brokerage} />
         <InfoRow label="Heard About Us" value={candidate.heard_about} />
+        {candidate.website_url && (
+          <div>
+            <p className="text-xs text-[#a59494] mb-0.5">Website</p>
+            <a
+              href={candidate.website_url.startsWith("http") ? candidate.website_url : `https://${candidate.website_url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-[#1c759e] hover:underline break-all"
+            >
+              {candidate.website_url}
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -199,8 +219,12 @@ function ApplicationCard({ candidate }: { candidate: Candidate }) {
           value={candidate.years_experience !== null ? `${candidate.years_experience} years` : null}
         />
         <InfoRow
-          label="Transactions (2024)"
+          label="Deals Done Last Year"
           value={candidate.transactions_2024 !== null ? String(candidate.transactions_2024) : null}
+        />
+        <InfoRow
+          label="Active Listings"
+          value={candidate.active_listings !== null ? String(candidate.active_listings) : null}
         />
         <InfoRow
           label="Application Submitted"
@@ -215,6 +239,161 @@ function ApplicationCard({ candidate }: { candidate: Candidate }) {
           }
         />
       </div>
+    </div>
+  );
+}
+
+/* ── Resume Card ──────────────────────────────────────────────── */
+
+function ResumeCard({
+  candidate,
+  onResumeUploaded,
+}: {
+  candidate: Candidate;
+  onResumeUploaded: (url: string) => void;
+}) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      setUploadError("Please upload a PDF or Word document");
+      return;
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File must be under 10MB");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError("");
+
+    const supabase = createClient();
+    const ext = file.name.split(".").pop() ?? "pdf";
+    const filePath = `${candidate.team_id}/${candidate.id}/resume.${ext}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("resumes")
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadErr) {
+      setUploadError(uploadErr.message);
+      setIsUploading(false);
+      return;
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("resumes").getPublicUrl(filePath);
+
+    // Save URL to candidate record
+    const { error: dbErr } = await supabase
+      .from("candidates")
+      .update({ resume_url: publicUrl })
+      .eq("id", candidate.id);
+
+    if (dbErr) {
+      setUploadError(dbErr.message);
+    } else {
+      onResumeUploaded(publicUrl);
+    }
+
+    setIsUploading(false);
+    // Reset the input
+    e.target.value = "";
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
+      <h3 className="text-sm font-semibold text-[#272727] mb-4">Resume</h3>
+
+      {candidate.resume_url ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-[#f5f0f0]/50 border border-[#a59494]/10">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#1c759e"
+              strokeWidth="2"
+              className="shrink-0"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-[#272727] truncate">Resume uploaded</p>
+            </div>
+            <a
+              href={candidate.resume_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-[#1c759e] hover:underline shrink-0"
+            >
+              View
+            </a>
+          </div>
+
+          {/* Replace resume */}
+          <label className="block text-center cursor-pointer">
+            <span className="text-xs text-[#a59494] hover:text-[#1c759e] transition">
+              {isUploading ? "Uploading..." : "Replace resume"}
+            </span>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx"
+              onChange={handleUpload}
+              disabled={isUploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      ) : (
+        <label className="flex flex-col items-center gap-2 py-6 cursor-pointer rounded-lg border-2 border-dashed border-[#a59494]/30 hover:border-[#1c759e]/50 transition">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#a59494"
+            strokeWidth="2"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span className="text-sm text-[#a59494]">
+            {isUploading ? "Uploading..." : "Upload Resume"}
+          </span>
+          <span className="text-xs text-[#a59494]">PDF or Word, max 10MB</span>
+          <input
+            type="file"
+            accept=".pdf,.doc,.docx"
+            onChange={handleUpload}
+            disabled={isUploading}
+            className="hidden"
+          />
+        </label>
+      )}
+
+      {uploadError && (
+        <p className="text-xs text-red-500 mt-2">{uploadError}</p>
+      )}
     </div>
   );
 }

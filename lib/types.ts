@@ -34,6 +34,10 @@ export interface Candidate {
   aq_tier: string | null;
   composite_score: number | null;
   composite_verdict: string | null;
+  current_brokerage: string | null;
+  active_listings: number | null;
+  website_url: string | null;
+  resume_url: string | null;
   app_submitted_at: string | null;
   created_at: string;
 }
