@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeamId } from "@/lib/get-team-id";
 import InterviewsDashboard from "./interviews-dashboard";
 import type {
@@ -11,7 +11,7 @@ import type {
 } from "@/lib/types";
 
 export default async function InterviewsPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();
 
   const [interviewsResult, criteriaResult, candidatesResult, usersResult, templatesResult, teamResult] =
@@ -35,7 +35,7 @@ export default async function InterviewsPage() {
         .in("stage", ["Group Interview", "1on1 Interview", "Under Review"]),
       supabase
         .from("users")
-        .select("id, team_id, name, email, role, from_email, google_booking_url, phone")
+        .select("id, team_id, name, email, role, from_email, google_booking_url")
         .eq("team_id", TEAM_ID),
       supabase
         .from("email_templates")

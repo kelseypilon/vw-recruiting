@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { usePermissions } from "@/lib/user-permissions-context";
 import type {
   Candidate,
   PipelineStage,
@@ -15,6 +16,8 @@ import type {
   Team,
 } from "@/lib/types";
 import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
+import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
+import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-modal";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -207,9 +210,14 @@ export default function CandidateProfile({
 
       {activeTab === "onboarding" && (
         <OnboardingTab
-          candidateId={candidate.id}
+          candidate={candidate}
           tasks={onboardingTasks}
           initialProgress={initialOnboardingProgress}
+          emailTemplates={emailTemplates}
+          leaders={leaders}
+          team={team}
+          teamId={teamId}
+          onCandidateUpdate={(c) => setCandidate(c)}
         />
       )}
 
@@ -218,6 +226,8 @@ export default function CandidateProfile({
         <SendEmailModal
           candidate={candidate}
           templates={emailTemplates}
+          leaders={leaders}
+          team={team}
           onClose={() => setShowEmailModal(false)}
         />
       )}
@@ -242,26 +252,40 @@ export default function CandidateProfile({
 /* ── Onboarding Tab ───────────────────────────────────────────── */
 
 function OnboardingTab({
-  candidateId,
+  candidate,
   tasks,
   initialProgress,
+  emailTemplates,
+  leaders,
+  team,
+  teamId,
+  onCandidateUpdate,
 }: {
-  candidateId: string;
+  candidate: Candidate;
   tasks: OnboardingTask[];
   initialProgress: CandidateOnboarding[];
+  emailTemplates: EmailTemplate[];
+  leaders: TeamUser[];
+  team: Team | null;
+  teamId: string;
+  onCandidateUpdate: (c: Candidate) => void;
 }) {
   const [progress, setProgress] = useState(initialProgress);
   const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState("");
+  const [emailModalTask, setEmailModalTask] = useState<OnboardingTask | null>(
+    null
+  );
 
   const progressMap = new Map<string, CandidateOnboarding>();
   progress.forEach((p) => progressMap.set(p.task_id, p));
 
   const completedCount = progress.filter((p) => p.completed_at).length;
-  const totalTasks = tasks.length;
-  const progressPercent = totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
+  const totalTasks = progress.length || tasks.length;
+  const progressPercent =
+    totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
 
-  async function handleInitialize() {
+  async function handleInitialize(hireType: "agent" | "employee") {
     if (isInitializing) return;
     setIsInitializing(true);
     setError("");
@@ -272,8 +296,9 @@ function OnboardingTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "initialize",
-          candidate_id: candidateId,
-          task_ids: tasks.map((t) => t.id),
+          candidate_id: candidate.id,
+          hire_type: hireType,
+          team_id: teamId,
         }),
       });
       const result = await res.json();
@@ -282,6 +307,7 @@ function OnboardingTab({
         setError(result.error);
       } else if (result.data) {
         setProgress(result.data as CandidateOnboarding[]);
+        onCandidateUpdate({ ...candidate, hire_type: hireType });
       }
     } catch {
       setError("Network error — please try again");
@@ -293,7 +319,9 @@ function OnboardingTab({
     const existing = progressMap.get(taskId);
     if (!existing) return;
 
-    const newCompleted = existing.completed_at ? null : new Date().toISOString();
+    const newCompleted = existing.completed_at
+      ? null
+      : new Date().toISOString();
 
     // Optimistic update
     setProgress((prev) =>
@@ -315,7 +343,6 @@ function OnboardingTab({
       const result = await res.json();
 
       if (result.error) {
-        // Revert on error
         setProgress((prev) =>
           prev.map((p) =>
             p.id === existing.id
@@ -325,7 +352,6 @@ function OnboardingTab({
         );
       }
     } catch {
-      // Revert on network error
       setProgress((prev) =>
         prev.map((p) =>
           p.id === existing.id
@@ -336,137 +362,137 @@ function OnboardingTab({
     }
   }
 
+  function handleEmailSent(taskId: string) {
+    // Mark the email task as complete after send
+    handleToggleTask(taskId);
+    setEmailModalTask(null);
+  }
+
+  // Filter tasks to only those that have a progress entry (matched to hire type)
+  const activeTasks =
+    progress.length > 0
+      ? tasks.filter((t) => progressMap.has(t.id))
+      : tasks;
+
   if (tasks.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-12 text-center">
         <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#D97706"
+            strokeWidth="2"
+          >
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
         </div>
-        <p className="text-[#272727] font-medium mb-1">No onboarding tasks configured</p>
+        <p className="text-[#272727] font-medium mb-1">
+          No onboarding tasks configured
+        </p>
         <p className="text-sm text-[#a59494]">
-          Run the onboarding tasks seed migration in your Supabase SQL Editor.
+          Run the onboarding rebuild migration in your Supabase SQL Editor.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-      {/* Progress header */}
-      <div className="px-6 py-4 border-b border-[#a59494]/10">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[#272727]">Onboarding Progress</h3>
-          <div className="text-right">
-            <span className="text-lg font-bold text-[#1c759e]">
-              {Math.round(progressPercent)}%
-            </span>
-            <span className="text-xs text-[#a59494] ml-2">
-              {completedCount} of {totalTasks} tasks
-            </span>
+    <>
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        {/* Progress header */}
+        <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-[#272727]">
+                Onboarding Progress
+              </h3>
+              {candidate.hire_type && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e] mt-1 inline-block">
+                  {candidate.hire_type === "agent" ? "Agent" : "Employee"}
+                </span>
+              )}
+            </div>
+            <div className="text-right">
+              <span className="text-lg font-bold text-[#1c759e]">
+                {Math.round(progressPercent)}%
+              </span>
+              <span className="text-xs text-[#a59494] ml-2">
+                {completedCount} of {totalTasks} tasks
+              </span>
+            </div>
+          </div>
+          <div className="h-2 bg-[#f5f0f0] rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${progressPercent}%`,
+                backgroundColor:
+                  progressPercent === 100 ? "#10B981" : "#1c759e",
+              }}
+            />
           </div>
         </div>
-        <div className="h-2 bg-[#f5f0f0] rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${progressPercent}%`,
-              backgroundColor: progressPercent === 100 ? "#10B981" : "#1c759e",
-            }}
-          />
-        </div>
-      </div>
 
-      {/* Task list */}
-      <div className="px-6 py-4">
-        {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        )}
+        {/* Task list */}
+        <div className="px-6 py-4">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
 
-        {progress.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-[#a59494] mb-3">
-              Onboarding hasn&apos;t been started yet
-            </p>
-            <button
-              onClick={handleInitialize}
-              disabled={isInitializing}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
-            >
-              {isInitializing ? "Initializing..." : `Initialize ${totalTasks} Tasks`}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {tasks.map((task) => {
-              const entry = progressMap.get(task.id);
-              const isCompleted = !!entry?.completed_at;
-
-              return (
-                <div
-                  key={task.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg transition ${
-                    isCompleted ? "bg-green-50/50" : "hover:bg-[#f5f0f0]/50"
-                  }`}
+          {progress.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-[#a59494] mb-4">
+                Select hire type to initialize onboarding
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => handleInitialize("agent")}
+                  disabled={isInitializing}
+                  className="px-5 py-2.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
                 >
-                  {/* Checkbox */}
-                  <button
-                    onClick={() => handleToggleTask(task.id)}
-                    disabled={!entry}
-                    className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${
-                      isCompleted
-                        ? "bg-[#10B981] border-[#10B981]"
-                        : "border-[#a59494]/40 hover:border-[#1c759e]"
-                    } disabled:opacity-40`}
-                  >
-                    {isCompleted && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </button>
-
-                  {/* Task info */}
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-sm ${
-                        isCompleted ? "text-[#a59494] line-through" : "text-[#272727]"
-                      }`}
-                    >
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-[#a59494]">{task.owner_role}</span>
-                      {task.timing && (
-                        <>
-                          <span className="text-[10px] text-[#a59494]">·</span>
-                          <span className="text-[10px] text-[#a59494]">{task.timing}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Completed date */}
-                  {isCompleted && entry?.completed_at && (
-                    <span className="text-xs text-[#10B981] whitespace-nowrap">
-                      {new Date(entry.completed_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  {isInitializing ? "Initializing..." : "Start as Agent"}
+                </button>
+                <button
+                  onClick={() => handleInitialize("employee")}
+                  disabled={isInitializing}
+                  className="px-5 py-2.5 rounded-lg border-2 border-[#1c759e] text-[#1c759e] hover:bg-[#1c759e]/5 text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {isInitializing ? "Initializing..." : "Start as Employee"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <OnboardingTaskList
+              tasks={activeTasks}
+              progress={progress}
+              candidate={candidate}
+              onToggle={handleToggleTask}
+              onEmailTask={(task) => setEmailModalTask(task)}
+            />
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Email Modal */}
+      {emailModalTask && candidate.email && (
+        <OnboardingEmailModal
+          task={emailModalTask}
+          candidate={candidate}
+          templates={emailTemplates}
+          leaders={leaders}
+          team={team}
+          onSent={() => handleEmailSent(emailModalTask.id)}
+          onClose={() => setEmailModalTask(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -890,31 +916,23 @@ function NotesSection({
   async function handleAddNote() {
     if (!newNote.trim() || isSaving) return;
     setIsSaving(true);
-    const supabase = createClient();
 
-    // Get current user for author_id
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setIsSaving(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("candidate_notes")
-      .insert({
-        candidate_id: candidateId,
-        author_id: user.id,
-        note_text: newNote.trim(),
-      })
-      .select("*, author:users(name, email)")
-      .single();
-
-    if (!error && data) {
-      onNoteAdded(data as CandidateNote);
-      setNewNote("");
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_id: candidateId,
+          note_text: newNote.trim(),
+        }),
+      });
+      const result = await res.json();
+      if (result.data) {
+        onNoteAdded(result.data as CandidateNote);
+        setNewNote("");
+      }
+    } catch {
+      // silently fail — user sees note didn't appear
     }
     setIsSaving(false);
   }
@@ -1102,10 +1120,15 @@ function ActionButtons({
   onScheduleInterview?: () => void;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const { can } = usePermissions();
+  const canSendEmails = can("send_emails");
+  const canManageInterviews = can("manage_interviews");
+  const canEditCandidates = can("edit_candidates");
 
   return (
     <div className="flex items-center gap-2 shrink-0">
-      {/* Move Stage dropdown */}
+      {/* Move Stage dropdown — requires edit_candidates permission */}
+      {canEditCandidates && (
       <div className="relative">
         <button
           onClick={() => setShowMoveMenu(!showMoveMenu)}
@@ -1140,9 +1163,10 @@ function ActionButtons({
           </div>
         )}
       </div>
+      )}
 
-      {/* Send Email */}
-      {candidate.email && (
+      {/* Send Email — requires send_emails permission */}
+      {candidate.email && canSendEmails && (
         <button
           onClick={() => onSendEmail?.()}
           className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
@@ -1151,22 +1175,26 @@ function ActionButtons({
         </button>
       )}
 
-      {/* Schedule Interview */}
-      <button
-        onClick={() => onScheduleInterview?.()}
-        className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-      >
-        Schedule Interview
-      </button>
+      {/* Schedule Interview — requires manage_interviews permission */}
+      {canManageInterviews && (
+        <button
+          onClick={() => onScheduleInterview?.()}
+          className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+        >
+          Schedule Interview
+        </button>
+      )}
 
-      {/* Move to Onboarding */}
-      <button
-        onClick={() => onMoveStage("Onboarding")}
-        disabled={isMoving || candidate.stage === "Onboarding"}
-        className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Move to Onboarding
-      </button>
+      {/* Move to Onboarding — requires edit_candidates permission */}
+      {canEditCandidates && (
+        <button
+          onClick={() => onMoveStage("Onboarding")}
+          disabled={isMoving || candidate.stage === "Onboarding"}
+          className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Move to Onboarding
+        </button>
+      )}
     </div>
   );
 }
@@ -1176,24 +1204,39 @@ function ActionButtons({
 function SendEmailModal({
   candidate,
   templates,
+  leaders,
+  team,
   onClose,
 }: {
   candidate: Candidate;
   templates: EmailTemplate[];
+  leaders: TeamUser[];
+  team: Team | null;
   onClose: () => void;
 }) {
+  // Senders: all team members (prefer from_email, fall back to regular email)
+  const senders = leaders.filter((l) => l.from_email || l.email);
+  const [fromUserId, setFromUserId] = useState(senders[0]?.id ?? "");
+  const [ccEmail, setCcEmail] = useState(
+    team?.admin_cc && team?.admin_email ? team.admin_email : ""
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [sendStatus, setSendStatus] = useState("");
 
+  const selectedSender = leaders.find((l) => l.id === fromUserId);
+
   function replaceMergeTags(text: string) {
     return text
       .replace(/\{\{first_name\}\}/g, candidate.first_name)
       .replace(/\{\{last_name\}\}/g, candidate.last_name)
-      .replace(/\{\{team_name\}\}/g, "Vantage West")
-      .replace(/\{\{sender_name\}\}/g, "Vantage West Recruiting");
+      .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+      .replace(
+        /\{\{sender_name\}\}/g,
+        selectedSender?.name ?? "Vantage West Recruiting"
+      );
   }
 
   function handleTemplateChange(templateId: string) {
@@ -1221,6 +1264,8 @@ function SendEmailModal({
           to: candidate.email,
           subject,
           body,
+          from_email: selectedSender?.from_email ?? selectedSender?.email ?? undefined,
+          cc: ccEmail || undefined,
         }),
       });
 
@@ -1239,14 +1284,9 @@ function SendEmailModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10">
-          <div>
-            <h3 className="text-lg font-bold text-[#272727]">Send Email</h3>
-            <p className="text-sm text-[#a59494]">
-              To: {candidate.first_name} {candidate.last_name} ({candidate.email})
-            </p>
-          </div>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10 sticky top-0 bg-white rounded-t-xl z-10">
+          <h3 className="text-lg font-bold text-[#272727]">Send Email</h3>
           <button
             onClick={onClose}
             className="text-[#a59494] hover:text-[#272727] transition"
@@ -1259,6 +1299,62 @@ function SendEmailModal({
         </div>
 
         <div className="p-6 space-y-4">
+          {/* From */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              From
+            </label>
+            {senders.length > 0 ? (
+              <select
+                value={fromUserId}
+                onChange={(e) => setFromUserId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+              >
+                {senders.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} &lt;{s.from_email ?? s.email}&gt;
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#a59494] bg-[#f5f0f0]">
+                No sending addresses configured.{" "}
+                <span className="text-xs">
+                  Go to Settings → Team Members to add a &quot;From Email&quot;.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* To */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              To
+            </label>
+            <div className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-[#f5f0f0]/50">
+              {candidate.first_name} {candidate.last_name} &lt;{candidate.email}&gt;
+            </div>
+          </div>
+
+          {/* CC */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              CC
+            </label>
+            <input
+              type="email"
+              value={ccEmail}
+              onChange={(e) => setCcEmail(e.target.value)}
+              placeholder="cc@team.com"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+            />
+            {team?.admin_cc && team?.admin_email && (
+              <p className="text-xs text-[#a59494] mt-1">
+                Pre-filled with team admin email (admin CC is enabled)
+              </p>
+            )}
+          </div>
+
           {/* Template selector */}
           <div>
             <label className="block text-sm font-medium text-[#272727] mb-1">

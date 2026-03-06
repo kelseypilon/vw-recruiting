@@ -66,7 +66,7 @@ export default async function CandidateProfilePage({ params }: Props) {
     supabase
       .from("users")
       .select(
-        "id, team_id, name, email, role, from_email, google_booking_url, phone"
+        "id, team_id, name, email, role, from_email"
       )
       .eq("team_id", TEAM_ID),
     supabase

@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import ScorecardModal from "./scorecard-modal";
 import ScheduleModal from "./schedule-modal";
+import { usePermissions } from "@/lib/user-permissions-context";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -63,6 +64,8 @@ export default function InterviewsDashboard({
   const [filter, setFilter] = useState<"all" | "scheduled" | "completed">("all");
   const [showSchedule, setShowSchedule] = useState(false);
   const [scorecardInterview, setScorecardInterview] = useState<Interview | null>(null);
+  const { can } = usePermissions();
+  const canManageInterviews = can("manage_interviews");
 
   const filtered = interviews.filter((i) => {
     if (filter === "all") return true;
@@ -94,12 +97,14 @@ export default function InterviewsDashboard({
             <option value="scheduled">Scheduled</option>
             <option value="completed">Completed</option>
           </select>
-          <button
-            onClick={() => setShowSchedule(true)}
-            className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition whitespace-nowrap"
-          >
-            + Schedule Interview
-          </button>
+          {canManageInterviews && (
+            <button
+              onClick={() => setShowSchedule(true)}
+              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition whitespace-nowrap"
+            >
+              + Schedule Interview
+            </button>
+          )}
         </div>
       </div>
 

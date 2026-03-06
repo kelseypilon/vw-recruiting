@@ -5,8 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * POST /api/onboarding
  *
  * Actions:
- *   { action: "initialize", candidate_id, task_ids }
- *     → creates candidate_onboarding rows for each task
+ *   { action: "initialize", candidate_id, hire_type, team_id }
+ *     → sets candidate.hire_type, fetches matching tasks, creates candidate_onboarding rows
  *
  *   { action: "toggle", entry_id, completed_at }
  *     → sets completed_at on a candidate_onboarding row
@@ -17,11 +17,18 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     if (body.action === "initialize") {
-      const { candidate_id, task_ids } = body;
+      const { candidate_id, hire_type, team_id } = body;
 
-      if (!candidate_id || !Array.isArray(task_ids) || task_ids.length === 0) {
+      if (!candidate_id || !hire_type || !team_id) {
         return NextResponse.json(
-          { error: "candidate_id and task_ids[] are required" },
+          { error: "candidate_id, hire_type, and team_id are required" },
+          { status: 400 }
+        );
+      }
+
+      if (!["agent", "employee"].includes(hire_type)) {
+        return NextResponse.json(
+          { error: "hire_type must be 'agent' or 'employee'" },
           { status: 400 }
         );
       }
@@ -44,10 +51,46 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ data });
       }
 
-      // Insert new entries (no upsert — avoids unique constraint issues)
-      const entries = task_ids.map((task_id: string) => ({
+      // Set hire_type on the candidate
+      const { error: updateError } = await supabase
+        .from("candidates")
+        .update({ hire_type })
+        .eq("id", candidate_id);
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: updateError.message },
+          { status: 500 }
+        );
+      }
+
+      // Fetch matching tasks (hire_type matches or 'both')
+      const { data: tasks, error: tasksError } = await supabase
+        .from("onboarding_tasks")
+        .select("id")
+        .eq("team_id", team_id)
+        .eq("is_active", true)
+        .in("hire_type", [hire_type, "both"])
+        .order("order_index");
+
+      if (tasksError) {
+        return NextResponse.json(
+          { error: tasksError.message },
+          { status: 500 }
+        );
+      }
+
+      if (!tasks || tasks.length === 0) {
+        return NextResponse.json(
+          { error: "No onboarding tasks found for this hire type" },
+          { status: 400 }
+        );
+      }
+
+      // Insert new entries
+      const entries = tasks.map((task) => ({
         candidate_id,
-        task_id,
+        task_id: task.id,
       }));
 
       const { data, error } = await supabase

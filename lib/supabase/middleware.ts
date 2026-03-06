@@ -29,26 +29,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname === "/login";
-  const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/");
-  const isApiSeed = request.nextUrl.pathname === "/api/seed";
-
-  // Allow auth callback routes and seed API through
-  if (isAuthCallback || isApiSeed) {
-    return supabaseResponse;
-  }
-
-  // Not logged in and not on login page → redirect to login
-  if (!user && !isLoginPage) {
+  // Public routes (login, apply, auth/, api/) are excluded from the
+  // middleware matcher, so this code only runs on protected routes.
+  // No user → redirect to login.
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  // Logged in and on login page → redirect to dashboard
-  if (user && isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

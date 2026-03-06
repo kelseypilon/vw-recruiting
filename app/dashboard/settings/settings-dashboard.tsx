@@ -8,6 +8,14 @@ import type {
   EmailTemplate,
   ScoringCriterion,
 } from "@/lib/types";
+import {
+  PERMISSION_KEYS,
+  PERMISSION_LABELS,
+  DEFAULT_ROLES,
+  resolveRolePermissions,
+  type TeamRolePermissions,
+  type PermissionKey,
+} from "@/lib/permissions";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -25,6 +33,7 @@ interface Props {
 const TABS = [
   { id: "team", label: "Team" },
   { id: "members", label: "Team Members" },
+  { id: "roles", label: "Role Permissions" },
   { id: "stages", label: "Pipeline Stages" },
   { id: "templates", label: "Email Templates" },
   { id: "criteria", label: "Scoring Criteria" },
@@ -94,7 +103,10 @@ export default function SettingsDashboard({
         <TeamTab team={team} onTeamUpdated={setTeam} />
       )}
       {activeTab === "members" && (
-        <MembersTab users={users} onUsersUpdated={setUsers} />
+        <MembersTab users={users} onUsersUpdated={setUsers} teamId={teamId} />
+      )}
+      {activeTab === "roles" && (
+        <RolesPermissionsTab team={team} onTeamUpdated={setTeam} teamId={teamId} />
       )}
       {activeTab === "stages" && (
         <StagesTab stages={stages} onStagesUpdated={setStages} />
@@ -268,33 +280,52 @@ function TeamTab({
 
 /* ── Members Tab ───────────────────────────────────────────────── */
 
+const ROLE_OPTIONS = [
+  "Team Lead",
+  "Leader",
+  "Admin",
+  "Front Desk",
+  "VP Ops",
+  "owner",
+  "member",
+];
+
 function MembersTab({
   users,
   onUsersUpdated,
+  teamId,
 }: {
   users: TeamUser[];
   onUsersUpdated: (users: TeamUser[]) => void;
+  teamId: string;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
+    role: "",
+    customRole: "",
     from_email: "",
-    phone: "",
-    calendly_url: "",
-    google_booking_url: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   function startEditing(user: TeamUser) {
+    const isPreset = ROLE_OPTIONS.includes(user.role);
     setEditingId(user.id);
     setEditForm({
       name: user.name,
+      role: isPreset ? user.role : "__custom__",
+      customRole: isPreset ? "" : user.role,
       from_email: user.from_email ?? "",
-      phone: user.phone ?? "",
-      calendly_url: user.calendly_url ?? "",
-      google_booking_url: user.google_booking_url ?? "",
     });
   }
+
+  const resolvedEditRole =
+    editForm.role === "__custom__" && editForm.customRole.trim()
+      ? editForm.customRole.trim()
+      : editForm.role === "__custom__"
+      ? "member"
+      : editForm.role;
 
   async function handleSaveUser() {
     if (!editingId) return;
@@ -303,10 +334,8 @@ function MembersTab({
     const result = await saveSettings("update_user", {
       id: editingId,
       name: editForm.name,
+      role: resolvedEditRole,
       from_email: editForm.from_email || null,
-      phone: editForm.phone || null,
-      calendly_url: editForm.calendly_url || null,
-      google_booking_url: editForm.google_booking_url || null,
     });
 
     if (!result.error) {
@@ -316,10 +345,8 @@ function MembersTab({
             ? {
                 ...u,
                 name: editForm.name,
+                role: resolvedEditRole,
                 from_email: editForm.from_email || null,
-                phone: editForm.phone || null,
-                calendly_url: editForm.calendly_url || null,
-                google_booking_url: editForm.google_booking_url || null,
               }
             : u
         )
@@ -330,212 +357,341 @@ function MembersTab({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-      <div className="px-6 py-4 border-b border-[#a59494]/10">
-        <h3 className="text-sm font-semibold text-[#272727]">Team Members</h3>
-        <p className="text-xs text-[#a59494] mt-0.5">
-          {users.length} member{users.length !== 1 ? "s" : ""}
-        </p>
-      </div>
+    <>
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-[#272727]">Team Members</h3>
+            <p className="text-xs text-[#a59494] mt-0.5">
+              {users.length} member{users.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Member
+          </button>
+        </div>
 
-      <div className="divide-y divide-[#a59494]/10">
-        {users.map((user) => (
-          <div key={user.id} className="px-6 py-4">
-            {editingId === user.id ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-[#a59494] mb-1">
-                      Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={(e) =>
-                        setEditForm((p) => ({ ...p, name: e.target.value }))
-                      }
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#a59494] mb-1">
-                      From Email (for sending)
-                    </label>
-                    <input
-                      type="email"
-                      value={editForm.from_email}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          from_email: e.target.value,
-                        }))
-                      }
-                      placeholder="name@team.com"
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-[#a59494] mb-1">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={editForm.phone}
-                      onChange={(e) =>
-                        setEditForm((p) => ({ ...p, phone: e.target.value }))
-                      }
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#a59494] mb-1">
-                      Calendly URL
-                    </label>
-                    <input
-                      type="url"
-                      value={editForm.calendly_url}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          calendly_url: e.target.value,
-                        }))
-                      }
-                      placeholder="https://calendly.com/..."
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#a59494] mb-1">
-                      Google Booking URL
-                    </label>
-                    <input
-                      type="url"
-                      value={editForm.google_booking_url}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          google_booking_url: e.target.value,
-                        }))
-                      }
-                      placeholder="https://calendar.google.com/..."
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveUser}
-                    disabled={isSaving}
-                    className="px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
-                  >
-                    {isSaving ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
-                    <span className="text-white text-sm font-bold">
-                      {user.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .slice(0, 2)}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[#272727]">
-                      {user.name}
-                    </p>
-                    <p className="text-xs text-[#a59494]">{user.email}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e]">
-                        {user.role}
-                      </span>
-                      {user.from_email && (
-                        <span className="text-[10px] text-[#a59494]">
-                          Sends as: {user.from_email}
-                        </span>
+        <div className="divide-y divide-[#a59494]/10">
+          {users.map((user) => (
+            <div key={user.id} className="px-6 py-4">
+              {editingId === user.id ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-[#a59494] mb-1">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, name: e.target.value }))
+                        }
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#a59494] mb-1">
+                        Role / Title
+                      </label>
+                      <select
+                        value={editForm.role}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            role: e.target.value,
+                            customRole: e.target.value === "__custom__" ? p.customRole : "",
+                          }))
+                        }
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                        <option value="__custom__">Custom…</option>
+                      </select>
+                      {editForm.role === "__custom__" && (
+                        <input
+                          type="text"
+                          value={editForm.customRole}
+                          onChange={(e) =>
+                            setEditForm((p) => ({ ...p, customRole: e.target.value }))
+                          }
+                          placeholder="Enter custom role"
+                          className="w-full mt-1.5 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                        />
                       )}
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-[#a59494] mb-1">
+                        From Email (for sending)
+                      </label>
+                      <input
+                        type="email"
+                        value={editForm.from_email}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            from_email: e.target.value,
+                          }))
+                        }
+                        placeholder="name@team.com"
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveUser}
+                      disabled={isSaving}
+                      className="px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
+                    >
+                      {isSaving ? "Saving..." : "Save"}
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => startEditing(user)}
-                  className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
-                >
-                  Edit
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
+                      <span className="text-white text-sm font-bold">
+                        {user.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .slice(0, 2)}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[#272727]">
+                        {user.name}
+                      </p>
+                      <p className="text-xs text-[#a59494]">{user.email}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e]">
+                          {user.role}
+                        </span>
+                        {user.from_email && (
+                          <span className="text-[10px] text-[#a59494]">
+                            Sends as: {user.from_email}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => startEditing(user)}
+                    className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {users.length === 0 && (
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm text-[#a59494]">No team members found</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Add Member Modal */}
+      {showAddModal && (
+        <AddMemberModal
+          teamId={teamId}
+          onClose={() => setShowAddModal(false)}
+          onMemberAdded={(newUser) => {
+            onUsersUpdated([...users, newUser]);
+            setShowAddModal(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/* ── Add Member Modal ──────────────────────────────────────────── */
+
+function AddMemberModal({
+  teamId,
+  onClose,
+  onMemberAdded,
+}: {
+  teamId: string;
+  onClose: () => void;
+  onMemberAdded: (user: TeamUser) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("Leader");
+  const [customRole, setCustomRole] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const resolvedRole =
+    role === "__custom__" && customRole.trim()
+      ? customRole.trim()
+      : role === "__custom__"
+      ? "member"
+      : role;
+
+  async function handleSave() {
+    if (!name.trim() || !email.trim()) {
+      setError("Name and email are required");
+      return;
+    }
+    setIsSaving(true);
+    setError("");
+
+    const res = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_user",
+        payload: {
+          team_id: teamId,
+          name: name.trim(),
+          email: email.trim(),
+          role: resolvedRole,
+        },
+      }),
+    });
+    const result = await res.json();
+
+    if (result.error) {
+      setError(result.error);
+    } else if (result.data) {
+      onMemberAdded(result.data as TeamUser);
+    }
+    setIsSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10">
+          <h3 className="text-lg font-bold text-[#272727]">Add Team Member</h3>
+          <button
+            onClick={onClose}
+            className="text-[#a59494] hover:text-[#272727] transition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Brooklyn Smith"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@team.com"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+            />
+          </div>
+
+          {/* Role */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Role
+            </label>
+            <select
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value);
+                if (e.target.value !== "__custom__") setCustomRole("");
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+            >
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+            {role === "__custom__" && (
+              <input
+                type="text"
+                value={customRole}
+                onChange={(e) => setCustomRole(e.target.value)}
+                placeholder="Enter custom role title"
+                className="w-full mt-2 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              />
             )}
           </div>
-        ))}
-        {users.length === 0 && (
-          <div className="px-6 py-8 text-center">
-            <p className="text-sm text-[#a59494]">No team members found</p>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving || !name.trim() || !email.trim()}
+              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+            >
+              {isSaving ? "Saving..." : "Add Member"}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-/* ── Stages Tab (Editable) ─────────────────────────────────────── */
-
-const STAGE_COLORS = [
-  "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
-  "#EC4899", "#06B6D4", "#F97316", "#6366F1", "#14B8A6",
-  "#6B7280", "#DC2626",
-];
+/* ── Stages Tab (Display Only) ─────────────────────────────────── */
 
 function StagesTab({
   stages,
-  onStagesUpdated,
 }: {
   stages: PipelineStage[];
   onStagesUpdated: (stages: PipelineStage[]) => void;
 }) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editColor, setEditColor] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-
-  function startEditing(stage: PipelineStage) {
-    setEditingId(stage.id);
-    setEditName(stage.name);
-    setEditColor(stage.color ?? "#6B7280");
-  }
-
-  async function handleSave() {
-    if (!editingId) return;
-    setIsSaving(true);
-
-    const result = await saveSettings("update_stage", {
-      id: editingId,
-      name: editName,
-      color: editColor,
-    });
-
-    if (!result.error) {
-      onStagesUpdated(
-        stages.map((s) =>
-          s.id === editingId ? { ...s, name: editName, color: editColor } : s
-        )
-      );
-      setEditingId(null);
-    }
-    setIsSaving(false);
-  }
-
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
       <div className="px-6 py-4 border-b border-[#a59494]/10">
@@ -543,83 +699,36 @@ function StagesTab({
           Pipeline Stages
         </h3>
         <p className="text-xs text-[#a59494] mt-0.5">
-          {stages.length} stages configured · click Edit to rename or change color
+          {stages.length} stages configured
         </p>
       </div>
       <div className="divide-y divide-[#a59494]/10">
         {stages.map((stage, i) => (
           <div key={stage.id} className="px-6 py-3">
-            {editingId === stage.id ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                  />
-                </div>
-                <div className="flex items-center gap-2 ml-9">
-                  {STAGE_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setEditColor(c)}
-                      className={`w-6 h-6 rounded-full border-2 transition ${
-                        editColor === c ? "border-[#272727] scale-110" : "border-transparent"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
-                  >
-                    {isSaving ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
-                <div
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
-                />
-                <span className="text-sm text-[#272727] flex-1">
-                  {stage.name}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[#a59494] w-6">{i + 1}</span>
+              <div
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: stage.color ?? "#6B7280" }}
+              />
+              <span className="text-sm text-[#272727] flex-1">
+                {stage.name}
+              </span>
+              {stage.ghl_tag && (
+                <span className="text-[10px] text-[#a59494] font-mono">
+                  {stage.ghl_tag}
                 </span>
-                {stage.ghl_tag && (
-                  <span className="text-[10px] text-[#a59494] font-mono">
-                    {stage.ghl_tag}
-                  </span>
-                )}
-                <span
-                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    stage.is_active
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {stage.is_active ? "Active" : "Inactive"}
-                </span>
-                <button
-                  onClick={() => startEditing(stage)}
-                  className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
-                >
-                  Edit
-                </button>
-              </div>
-            )}
+              )}
+              <span
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                  stage.is_active
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {stage.is_active ? "Active" : "Inactive"}
+              </span>
+            </div>
           </div>
         ))}
       </div>
@@ -778,6 +887,187 @@ function TemplatesTab({
             <p className="text-[#a59494]">Select a template to edit</p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Role Permissions Tab ──────────────────────────────────────── */
+
+function RolesPermissionsTab({
+  team,
+  onTeamUpdated,
+  teamId,
+}: {
+  team: Team | null;
+  onTeamUpdated: (team: Team) => void;
+  teamId: string;
+}) {
+  const stored = (team?.settings as Record<string, unknown>)?.role_permissions as
+    | Partial<TeamRolePermissions>
+    | undefined;
+  const [permissions, setPermissions] = useState<TeamRolePermissions>(
+    resolveRolePermissions(stored)
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  function togglePermission(role: string, key: PermissionKey) {
+    setPermissions((prev) => ({
+      ...prev,
+      [role]: {
+        ...prev[role],
+        [key]: !prev[role]?.[key],
+      },
+    }));
+  }
+
+  function toggleAllForRole(role: string, value: boolean) {
+    setPermissions((prev) => {
+      const updated = { ...prev[role] };
+      for (const key of PERMISSION_KEYS) {
+        updated[key] = value;
+      }
+      return { ...prev, [role]: updated };
+    });
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setSaveStatus("");
+
+    const result = await saveSettings("update_role_permissions", {
+      team_id: teamId,
+      role_permissions: permissions,
+    });
+
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      setSaveStatus("Saved!");
+      // Update team state so parent has latest settings
+      if (team) {
+        const currentSettings = (team.settings ?? {}) as Record<string, unknown>;
+        onTeamUpdated({
+          ...team,
+          settings: { ...currentSettings, role_permissions: permissions },
+        });
+      }
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setIsSaving(false);
+  }
+
+  const roles = Object.keys(permissions);
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <h3 className="text-sm font-semibold text-[#272727]">
+            Role Permissions
+          </h3>
+          <p className="text-xs text-[#a59494] mt-0.5">
+            Configure what each role can access and do in the app
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#a59494]/10">
+                <th className="text-left px-6 py-3 text-xs font-semibold text-[#272727] w-52">
+                  Permission
+                </th>
+                {roles.map((role) => (
+                  <th
+                    key={role}
+                    className="px-3 py-3 text-xs font-semibold text-[#272727] text-center min-w-[100px]"
+                  >
+                    <div>{role}</div>
+                    <div className="flex justify-center gap-1 mt-1.5">
+                      <button
+                        onClick={() => toggleAllForRole(role, true)}
+                        className="text-[10px] text-[#1c759e] hover:underline"
+                        title="Enable all"
+                      >
+                        All
+                      </button>
+                      <span className="text-[10px] text-[#a59494]">|</span>
+                      <button
+                        onClick={() => toggleAllForRole(role, false)}
+                        className="text-[10px] text-[#a59494] hover:underline"
+                        title="Disable all"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#a59494]/10">
+              {PERMISSION_KEYS.map((key) => {
+                const meta = PERMISSION_LABELS[key];
+                return (
+                  <tr key={key} className="hover:bg-[#f5f0f0]/50 transition">
+                    <td className="px-6 py-3">
+                      <div className="text-sm font-medium text-[#272727]">
+                        {meta.label}
+                      </div>
+                      <div className="text-[10px] text-[#a59494] mt-0.5">
+                        {meta.description}
+                      </div>
+                    </td>
+                    {roles.map((role) => (
+                      <td key={role} className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => togglePermission(role, key)}
+                          className={`w-8 h-5 rounded-full relative transition-colors duration-200 ${
+                            permissions[role]?.[key]
+                              ? "bg-[#1c759e]"
+                              : "bg-[#a59494]/30"
+                          }`}
+                          title={`${permissions[role]?.[key] ? "Disable" : "Enable"} ${meta.label} for ${role}`}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
+                              permissions[role]?.[key]
+                                ? "left-3.5"
+                                : "left-0.5"
+                            }`}
+                          />
+                        </button>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Save button */}
+      <div className="flex items-center justify-end gap-3">
+        {saveStatus && (
+          <span
+            className={`text-sm ${
+              saveStatus.startsWith("Error")
+                ? "text-red-600"
+                : "text-green-600"
+            }`}
+          >
+            {saveStatus}
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="px-6 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+        >
+          {isSaving ? "Saving..." : "Save Permissions"}
+        </button>
       </div>
     </div>
   );

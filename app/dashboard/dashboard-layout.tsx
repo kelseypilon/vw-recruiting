@@ -3,13 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTeam } from "@/lib/team-context";
+import { usePermissions } from "@/lib/user-permissions-context";
+import type { PermissionKey } from "@/lib/permissions";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ active: boolean }>;
+  permission?: PermissionKey;
+}[] = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
-  { label: "Candidates", href: "/dashboard/candidates", icon: CandidatesIcon },
-  { label: "Interviews", href: "/dashboard/interviews", icon: InterviewsIcon },
+  { label: "Candidates", href: "/dashboard/candidates", icon: CandidatesIcon, permission: "view_candidates" },
+  { label: "Interviews", href: "/dashboard/interviews", icon: InterviewsIcon, permission: "manage_interviews" },
   { label: "Onboarding", href: "/dashboard/onboarding", icon: OnboardingIcon },
-  { label: "Settings", href: "/dashboard/settings", icon: SettingsIcon },
+  { label: "Settings", href: "/dashboard/settings", icon: SettingsIcon, permission: "manage_settings" },
   { label: "Help", href: "/dashboard/help", icon: HelpIcon },
 ];
 
@@ -22,6 +29,12 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const { teamId, teamName, teams, switchTeam } = useTeam();
+  const { can, userRole } = usePermissions();
+
+  // Filter nav items based on user permissions
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.permission || can(item.permission)
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f0f0]">
@@ -67,7 +80,7 @@ export default function DashboardLayout({
         {/* Sidebar */}
         <aside className="w-60 bg-white border-r border-[#a59494]/20 py-6 shrink-0">
           <nav className="flex flex-col gap-1 px-3">
-            {NAV_ITEMS.map((item) => {
+            {visibleNavItems.map((item) => {
               const active =
                 item.href === "/dashboard"
                   ? pathname === "/dashboard"

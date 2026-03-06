@@ -5,6 +5,7 @@ export interface Team {
   admin_cc: boolean;
   group_interview_zoom_link: string | null;
   group_interview_date: string | null;
+  settings: Record<string, unknown>;
   created_at: string;
 }
 
@@ -15,9 +16,7 @@ export interface TeamUser {
   email: string;
   role: string;
   from_email: string | null;
-  calendly_url: string | null;
   google_booking_url: string | null;
-  phone: string | null;
 }
 
 export interface PipelineStage {
@@ -61,6 +60,7 @@ export interface Candidate {
   website_url: string | null;
   resume_url: string | null;
   app_submitted_at: string | null;
+  hire_type: string | null;
   created_at: string;
 }
 
@@ -130,6 +130,13 @@ export interface OnboardingTask {
   timing: string | null;
   order_index: number;
   is_active: boolean;
+  hire_type: string;
+  stage: string | null;
+  done_by: string | null;
+  action_type: string;
+  action_url: string | null;
+  email_template_key: string | null;
+  notes: string | null;
 }
 
 export interface EmailTemplate {
