@@ -102,6 +102,12 @@ export interface Candidate {
   aq_raw: number | null;
   aq_normalized: number | null;
   aq_tier: string | null;
+  aq_total: number | null;
+  aq_score_c: number | null;
+  aq_score_o: number | null;
+  aq_score_r: number | null;
+  aq_score_e: number | null;
+  disc_profile_label: string | null;
   composite_score: number | null;
   composite_verdict: string | null;
   current_brokerage: string | null;
