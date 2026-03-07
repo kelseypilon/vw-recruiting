@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/user-permissions-context";
@@ -25,6 +25,7 @@ import EmailPreviewModal from "@/app/dashboard/interviews/email-preview-modal";
 import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-modal";
 import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
 import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-modal";
+import NotAFitModal from "@/app/dashboard/candidates/not-a-fit-modal";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -74,6 +75,7 @@ export default function CandidateProfile({
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews">("profile");
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
@@ -127,7 +129,9 @@ export default function CandidateProfile({
                 </span>
                 {candidate.role_applied && (
                   <span className="text-sm text-[#a59494]">
-                    {candidate.role_applied}
+                    {(() => {
+                      try { const parsed = JSON.parse(candidate.role_applied); return Array.isArray(parsed) ? parsed.join(", ") : candidate.role_applied; } catch { return candidate.role_applied; }
+                    })()}
                   </span>
                 )}
               </div>
@@ -143,6 +147,12 @@ export default function CandidateProfile({
           onSendEmail={() => setShowEmailModal(true)}
           onScheduleInterview={() => setShowScheduleModal(true)}
           onMoveStage={async (newStage) => {
+            // Intercept Not a Fit / Archived moves
+            const notAFitStages = ["Not a Fit", "Archived"];
+            if (notAFitStages.includes(newStage)) {
+              setPendingNotAFitStage(newStage);
+              return;
+            }
             setIsMoving(true);
             const supabase = createClient();
             const { error } = await supabase
@@ -231,8 +241,18 @@ export default function CandidateProfile({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left column: contact + application + resume */}
           <div className="lg:col-span-1 flex flex-col gap-6">
-            <ContactCard candidate={candidate} />
-            <ApplicationCard candidate={candidate} />
+            <ContactCard
+              candidate={candidate}
+              onFieldSaved={(field, value) =>
+                setCandidate((prev) => ({ ...prev, [field]: value }))
+              }
+            />
+            <ApplicationCard
+              candidate={candidate}
+              onFieldSaved={(field, value) =>
+                setCandidate((prev) => ({ ...prev, [field]: value }))
+              }
+            />
             <ResumeCard
               candidate={candidate}
               onResumeUploaded={(url) =>
@@ -256,6 +276,7 @@ export default function CandidateProfile({
               notes={notes}
               groupNotes={groupNotes}
               onNoteAdded={(note) => setNotes((prev) => [note, ...prev])}
+              currentUserId={currentUserId}
             />
 
             {/* Stage History */}
@@ -300,6 +321,7 @@ export default function CandidateProfile({
           leaders={leaders}
           team={team}
           onClose={() => setShowEmailModal(false)}
+          currentUserId={currentUserId}
         />
       )}
 
@@ -314,6 +336,81 @@ export default function CandidateProfile({
           preselectedCandidateId={candidate.id}
           onClose={() => setShowScheduleModal(false)}
           onScheduled={() => setShowScheduleModal(false)}
+        />
+      )}
+
+      {/* Not a Fit / Archived Interception Modal */}
+      {pendingNotAFitStage && (
+        <NotAFitModal
+          candidateName={`${candidate.first_name} ${candidate.last_name}`}
+          candidateEmail={candidate.email}
+          targetStage={pendingNotAFitStage}
+          onSendEmail={async () => {
+            // Move the candidate first
+            const newStage = pendingNotAFitStage;
+            setPendingNotAFitStage(null);
+            setIsMoving(true);
+            const supabase = createClient();
+            const { error } = await supabase
+              .from("candidates")
+              .update({ stage: newStage })
+              .eq("id", candidate.id);
+            if (!error) {
+              await supabase.from("stage_history").insert({
+                candidate_id: candidate.id,
+                from_stage: candidate.stage,
+                to_stage: newStage,
+              });
+              setCandidate((prev) => ({ ...prev, stage: newStage }));
+              setHistory((prev) => [
+                {
+                  id: crypto.randomUUID(),
+                  candidate_id: candidate.id,
+                  from_stage: candidate.stage,
+                  to_stage: newStage,
+                  changed_by: null,
+                  created_at: new Date().toISOString(),
+                  changer: null,
+                },
+                ...prev,
+              ]);
+            }
+            setIsMoving(false);
+            // Open the email modal so they can compose a let-down email
+            setShowEmailModal(true);
+          }}
+          onMoveWithout={async () => {
+            const newStage = pendingNotAFitStage;
+            setPendingNotAFitStage(null);
+            setIsMoving(true);
+            const supabase = createClient();
+            const { error } = await supabase
+              .from("candidates")
+              .update({ stage: newStage })
+              .eq("id", candidate.id);
+            if (!error) {
+              await supabase.from("stage_history").insert({
+                candidate_id: candidate.id,
+                from_stage: candidate.stage,
+                to_stage: newStage,
+              });
+              setCandidate((prev) => ({ ...prev, stage: newStage }));
+              setHistory((prev) => [
+                {
+                  id: crypto.randomUUID(),
+                  candidate_id: candidate.id,
+                  from_stage: candidate.stage,
+                  to_stage: newStage,
+                  changed_by: null,
+                  created_at: new Date().toISOString(),
+                  changer: null,
+                },
+                ...prev,
+              ]);
+            }
+            setIsMoving(false);
+          }}
+          onCancel={() => setPendingNotAFitStage(null)}
         />
       )}
     </div>
@@ -605,18 +702,239 @@ function OnboardingTab({
   );
 }
 
+/* ── Editable Field ─────────────────────────────────────────────── */
+
+const ROLE_OPTIONS = ["Agent", "Employee", "Admin", "Property Manager", "Other"];
+
+function EditableField({
+  label,
+  value,
+  field,
+  candidateId,
+  onSaved,
+  type = "text",
+}: {
+  label: string;
+  value: string | null;
+  field: string;
+  candidateId: string;
+  onSaved: (field: string, value: string | null) => void;
+  type?: "text" | "number" | "boolean";
+}) {
+  const [editing, setEditing] = useState(false);
+  const [localVal, setLocalVal] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+
+  async function save() {
+    setEditing(false);
+    const trimmed = localVal.trim();
+    let dbValue: string | number | boolean | null;
+    if (type === "number") {
+      dbValue = trimmed === "" ? null : Number(trimmed);
+    } else if (type === "boolean") {
+      dbValue = trimmed === "Yes";
+    } else {
+      dbValue = trimmed || null;
+    }
+
+    // Skip if unchanged
+    const oldVal = type === "boolean" ? (value === "Yes") : value;
+    if (dbValue === oldVal) return;
+
+    setSaving(true);
+    try {
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { error } = await supabase
+        .from("candidates")
+        .update({ [field]: dbValue })
+        .eq("id", candidateId);
+      if (!error) {
+        const display = type === "boolean" ? (dbValue ? "Yes" : "No") : (dbValue !== null ? String(dbValue) : null);
+        onSaved(field, display);
+        setShowSaved(true);
+        setTimeout(() => setShowSaved(false), 1500);
+      }
+    } catch { /* silently fail */ }
+    setSaving(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") save();
+    if (e.key === "Escape") { setEditing(false); setLocalVal(value ?? ""); }
+  }
+
+  const displayValue = type === "number" && value !== null ? value : (value ?? "—");
+
+  if (type === "boolean") {
+    return (
+      <div className="group">
+        <p className="text-xs text-[#a59494] mb-0.5">{label}</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={localVal}
+            onChange={(e) => { setLocalVal(e.target.value); }}
+            onBlur={() => { save(); }}
+            className="text-sm text-[#272727] bg-transparent border-b border-transparent hover:border-[#a59494]/30 focus:border-brand focus:outline-none transition cursor-pointer py-0.5 -ml-0.5 px-0.5"
+          >
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+          {showSaved && <span className="text-[10px] text-green-600 animate-pulse">Saved</span>}
+          {saving && <span className="text-[10px] text-[#a59494]">Saving...</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group">
+      <p className="text-xs text-[#a59494] mb-0.5">{label}</p>
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <input
+            type={type === "number" ? "number" : "text"}
+            value={localVal}
+            onChange={(e) => setLocalVal(e.target.value)}
+            onBlur={save}
+            onKeyDown={handleKeyDown}
+            autoFocus
+            className="text-sm text-[#272727] w-full border-b border-brand focus:outline-none bg-transparent py-0.5"
+          />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <p
+            onClick={() => { setEditing(true); setLocalVal(value ?? ""); }}
+            className="text-sm text-[#272727] cursor-pointer border-b border-transparent hover:border-[#a59494]/30 transition py-0.5"
+          >
+            {displayValue}
+          </p>
+          {showSaved && <span className="text-[10px] text-green-600 animate-pulse">Saved</span>}
+          {saving && <span className="text-[10px] text-[#a59494]">Saving...</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Multi-Select Role Field ──────────────────────────────────── */
+
+function RoleMultiSelect({
+  value,
+  candidateId,
+  onSaved,
+}: {
+  value: string | null;
+  candidateId: string;
+  onSaved: (field: string, value: string | null) => void;
+}) {
+  // Parse existing value — could be JSON array string or plain string
+  function parseRoles(v: string | null): string[] {
+    if (!v) return [];
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* not JSON */ }
+    // Legacy: treat as comma-separated or single value
+    return v.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
+  const [selected, setSelected] = useState<string[]>(parseRoles(value));
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function toggle(role: string) {
+    const next = selected.includes(role)
+      ? selected.filter((r) => r !== role)
+      : [...selected, role];
+    setSelected(next);
+
+    setSaving(true);
+    try {
+      const dbVal = next.length > 0 ? JSON.stringify(next) : null;
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { error } = await supabase
+        .from("candidates")
+        .update({ role_applied: dbVal })
+        .eq("id", candidateId);
+      if (!error) {
+        onSaved("role_applied", dbVal);
+        setShowSaved(true);
+        setTimeout(() => setShowSaved(false), 1500);
+      }
+    } catch { /* silently fail */ }
+    setSaving(false);
+  }
+
+  const displayText = selected.length > 0 ? selected.join(", ") : "—";
+
+  return (
+    <div className="relative" ref={ref}>
+      <p className="text-xs text-[#a59494] mb-0.5">Role Applied</p>
+      <div className="flex items-center gap-2">
+        <p
+          onClick={() => setOpen(!open)}
+          className="text-sm text-[#272727] cursor-pointer border-b border-transparent hover:border-[#a59494]/30 transition py-0.5"
+        >
+          {displayText}
+        </p>
+        {showSaved && <span className="text-[10px] text-green-600 animate-pulse">Saved</span>}
+        {saving && <span className="text-[10px] text-[#a59494]">Saving...</span>}
+      </div>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-52 bg-white border border-[#a59494]/20 rounded-lg shadow-lg py-1">
+          {ROLE_OPTIONS.map((role) => (
+            <label
+              key={role}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#f5f0f0] cursor-pointer transition"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(role)}
+                onChange={() => toggle(role)}
+                className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand"
+              />
+              {role}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Contact Card ──────────────────────────────────────────────── */
 
-function ContactCard({ candidate }: { candidate: Candidate }) {
+function ContactCard({
+  candidate,
+  onFieldSaved,
+}: {
+  candidate: Candidate;
+  onFieldSaved: (field: string, value: string | null) => void;
+}) {
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Contact Info</h3>
       <div className="space-y-3">
-        <InfoRow label="Email" value={candidate.email} />
-        <InfoRow label="Phone" value={candidate.phone} />
-        <InfoRow label="Current Role" value={candidate.current_role} />
-        <InfoRow label="Current Brokerage" value={candidate.current_brokerage} />
-        <InfoRow label="Heard About Us" value={candidate.heard_about} />
+        <EditableField label="First Name" value={candidate.first_name} field="first_name" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Last Name" value={candidate.last_name} field="last_name" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Email" value={candidate.email} field="email" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Phone" value={candidate.phone} field="phone" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Current Role" value={candidate.current_role} field="current_role" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Current Brokerage" value={candidate.current_brokerage} field="current_brokerage" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Heard About Us" value={candidate.heard_about} field="heard_about" candidateId={candidate.id} onSaved={onFieldSaved} />
         {candidate.website_url && (
           <div>
             <p className="text-xs text-[#a59494] mb-0.5">Website</p>
@@ -635,51 +953,64 @@ function ContactCard({ candidate }: { candidate: Candidate }) {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div>
-      <p className="text-xs text-[#a59494] mb-0.5">{label}</p>
-      <p className="text-sm text-[#272727]">{value ?? "—"}</p>
-    </div>
-  );
-}
-
 /* ── Application Card ──────────────────────────────────────────── */
 
-function ApplicationCard({ candidate }: { candidate: Candidate }) {
+function ApplicationCard({
+  candidate,
+  onFieldSaved,
+}: {
+  candidate: Candidate;
+  onFieldSaved: (field: string, value: string | null) => void;
+}) {
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Application Details</h3>
       <div className="space-y-3">
-        <InfoRow label="Role Applied" value={candidate.role_applied} />
-        <InfoRow
+        <RoleMultiSelect value={candidate.role_applied} candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField
           label="Licensed"
-          value={candidate.is_licensed === null ? "—" : candidate.is_licensed ? "Yes" : "No"}
+          value={candidate.is_licensed === null ? "No" : candidate.is_licensed ? "Yes" : "No"}
+          field="is_licensed"
+          candidateId={candidate.id}
+          onSaved={onFieldSaved}
+          type="boolean"
         />
-        <InfoRow
+        <EditableField
           label="Years Experience"
-          value={candidate.years_experience !== null ? `${candidate.years_experience} years` : null}
+          value={candidate.years_experience !== null ? String(candidate.years_experience) : null}
+          field="years_experience"
+          candidateId={candidate.id}
+          onSaved={onFieldSaved}
+          type="number"
         />
-        <InfoRow
+        <EditableField
           label="Deals Done Last Year"
           value={candidate.transactions_2024 !== null ? String(candidate.transactions_2024) : null}
+          field="transactions_2024"
+          candidateId={candidate.id}
+          onSaved={onFieldSaved}
+          type="number"
         />
-        <InfoRow
+        <EditableField
           label="Active Listings"
-          value={candidate.active_listings !== null ? String(candidate.active_listings) : null}
+          value={candidate.active_listings != null ? String(candidate.active_listings) : null}
+          field="active_listings"
+          candidateId={candidate.id}
+          onSaved={onFieldSaved}
+          type="number"
         />
-        <InfoRow
-          label="Application Submitted"
-          value={
-            candidate.app_submitted_at
+        <div>
+          <p className="text-xs text-[#a59494] mb-0.5">Application Submitted</p>
+          <p className="text-sm text-[#272727]">
+            {candidate.app_submitted_at
               ? new Date(candidate.app_submitted_at).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
                 })
-              : null
-          }
-        />
+              : "—"}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -696,11 +1027,10 @@ function ResumeCard({
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function uploadFile(file: File) {
     // Validate file type
     const allowedTypes = [
       "application/pdf",
@@ -721,39 +1051,55 @@ function ResumeCard({
     setIsUploading(true);
     setUploadError("");
 
-    const supabase = createClient();
-    const ext = file.name.split(".").pop() ?? "pdf";
-    const filePath = `${candidate.team_id}/${candidate.id}/resume.${ext}`;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("candidateId", candidate.id);
+      formData.append("teamId", candidate.team_id);
 
-    const { error: uploadErr } = await supabase.storage
-      .from("resumes")
-      .upload(filePath, file, { upsert: true });
+      const res = await fetch("/api/resume-upload", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (uploadErr) {
-      setUploadError(uploadErr.message);
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        setUploadError(result.error ?? "Failed to upload resume");
+      } else {
+        onResumeUploaded(result.url);
+      }
+    } catch {
+      setUploadError("Failed to upload resume");
+    } finally {
       setIsUploading(false);
-      return;
     }
+  }
 
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("resumes").getPublicUrl(filePath);
-
-    // Save URL to candidate record
-    const { error: dbErr } = await supabase
-      .from("candidates")
-      .update({ resume_url: publicUrl })
-      .eq("id", candidate.id);
-
-    if (dbErr) {
-      setUploadError(dbErr.message);
-    } else {
-      onResumeUploaded(publicUrl);
-    }
-
-    setIsUploading(false);
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
     // Reset the input
     e.target.value = "";
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadFile(file);
   }
 
   return (
@@ -768,9 +1114,9 @@ function ResumeCard({
               height="20"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="var(--brand-primary)"
+              stroke="currentColor"
               strokeWidth="2"
-              className="shrink-0"
+              className="shrink-0 text-brand"
             >
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
@@ -791,46 +1137,68 @@ function ResumeCard({
             </a>
           </div>
 
-          {/* Replace resume */}
-          <label className="block text-center cursor-pointer">
-            <span className="text-xs text-[#a59494] hover:text-brand transition">
-              {isUploading ? "Uploading..." : "Replace resume"}
+          {/* Replace resume — drag and drop or click */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`flex flex-col items-center gap-1 py-3 cursor-pointer rounded-lg border-2 border-dashed transition ${
+              isDragOver
+                ? "border-brand bg-brand/5"
+                : "border-[#a59494]/20 hover:border-brand/50"
+            }`}
+          >
+            <span className="text-xs text-[#a59494]">
+              {isUploading ? "Uploading..." : "Drop file to replace or click"}
             </span>
             <input
+              ref={fileInputRef}
               type="file"
               accept=".pdf,.doc,.docx"
-              onChange={handleUpload}
+              onChange={handleFileInput}
               disabled={isUploading}
               className="hidden"
             />
-          </label>
+          </div>
         </div>
       ) : (
-        <label className="flex flex-col items-center gap-2 py-6 cursor-pointer rounded-lg border-2 border-dashed border-[#a59494]/30 hover:border-brand/50 transition">
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`flex flex-col items-center gap-2 py-6 cursor-pointer rounded-lg border-2 border-dashed transition ${
+            isDragOver
+              ? "border-brand bg-brand/5"
+              : "border-[#a59494]/30 hover:border-brand/50"
+          }`}
+        >
           <svg
             width="24"
             height="24"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#a59494"
+            stroke={isDragOver ? "#1B6CA8" : "#a59494"}
             strokeWidth="2"
           >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          <span className="text-sm text-[#a59494]">
-            {isUploading ? "Uploading..." : "Upload Resume"}
+          <span className={`text-sm ${isDragOver ? "text-brand" : "text-[#a59494]"}`}>
+            {isUploading ? "Uploading..." : "Drop resume here or click to upload"}
           </span>
           <span className="text-xs text-[#a59494]">PDF or Word, max 10MB</span>
           <input
+            ref={fileInputRef}
             type="file"
             accept=".pdf,.doc,.docx"
-            onChange={handleUpload}
+            onChange={handleFileInput}
             disabled={isUploading}
             className="hidden"
           />
-        </label>
+        </div>
       )}
 
       {uploadError && (
@@ -1015,11 +1383,13 @@ function NotesSection({
   notes,
   groupNotes = [],
   onNoteAdded,
+  currentUserId,
 }: {
   candidateId: string;
   notes: CandidateNote[];
   groupNotes?: GroupInterviewNote[];
   onNoteAdded: (note: CandidateNote) => void;
+  currentUserId: string;
 }) {
   const [newNote, setNewNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -1035,6 +1405,7 @@ function NotesSection({
         body: JSON.stringify({
           candidate_id: candidateId,
           note_text: newNote.trim(),
+          author_id: currentUserId || undefined,
         }),
       });
       const result = await res.json();
@@ -1263,6 +1634,7 @@ function ActionButtons({
   onScheduleInterview?: () => void;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const moveMenuRef = useRef<HTMLDivElement>(null);
   const { can } = usePermissions();
   const canSendEmails = can("send_emails");
   const canManageInterviews = can("manage_interviews");
@@ -1272,7 +1644,16 @@ function ActionButtons({
     <div className="flex items-center gap-2 shrink-0">
       {/* Move Stage dropdown — requires edit_candidates permission */}
       {canEditCandidates && (
-      <div className="relative">
+      <div
+        className="relative"
+        ref={moveMenuRef}
+        onMouseLeave={() => {
+          if (showMoveMenu) {
+            const timer = setTimeout(() => setShowMoveMenu(false), 150);
+            moveMenuRef.current?.addEventListener("mouseenter", () => clearTimeout(timer), { once: true });
+          }
+        }}
+      >
         <button
           onClick={() => setShowMoveMenu(!showMoveMenu)}
           disabled={isMoving}
@@ -1350,16 +1731,22 @@ function SendEmailModal({
   leaders,
   team,
   onClose,
+  currentUserId,
 }: {
   candidate: Candidate;
   templates: EmailTemplate[];
   leaders: TeamUser[];
   team: Team | null;
   onClose: () => void;
+  currentUserId?: string;
 }) {
   // Senders: all team members (prefer from_email, fall back to regular email)
   const senders = leaders.filter((l) => l.from_email || l.email);
-  const [fromUserId, setFromUserId] = useState(senders[0]?.id ?? "");
+  // Default to the currently logged-in user if they're a valid sender
+  const defaultSender = currentUserId && senders.find((s) => s.id === currentUserId)
+    ? currentUserId
+    : senders[0]?.id ?? "";
+  const [fromUserId, setFromUserId] = useState(defaultSender);
   const [ccEmail, setCcEmail] = useState(
     team?.admin_cc && team?.admin_email ? team.admin_email : ""
   );

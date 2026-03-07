@@ -55,8 +55,7 @@ export default function DashboardLayout({
             />
           ) : (
             <div
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: branding.primaryColor }}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-brand"
             >
               <span className="text-white text-sm font-bold">
                 {branding.initials}
@@ -72,7 +71,7 @@ export default function DashboardLayout({
             <select
               value={teamId}
               onChange={(e) => switchTeam(e.target.value)}
-              className="ml-3 text-sm border border-[#a59494]/30 rounded-lg px-2.5 py-1.5 bg-[#f5f0f0] text-[#272727] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/30 cursor-pointer"
+              className="ml-3 text-sm border border-[#a59494]/30 rounded-lg px-2.5 py-1.5 bg-[#f5f0f0] text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/30 cursor-pointer"
             >
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -87,14 +86,7 @@ export default function DashboardLayout({
           <form action="/auth/signout" method="POST">
             <button
               type="submit"
-              className="text-sm font-medium transition"
-              style={{ color: branding.primaryColor }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.color = branding.primaryDark)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.color = branding.primaryColor)
-              }
+              className="text-sm font-medium text-brand hover:text-brand-dark transition"
             >
               Sign Out
             </button>
@@ -104,7 +96,7 @@ export default function DashboardLayout({
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-60 bg-white border-r border-[#a59494]/20 py-6 shrink-0 flex flex-col">
+        <aside className="w-60 py-6 shrink-0 flex flex-col" style={{ backgroundColor: "#0D1B2A" }}>
           <nav className="flex flex-col gap-1 px-3 flex-1">
             {visibleNavItems.map((item) => {
               const active =
@@ -117,16 +109,9 @@ export default function DashboardLayout({
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     active
-                      ? "text-[var(--brand-primary)]"
-                      : "text-[#272727] hover:bg-[#f5f0f0]"
+                      ? "text-white bg-[#1B6CA8]"
+                      : "text-[#a5b4c4] hover:text-white hover:bg-white/10"
                   }`}
-                  style={
-                    active
-                      ? {
-                          backgroundColor: `color-mix(in srgb, ${branding.primaryColor} 10%, transparent)`,
-                        }
-                      : undefined
-                  }
                 >
                   <item.icon active={active} />
                   {item.label}
@@ -137,7 +122,7 @@ export default function DashboardLayout({
 
           {/* Powered by footer for custom branding */}
           {branding.mode === "custom" && branding.showPoweredBy && (
-            <div className="px-6 py-3 text-xs text-[#a59494]">
+            <div className="px-6 py-3 text-xs text-[#a5b4c4]/60">
               Powered by Vantage West
             </div>
           )}
@@ -153,7 +138,7 @@ export default function DashboardLayout({
 /* ── Sidebar icons ────────────────────────────────────────────── */
 
 function DashboardIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -165,7 +150,7 @@ function DashboardIcon({ active }: { active: boolean }) {
 }
 
 function CandidatesIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -177,7 +162,7 @@ function CandidatesIcon({ active }: { active: boolean }) {
 }
 
 function InterviewsIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -189,7 +174,7 @@ function InterviewsIcon({ active }: { active: boolean }) {
 }
 
 function OnboardingIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
@@ -199,7 +184,7 @@ function OnboardingIcon({ active }: { active: boolean }) {
 }
 
 function SettingsIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
@@ -209,7 +194,7 @@ function SettingsIcon({ active }: { active: boolean }) {
 }
 
 function GroupInterviewsIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -221,7 +206,7 @@ function GroupInterviewsIcon({ active }: { active: boolean }) {
 }
 
 function ProfileIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -231,7 +216,7 @@ function ProfileIcon({ active }: { active: boolean }) {
 }
 
 function HelpIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
@@ -242,7 +227,7 @@ function HelpIcon({ active }: { active: boolean }) {
 }
 
 function SuperAdminIcon({ active }: { active: boolean }) {
-  const color = active ? "var(--brand-primary)" : "#a59494";
+  const color = active ? "#ffffff" : "#a5b4c4";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M12 2L2 7l10 5 10-5-10-5z" />

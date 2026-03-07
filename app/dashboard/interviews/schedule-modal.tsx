@@ -111,7 +111,6 @@ export default function ScheduleModal({
     setError("");
 
     try {
-      const supabase = createClient();
       const interviewTypeLabel =
         interviewType === "1on1" ? "1on1 Interview" : "Group Interview";
       const scheduledAt =
@@ -125,44 +124,39 @@ export default function ScheduleModal({
             ? "Group interview"
             : "";
 
-      const { data: created, error: dbError } = await supabase
-        .from("interviews")
-        .insert({
-          team_id: teamId,
-          candidate_id: candidateId,
-          interview_type: interviewTypeLabel,
-          status: "scheduled",
-          scheduled_at: scheduledAt,
-          notes,
-        })
-        .select(
-          "*, candidate:candidates(first_name, last_name, role_applied, stage)"
-        )
-        .single();
-
-      if (dbError || !created) {
-        setError(dbError?.message ?? "Failed to create interview");
-        setCreatingOnly(false);
-        return;
-      }
-
-      // Insert interviewers
+      // Use API route (admin client) to bypass RLS
       const interviewerIds =
         selectedInterviewers.length > 0
           ? selectedInterviewers
           : leaderId
             ? [leaderId]
             : [];
-      if (interviewerIds.length > 0) {
-        await supabase.from("interview_interviewers").insert(
-          interviewerIds.map((uid) => ({
-            interview_id: created.id,
-            user_id: uid,
-          }))
-        );
+
+      const res = await fetch("/api/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_interview",
+          payload: {
+            team_id: teamId,
+            candidate_id: candidateId,
+            interview_type: interviewTypeLabel,
+            status: "scheduled",
+            scheduled_at: scheduledAt,
+            notes,
+            interviewer_ids: interviewerIds.length > 0 ? interviewerIds : undefined,
+          },
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        setError(result.error ?? "Failed to create interview");
+        setCreatingOnly(false);
+        return;
       }
 
-      onScheduled(created as Interview);
+      onScheduled(result.data as Interview);
     } catch {
       setError("Failed to create interview");
     } finally {

@@ -12,12 +12,22 @@ import type { PipelineStage, CandidateCard, TeamUser, GroupInterviewSession } fr
 import CandidateCardComponent from "./candidate-card";
 import AddCandidateModal from "./add-candidate-modal";
 import InterviewStageModal from "./interview-stage-modal";
+import NotAFitModal from "./not-a-fit-modal";
 
 const INTERVIEW_STAGES = ["Group Interview", "1on1 Interview"];
+const NOT_A_FIT_STAGES = ["Not a Fit", "Archived"];
 
 interface PendingInterviewMove {
   candidateId: string;
   candidateName: string;
+  fromStage: string;
+  toStage: string;
+}
+
+interface PendingNotAFitMove {
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string | null;
   fromStage: string;
   toStage: string;
 }
@@ -47,6 +57,8 @@ export default function KanbanBoard({
   const [showAddModal, setShowAddModal] = useState(false);
   const [pendingInterviewMove, setPendingInterviewMove] =
     useState<PendingInterviewMove | null>(null);
+  const [pendingNotAFitMove, setPendingNotAFitMove] =
+    useState<PendingNotAFitMove | null>(null);
 
   // @hello-pangea/dnd requires client-only rendering to avoid SSR hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
@@ -109,6 +121,18 @@ export default function KanbanBoard({
     if (!candidate) return;
     const fromStage = candidate.stage;
 
+    // Intercept Not a Fit / Archived moves
+    if (NOT_A_FIT_STAGES.includes(newStage)) {
+      setPendingNotAFitMove({
+        candidateId,
+        candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        candidateEmail: candidate.email,
+        fromStage,
+        toStage: newStage,
+      });
+      return;
+    }
+
     // Optimistic update
     updateStageOptimistic(candidateId, newStage);
 
@@ -139,6 +163,18 @@ export default function KanbanBoard({
     const candidateId = draggableId;
     const candidate = candidates.find((c) => c.id === candidateId);
     if (!candidate) return;
+
+    // Intercept Not a Fit / Archived moves
+    if (NOT_A_FIT_STAGES.includes(newStage)) {
+      setPendingNotAFitMove({
+        candidateId,
+        candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        candidateEmail: candidate.email,
+        fromStage: source.droppableId,
+        toStage: newStage,
+      });
+      return;
+    }
 
     // Optimistic update
     updateStageOptimistic(candidateId, newStage);
@@ -178,6 +214,26 @@ export default function KanbanBoard({
       );
     }
     setPendingInterviewMove(null);
+  }
+
+  function handleNotAFitMoveWithout() {
+    if (!pendingNotAFitMove) return;
+    updateStageOptimistic(pendingNotAFitMove.candidateId, pendingNotAFitMove.toStage);
+    persistStageChange(pendingNotAFitMove.candidateId, pendingNotAFitMove.fromStage, pendingNotAFitMove.toStage);
+    setPendingNotAFitMove(null);
+  }
+
+  function handleNotAFitSendEmail() {
+    if (!pendingNotAFitMove) return;
+    // Move the candidate first
+    updateStageOptimistic(pendingNotAFitMove.candidateId, pendingNotAFitMove.toStage);
+    persistStageChange(pendingNotAFitMove.candidateId, pendingNotAFitMove.fromStage, pendingNotAFitMove.toStage);
+    // Navigate to candidate profile to compose the email
+    window.location.href = `/dashboard/candidates/${pendingNotAFitMove.candidateId}?sendEmail=true`;
+  }
+
+  function handleNotAFitCancel() {
+    setPendingNotAFitMove(null);
   }
 
   return (
@@ -352,6 +408,18 @@ export default function KanbanBoard({
           teamZoomLink={teamZoomLink}
           onComplete={handleInterviewModalComplete}
           onCancel={handleInterviewModalCancel}
+        />
+      )}
+
+      {/* Not a Fit / Archived Interception Modal */}
+      {pendingNotAFitMove && (
+        <NotAFitModal
+          candidateName={pendingNotAFitMove.candidateName}
+          candidateEmail={pendingNotAFitMove.candidateEmail}
+          targetStage={pendingNotAFitMove.toStage}
+          onSendEmail={handleNotAFitSendEmail}
+          onMoveWithout={handleNotAFitMoveWithout}
+          onCancel={handleNotAFitCancel}
         />
       )}
     </>

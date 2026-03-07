@@ -11,12 +11,13 @@ interface Props {
 }
 
 export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
+  const ROLE_OPTIONS = ["Agent", "Employee", "Admin", "Property Manager", "Other"];
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
     email: "",
     phone: "",
-    role_applied: "",
+    role_applied: [] as string[],
     is_licensed: false,
   });
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
         last_name: formData.last_name,
         email: formData.email || null,
         phone: formData.phone || null,
-        role_applied: formData.role_applied || null,
+        role_applied: formData.role_applied.length > 0 ? JSON.stringify(formData.role_applied) : null,
         is_licensed: formData.is_licensed,
         stage: "New Lead",
       })
@@ -136,18 +137,29 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
             />
           </div>
 
-          {/* Role Applied */}
+          {/* Role Applied (multi-select) */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-[#272727]">
               Role Applied
             </label>
-            <input
-              type="text"
-              value={formData.role_applied}
-              onChange={(e) => updateField("role_applied", e.target.value)}
-              placeholder="Buyer Agent"
-              className={inputClass}
-            />
+            <div className="flex flex-wrap gap-2 px-1">
+              {ROLE_OPTIONS.map((role) => (
+                <label key={role} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.role_applied.includes(role)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...formData.role_applied, role]
+                        : formData.role_applied.filter((r) => r !== role);
+                      setFormData((prev) => ({ ...prev, role_applied: next }));
+                    }}
+                    className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand"
+                  />
+                  <span className="text-sm text-[#272727]">{role}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Licensed checkbox */}

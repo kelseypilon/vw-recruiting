@@ -10,10 +10,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 
-  /* Brand colors — overridden at runtime by BrandStyleInjector */
-  --color-brand: var(--brand-primary, #1c759e);
-  --color-brand-dark: var(--brand-primary-dark, #155f82);
-  --color-brand-light: var(--brand-primary-light, #2a8fc0);
+  /* Brand colors — Vantage teal/navy theme */
+  --color-brand: #1B6CA8;
+  --color-brand-dark: #155a8a;
+  --color-brand-light: #2080c0;
+  --color-navy: #0D1B2A;
 
   /* Neutral colors — stay hardcoded */
   --color-velvet: #272727;
