@@ -7,7 +7,7 @@ import type { CandidateCard, PipelineStage } from "@/lib/types";
 interface Props {
   candidate: CandidateCard;
   stages: PipelineStage[];
-  onStageChange: (candidateId: string, newStage: string) => void;
+  onStageChange: (candidateId: string, newStage: string) => void | Promise<void>;
   thresholdStuckDays?: number;
 }
 
@@ -31,11 +31,14 @@ export default function CandidateCardComponent({
   const [isMoving, setIsMoving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  function handleMoveStage(newStageName: string) {
+  async function handleMoveStage(newStageName: string) {
     setIsMoving(true);
-    onStageChange(candidate.id, newStageName);
-    setIsMoving(false);
     setShowMoveMenu(false);
+    try {
+      await onStageChange(candidate.id, newStageName);
+    } finally {
+      setIsMoving(false);
+    }
   }
 
   const badge = scoreBadge(candidate.composite_score);

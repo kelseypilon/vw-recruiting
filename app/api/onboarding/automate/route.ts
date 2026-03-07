@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth();
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const { task_id, candidate_id, team_id, automation_key, entry_id } =
+    const { task_id, candidate_id, team_id, automation_key } =
       await req.json();
 
     if (!task_id || !candidate_id || !team_id) {

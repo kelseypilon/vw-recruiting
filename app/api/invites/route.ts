@@ -258,19 +258,21 @@ export async function POST(req: NextRequest) {
       if (authError) {
         // If user already exists, try to link them
         if (authError.message?.includes("already been registered")) {
-          // Get existing auth user by email — paginate to find them
+          // Get existing auth user by email
           let existingUser = null;
           let page = 1;
-          while (!existingUser) {
+          const maxPages = 20;
+          while (!existingUser && page <= maxPages) {
             const { data: pageData } = await supabase.auth.admin.listUsers({
               page,
               perPage: 50,
             });
-            const users = pageData?.users ?? [];
-            if (users.length === 0) break;
-            existingUser = users.find(
-              (u) => u.email?.toLowerCase() === invite.email.toLowerCase()
-            ) ?? null;
+            if (!pageData?.users?.length) break;
+            existingUser =
+              pageData.users.find(
+                (u) => u.email?.toLowerCase() === invite.email.toLowerCase()
+              ) ?? null;
+            if (pageData.users.length < 50) break;
             page++;
           }
 
@@ -285,15 +287,18 @@ export async function POST(req: NextRequest) {
 
             if (existingRow) {
               // Mark invite accepted
-              await supabase
+              const { error: acceptErr } = await supabase
                 .from("invite_tokens")
                 .update({ accepted_at: new Date().toISOString() })
                 .eq("id", invite.id);
+              if (acceptErr) {
+                console.error("Failed to mark invite accepted:", acceptErr.message);
+              }
               return NextResponse.json({ error: "You already have an account for this team. Please log in." }, { status: 400 });
             }
 
             // Create the users row for this team
-            await supabase.from("users").insert({
+            const { error: linkErr } = await supabase.from("users").insert({
               auth_id: existingUser.id,
               team_id: invite.team_id,
               name,
@@ -301,11 +306,19 @@ export async function POST(req: NextRequest) {
               role: invite.role,
             });
 
+            if (linkErr) {
+              return NextResponse.json({ error: `Failed to link account: ${linkErr.message}` }, { status: 500 });
+            }
+
             // Mark invite accepted
-            await supabase
+            const { error: acceptErr } = await supabase
               .from("invite_tokens")
               .update({ accepted_at: new Date().toISOString() })
               .eq("id", invite.id);
+
+            if (acceptErr) {
+              console.error("Failed to mark invite accepted:", acceptErr.message);
+            }
 
             return NextResponse.json({ success: true, message: "Account linked to team" });
           }
@@ -315,20 +328,28 @@ export async function POST(req: NextRequest) {
 
       // Create the users row
       if (authData.user) {
-        await supabase.from("users").insert({
+        const { error: userErr } = await supabase.from("users").insert({
           auth_id: authData.user.id,
           team_id: invite.team_id,
           name,
           email: invite.email,
           role: invite.role,
         });
+
+        if (userErr) {
+          return NextResponse.json({ error: `Account created but user profile failed: ${userErr.message}` }, { status: 500 });
+        }
       }
 
       // Mark invite accepted
-      await supabase
+      const { error: acceptErr } = await supabase
         .from("invite_tokens")
         .update({ accepted_at: new Date().toISOString() })
         .eq("id", invite.id);
+
+      if (acceptErr) {
+        console.error("Failed to mark invite accepted:", acceptErr.message);
+      }
 
       return NextResponse.json({ success: true, message: "Account created successfully" });
     }

@@ -25,21 +25,21 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
     const TEAM_ID = await getTeamId();
 
-    // Resolve author: use provided author_id or fall back to first team user
+    // Resolve author: use provided author_id or fall back to the authenticated user
     let resolvedAuthorId = author_id;
     if (!resolvedAuthorId) {
-      const { data: teamUsers } = await supabase
+      const { data: authProfile } = await supabase
         .from("users")
         .select("id")
         .eq("team_id", TEAM_ID)
-        .limit(1)
+        .eq("email", auth.email)
         .single();
-      resolvedAuthorId = teamUsers?.id ?? null;
+      resolvedAuthorId = authProfile?.id ?? null;
     }
 
     if (!resolvedAuthorId) {
       return NextResponse.json(
-        { error: "No team users found to attribute the note" },
+        { error: "Could not resolve author. Please provide author_id." },
         { status: 400 }
       );
     }

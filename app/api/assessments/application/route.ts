@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     if (full_name) {
       const parts = full_name.trim().split(/\s+/);
       candidateUpdate.first_name = parts[0];
-      candidateUpdate.last_name = parts.slice(1).join(" ") || parts[0];
+      candidateUpdate.last_name = parts.slice(1).join(" ") || "";
     }
     if (email) candidateUpdate.email = email;
     if (phone) candidateUpdate.phone = phone;

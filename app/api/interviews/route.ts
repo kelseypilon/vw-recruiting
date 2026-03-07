@@ -49,12 +49,19 @@ export async function POST(req: NextRequest) {
 
       // Insert interviewers if provided
       if (Array.isArray(interviewer_ids) && interviewer_ids.length > 0) {
-        await supabase.from("interview_interviewers").insert(
+        const { error: interviewerErr } = await supabase.from("interview_interviewers").insert(
           interviewer_ids.map((uid: string) => ({
             interview_id: created.id,
             user_id: uid,
           }))
         );
+        if (interviewerErr) {
+          console.error("Failed to insert interviewers:", interviewerErr.message);
+          return NextResponse.json({
+            data: created,
+            warning: `Interview created but failed to assign interviewers: ${interviewerErr.message}`,
+          });
+        }
       }
 
       return NextResponse.json({ data: created });

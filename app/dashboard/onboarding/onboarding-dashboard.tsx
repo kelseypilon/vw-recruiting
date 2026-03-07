@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import OnboardingTaskList from "./onboarding-task-list";
 import OnboardingEmailModal from "./onboarding-email-modal";
 import { usePermissions } from "@/lib/user-permissions-context";
@@ -55,6 +55,14 @@ export default function OnboardingDashboard({
   const [isRunningAutomation, setIsRunningAutomation] = useState(false);
   const [automationResult, setAutomationResult] = useState<{ success: boolean; message: string } | null>(null);
   const { can } = usePermissions();
+  const reminderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current);
+    };
+  }, []);
 
   const candidate = candidates.find((c) => c.id === selectedCandidate);
   const candidateProgress = progress.filter(
@@ -222,7 +230,8 @@ export default function OnboardingDashboard({
     }
     setIsSendingReminders(false);
     // Clear message after 5 seconds
-    setTimeout(() => setReminderMessage(""), 5000);
+    if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current);
+    reminderTimerRef.current = setTimeout(() => setReminderMessage(""), 5000);
   }
 
   // Run automation — calls API, then marks task complete on success

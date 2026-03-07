@@ -46,6 +46,11 @@ export default async function CandidatesPage() {
       .single(),
   ]);
 
+  // Log any query errors (server component — logs to server console)
+  if (stagesResult.error) console.error("Failed to load stages:", stagesResult.error.message);
+  if (candidatesResult.error) console.error("Failed to load candidates:", candidatesResult.error.message);
+  if (usersResult.error) console.error("Failed to load users:", usersResult.error.message);
+
   const stages: PipelineStage[] = stagesResult.data ?? [];
   const candidates: Candidate[] = candidatesResult.data ?? [];
   const currentUserId = profileResult.data?.id ?? "";

@@ -320,10 +320,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "task_id is required" }, { status: 400 });
       }
       // Delete related candidate_onboarding entries first
-      await supabase
+      const { error: relatedErr } = await supabase
         .from("candidate_onboarding")
         .delete()
         .eq("task_id", task_id);
+      if (relatedErr) {
+        return NextResponse.json({ error: `Failed to remove related entries: ${relatedErr.message}` }, { status: 500 });
+      }
       const { error } = await supabase
         .from("onboarding_tasks")
         .delete()
@@ -345,10 +348,14 @@ export async function POST(req: NextRequest) {
       if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 });
 
       // Clear hire_type on the candidate
-      await supabase
+      const { error: clearErr } = await supabase
         .from("candidates")
         .update({ hire_type: null })
         .eq("id", candidate_id);
+
+      if (clearErr) {
+        console.error("Failed to clear hire_type:", clearErr.message);
+      }
 
       return NextResponse.json({ success: true });
     }

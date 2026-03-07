@@ -1074,22 +1074,32 @@ function RemoveMemberModal({
 
   // Fetch assignment counts on mount
   useEffect(() => {
+    const controller = new AbortController();
     (async () => {
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "get_user_assignments",
-          payload: { id: member.id, team_id: teamId },
-        }),
-      });
-      const data = await res.json();
-      setAssignments({
-        interviews: data.interviews ?? 0,
-        onboarding: data.onboarding ?? 0,
-      });
-      setLoading(false);
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "get_user_assignments",
+            payload: { id: member.id, team_id: teamId },
+          }),
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (!controller.signal.aborted) {
+          setAssignments({
+            interviews: data.interviews ?? 0,
+            onboarding: data.onboarding ?? 0,
+          });
+          setLoading(false);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!controller.signal.aborted) setLoading(false);
+      }
     })();
+    return () => controller.abort();
   }, [member.id, teamId]);
 
   const hasAssignments =

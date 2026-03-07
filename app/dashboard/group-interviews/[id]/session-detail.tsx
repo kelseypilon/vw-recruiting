@@ -313,15 +313,14 @@ export default function SessionDetail({
         }),
       });
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      setSession((prev) => ({
-        ...prev,
-        candidates: prev.candidates.filter((c) => c.id !== candidateId),
-      }));
-      if (selectedCandidate?.id === candidateId) {
-        setSelectedCandidate(
-          session.candidates.find((c) => c.id !== candidateId) ?? null
-        );
-      }
+      setSession((prev) => {
+        const remaining = prev.candidates.filter((c) => c.id !== candidateId);
+        // Also update selectedCandidate if the removed one was selected
+        if (selectedCandidate?.id === candidateId) {
+          setSelectedCandidate(remaining[0] ?? null);
+        }
+        return { ...prev, candidates: remaining };
+      });
     } catch {
       console.error("Failed to remove candidate");
     }

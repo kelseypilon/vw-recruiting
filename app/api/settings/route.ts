@@ -325,14 +325,14 @@ export async function POST(req: NextRequest) {
       if (!payload?.stages || !Array.isArray(payload.stages)) {
         return NextResponse.json({ error: "stages array is required" }, { status: 400 });
       }
-      // Update each stage's order_index
-      for (const s of payload.stages as { id: string; order_index: number }[]) {
-        const { error } = await supabase
-          .from("pipeline_stages")
-          .update({ order_index: s.order_index })
-          .eq("id", s.id);
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      // Update all stage order_indexes concurrently
+      const results = await Promise.all(
+        (payload.stages as { id: string; order_index: number }[]).map((s) =>
+          supabase.from("pipeline_stages").update({ order_index: s.order_index }).eq("id", s.id)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }
 
@@ -757,13 +757,13 @@ export async function POST(req: NextRequest) {
       if (!payload?.tasks || !Array.isArray(payload.tasks)) {
         return NextResponse.json({ error: "tasks array is required" }, { status: 400 });
       }
-      for (const t of payload.tasks as { id: string; order_index: number }[]) {
-        const { error } = await supabase
-          .from("onboarding_tasks")
-          .update({ order_index: t.order_index })
-          .eq("id", t.id);
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      const results = await Promise.all(
+        (payload.tasks as { id: string; order_index: number }[]).map((t) =>
+          supabase.from("onboarding_tasks").update({ order_index: t.order_index }).eq("id", t.id)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }
 
@@ -833,13 +833,13 @@ export async function POST(req: NextRequest) {
       if (!payload?.items || !Array.isArray(payload.items)) {
         return NextResponse.json({ error: "items array is required" }, { status: 400 });
       }
-      for (const item of payload.items as { id: string; order_index: number }[]) {
-        const { error } = await supabase
-          .from("interested_in_options")
-          .update({ order_index: item.order_index })
-          .eq("id", item.id);
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      const results = await Promise.all(
+        (payload.items as { id: string; order_index: number }[]).map((item) =>
+          supabase.from("interested_in_options").update({ order_index: item.order_index }).eq("id", item.id)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }
 
