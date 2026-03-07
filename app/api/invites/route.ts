@@ -247,11 +247,21 @@ export async function POST(req: NextRequest) {
       if (authError) {
         // If user already exists, try to link them
         if (authError.message?.includes("already been registered")) {
-          // Get existing auth user
-          const { data: existingUsers } = await supabase.auth.admin.listUsers();
-          const existingUser = existingUsers?.users?.find(
-            (u) => u.email?.toLowerCase() === invite.email.toLowerCase()
-          );
+          // Get existing auth user by email — paginate to find them
+          let existingUser = null;
+          let page = 1;
+          while (!existingUser) {
+            const { data: pageData } = await supabase.auth.admin.listUsers({
+              page,
+              perPage: 50,
+            });
+            const users = pageData?.users ?? [];
+            if (users.length === 0) break;
+            existingUser = users.find(
+              (u) => u.email?.toLowerCase() === invite.email.toLowerCase()
+            ) ?? null;
+            page++;
+          }
 
           if (existingUser) {
             // Check if they already have a users row for this team

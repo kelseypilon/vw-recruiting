@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/interview-scorecards
- *
- * Actions:
- *   save_draft     { scorecard } — upsert draft (submitted_at = null)
- *   submit         { scorecard } — upsert and set submitted_at
- *   get            { interview_id, interviewer_user_id } — single scorecard
- *   get_comparison { candidate_id } — all submitted scorecards for a candidate
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const supabase = createAdminClient();
     const { action, payload } = body;

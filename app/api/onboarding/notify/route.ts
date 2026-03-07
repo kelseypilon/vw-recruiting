@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/onboarding/notify
- *
- * Sends reminder emails for overdue and due-today onboarding tasks.
- * Groups tasks by assigned_user_id and sends one email per user
- * with a summary of their outstanding tasks.
- *
- * Body: { team_id: string }
- *
- * For automatic daily reminders, set up a cron job:
- *   POST /api/onboarding/notify  { "team_id": "..." }
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const { team_id } = body;
 

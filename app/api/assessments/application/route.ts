@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
         phone,
         city,
         current_role,
-        years_experience: years_experience ? parseInt(years_experience, 10) : null,
+        years_experience: years_experience ? parseFloat(years_experience) : null,
         why_real_estate,
         why_vantage,
         biggest_achievement,
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     if (email) candidateUpdate.email = email;
     if (phone) candidateUpdate.phone = phone;
     if (current_role) candidateUpdate.current_role = current_role;
-    if (years_experience) candidateUpdate.years_experience = parseInt(years_experience, 10);
+    if (years_experience) candidateUpdate.years_experience = parseFloat(years_experience);
     candidateUpdate.is_licensed = !!has_license;
     if (referral_source) candidateUpdate.heard_about = referral_source;
 

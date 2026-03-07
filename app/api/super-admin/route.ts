@@ -164,12 +164,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: teamError.message }, { status: 500 });
   }
 
-  // Create first user (Team Lead)
+  // Create first user (owner role)
   const { error: userError } = await admin.from("users").insert({
     team_id: team.id,
     name: admin_email.split("@")[0],
     email: admin_email,
-    role: "Team Lead",
+    role: "owner",
   });
 
   if (userError) {

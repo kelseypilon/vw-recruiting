@@ -1,33 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/settings
  *
  * A unified API for all settings writes using the admin client (bypasses RLS).
- *
- * Actions:
- *   update_team             { id, name?, admin_email?, admin_cc?, group_interview_zoom_link?, group_interview_date? }
- *   update_user             { id, name?, role?, from_email?, google_booking_url? }
- *   update_user_profile     { id, name?, photo_url?, from_email?, google_booking_url?, scorecard_visibility?, notification_preferences? }
- *   update_member_title     { id, title }
- *   create_user             { team_id, name, email, role }
- *   update_role_permissions { team_id, role_permissions }
- *   update_stage            { id, name?, color? }
- *   create_stage            { team_id, name, color? }
- *   delete_stage            { id, move_candidates_to? }
- *   reorder_stages          { stages: { id, order_index }[] }
- *   get_stage_candidate_count { stage_name, team_id }
- *   update_template         { id, subject?, body? }
- *   create_template         { team_id, name, subject, body }
- *   delete_template         { id }
- *   update_criterion        { id, weight_percent?, min_threshold? }
- *   deactivate_user         { id, reassign_interviews_to?, reassign_onboarding_to? }
- *   get_user_assignments    { id, team_id }
- *   get_role_user_count     { team_id, role_name }
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    // Auth gate: require authenticated user
+    const auth = await verifyAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const supabase = createAdminClient();
     const { action, payload } = body;
@@ -728,7 +716,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { id, ...updates } = payload;
+    const { id, ...rawUpdates } = payload;
+
+    // Whitelist allowed fields per action to prevent arbitrary field injection
+    const allowedFields: Record<string, string[]> = {
+      update_team: ["name", "admin_email", "admin_cc", "group_interview_zoom_link", "group_interview_date", "plan"],
+      update_user: ["name", "role", "from_email", "google_booking_url", "virtual_booking_url", "inperson_booking_url", "virtual_meeting_link", "title"],
+      update_stage: ["name", "color", "is_active", "order_index"],
+      update_template: ["name", "subject", "body", "merge_tags", "is_active", "trigger"],
+      update_criterion: ["weight_percent", "min_threshold"],
+    };
+
+    const allowed = allowedFields[action] ?? [];
+    const updates: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (key in rawUpdates) updates[key] = rawUpdates[key];
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields provided" }, { status: 400 });
+    }
 
     if (action === "update_team") {
       const { data, error } = await supabase

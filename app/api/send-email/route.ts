@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
+import { verifyAuth } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth gate: only authenticated users can send emails
+    const auth = await verifyAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -29,6 +36,7 @@ export async function POST(req: NextRequest) {
       from: string;
       to: string[];
       subject: string;
+      html: string;
       text: string;
       cc?: string[];
       attachments?: { filename: string; content: Buffer }[];
@@ -36,7 +44,8 @@ export async function POST(req: NextRequest) {
       from: fromAddress,
       to: Array.isArray(to) ? to : [to],
       subject,
-      text: emailBody,
+      html: emailBody,
+      text: emailBody.replace(/<[^>]*>/g, ""),
     };
 
     if (cc) {

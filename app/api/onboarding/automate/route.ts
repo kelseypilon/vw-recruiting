@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/onboarding/automate
- *
- * Runs an automation for an onboarding task.
- * Body: { task_id, candidate_id, team_id, automation_key, entry_id? }
- *
- * Supported automation_key values:
- *   - google_workspace  → placeholder (would create Google Workspace account)
- *   - teachable         → placeholder (would enrol in Teachable course)
- *   - slack             → sends Slack webhook notification
- *   - follow_up_boss    → placeholder (would create FUB contact)
- *
- * All automations are fire-and-forget style. On success the caller should
- * mark the task as completed (the dashboard does this automatically).
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { task_id, candidate_id, team_id, automation_key, entry_id } =
       await req.json();
 

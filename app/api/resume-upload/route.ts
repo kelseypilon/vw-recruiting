@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/resume-upload
- *
- * Uploads a resume file to Supabase storage (admin client, bypasses RLS).
- * Expects multipart/form-data with:
- *   - file: the resume file (PDF, Word, or image, max 10MB)
- *   - candidateId: the candidate's ID
- *   - teamId: the team's ID
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const candidateId = formData.get("candidateId") as string | null;

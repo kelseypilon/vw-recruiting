@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeamId } from "@/lib/get-team-id";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/notes
- *
- * Save a candidate note using admin client (bypasses RLS).
- *
- * Body: { candidate_id, note_text, author_id? }
- *   - If author_id is omitted, falls back to the first team user.
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const { candidate_id, note_text, author_id } = body;
 

@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 
 /**
  * POST /api/interview-questions/my-set
- *
- * Actions:
- *   get      { user_id, team_id }
- *   toggle   { user_id, question_id, team_id, is_active }
- *   reorder  { user_id, items: [{ question_id, sort_order }] }
- *   init     { user_id, team_id } — bulk-create selections for all active questions
+ * Requires authenticated user session.
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAuth();
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const supabase = createAdminClient();
     const { action, payload } = body;

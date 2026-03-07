@@ -13,7 +13,7 @@ export default async function CandidatesPage() {
     data: { user: authUser },
   } = await supabase.auth.getUser();
 
-  const [stagesResult, candidatesResult, profileResult, usersResult, sessionsResult, teamResult] = await Promise.all([
+  const [stagesResult, candidatesResult, profileResult, usersResult, sessionsResult, teamResult, stageHistoryResult] = await Promise.all([
     adminSupabase
       .from("pipeline_stages")
       .select("*")
@@ -44,6 +44,11 @@ export default async function CandidatesPage() {
       .select("group_interview_zoom_link, business_units")
       .eq("id", teamId)
       .single(),
+    // Fetch the most recent stage transition per candidate for accurate daysInStage
+    adminSupabase
+      .from("stage_history")
+      .select("candidate_id, created_at")
+      .order("created_at", { ascending: false }),
   ]);
 
   const stages: PipelineStage[] = stagesResult.data ?? [];
@@ -54,17 +59,30 @@ export default async function CandidatesPage() {
   const teamZoomLink: string | null = teamResult.data?.group_interview_zoom_link ?? null;
   const businessUnits: string[] = (teamResult.data?.business_units as string[] | null) ?? ["Residential", "Commercial"];
 
+  // Build map of candidate_id -> most recent stage transition date
+  const stageHistoryMap = new Map<string, string>();
+  for (const entry of stageHistoryResult.data ?? []) {
+    // First entry per candidate (ordered desc) is the most recent
+    if (!stageHistoryMap.has(entry.candidate_id)) {
+      stageHistoryMap.set(entry.candidate_id, entry.created_at);
+    }
+  }
+
   const now = new Date();
-  const candidateCards: CandidateCard[] = candidates.map((c) => ({
-    ...c,
-    daysInStage: Math.max(
-      1,
-      Math.floor(
-        (now.getTime() - new Date(c.created_at).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-    ),
-  }));
+  const candidateCards: CandidateCard[] = candidates.map((c) => {
+    // Use the most recent stage transition date, or fall back to created_at
+    const stageEnteredAt = stageHistoryMap.get(c.id) ?? c.created_at;
+    return {
+      ...c,
+      daysInStage: Math.max(
+        1,
+        Math.floor(
+          (now.getTime() - new Date(stageEnteredAt).getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      ),
+    };
+  });
 
   return (
     <KanbanBoard
