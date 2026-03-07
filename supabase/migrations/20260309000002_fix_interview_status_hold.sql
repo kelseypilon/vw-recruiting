@@ -21,3 +21,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_log_unique_interview
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_log_unique_candidate
   ON notifications_log(type, escalation_level, candidate_id)
   WHERE candidate_id IS NOT NULL;
+
+-- Index on sent_at for time-based queries (cleanup, reporting)
+CREATE INDEX IF NOT EXISTS idx_notifications_log_sent_at
+  ON notifications_log(sent_at);
