@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/user-permissions-context";
 import type {
@@ -26,6 +27,7 @@ import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-
 import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
 import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-modal";
 import NotAFitModal from "@/app/dashboard/candidates/not-a-fit-modal";
+import DateTimePicker from "@/components/date-time-picker";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -74,9 +76,21 @@ export default function CandidateProfile({
   const [localInterviews, setLocalInterviews] = useState(interviews);
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTemplateHint, setEmailTemplateHint] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews">("profile");
+
+  // Handle ?sendEmail=true from kanban Not a Fit redirect
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("sendEmail") === "true" && candidate.email) {
+      setEmailTemplateHint("not_a_fit");
+      setShowEmailModal(true);
+      // Clean up URL without reload
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
 
@@ -320,8 +334,9 @@ export default function CandidateProfile({
           templates={emailTemplates}
           leaders={leaders}
           team={team}
-          onClose={() => setShowEmailModal(false)}
+          onClose={() => { setShowEmailModal(false); setEmailTemplateHint(null); }}
           currentUserId={currentUserId}
+          preselectedTemplateHint={emailTemplateHint}
         />
       )}
 
@@ -376,7 +391,8 @@ export default function CandidateProfile({
               ]);
             }
             setIsMoving(false);
-            // Open the email modal so they can compose a let-down email
+            // Open the email modal with not_a_fit template pre-selected
+            setEmailTemplateHint("not_a_fit");
             setShowEmailModal(true);
           }}
           onMoveWithout={async () => {
@@ -704,7 +720,7 @@ function OnboardingTab({
 
 /* ── Editable Field ─────────────────────────────────────────────── */
 
-const ROLE_OPTIONS = ["Agent", "Employee", "Admin", "Property Manager", "Other"];
+const ROLE_OPTIONS = ["Agent", "Employee", "Other"];
 
 function EditableField({
   label,
@@ -1036,9 +1052,12 @@ function ResumeCard({
       "application/pdf",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
     ];
     if (!allowedTypes.includes(file.type)) {
-      setUploadError("Please upload a PDF or Word document");
+      setUploadError("Please upload a PDF, Word document, or image (JPG/PNG)");
       return;
     }
 
@@ -1155,7 +1174,7 @@ function ResumeCard({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               onChange={handleFileInput}
               disabled={isUploading}
               className="hidden"
@@ -1189,11 +1208,11 @@ function ResumeCard({
           <span className={`text-sm ${isDragOver ? "text-brand" : "text-[#a59494]"}`}>
             {isUploading ? "Uploading..." : "Drop resume here or click to upload"}
           </span>
-          <span className="text-xs text-[#a59494]">PDF or Word, max 10MB</span>
+          <span className="text-xs text-[#a59494]">PDF, Word, or image — max 10MB</span>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.doc,.docx"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
             onChange={handleFileInput}
             disabled={isUploading}
             className="hidden"
@@ -1732,6 +1751,7 @@ function SendEmailModal({
   team,
   onClose,
   currentUserId,
+  preselectedTemplateHint,
 }: {
   candidate: Candidate;
   templates: EmailTemplate[];
@@ -1739,6 +1759,7 @@ function SendEmailModal({
   team: Team | null;
   onClose: () => void;
   currentUserId?: string;
+  preselectedTemplateHint?: string | null;
 }) {
   // Senders: all team members (prefer from_email, fall back to regular email)
   const senders = leaders.filter((l) => l.from_email || l.email);
@@ -1750,9 +1771,23 @@ function SendEmailModal({
   const [ccEmail, setCcEmail] = useState(
     team?.admin_cc && team?.admin_email ? team.admin_email : ""
   );
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  // Auto-select template if hint provided (e.g. "not_a_fit")
+  const hintTemplate = preselectedTemplateHint
+    ? templates.find((t) => t.is_active && (t.name.toLowerCase().includes(preselectedTemplateHint) || t.trigger?.toLowerCase().includes(preselectedTemplateHint)))
+    : null;
+
+  const senderForMerge = leaders.find((l) => l.id === defaultSender);
+  function mergeTagsInit(text: string) {
+    return text
+      .replace(/\{\{first_name\}\}/g, candidate.first_name)
+      .replace(/\{\{last_name\}\}/g, candidate.last_name)
+      .replace(/\{\{team_name\}\}/g, team?.name ?? "Our Team")
+      .replace(/\{\{sender_name\}\}/g, senderForMerge?.name ?? "Recruiting Team");
+  }
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState(hintTemplate?.id ?? "");
+  const [subject, setSubject] = useState(hintTemplate ? mergeTagsInit(hintTemplate.subject) : "");
+  const [body, setBody] = useState(hintTemplate ? mergeTagsInit(hintTemplate.body) : "");
   const [isSending, setIsSending] = useState(false);
   const [sendStatus, setSendStatus] = useState("");
 
@@ -2176,11 +2211,9 @@ function ScheduledSubTab({
                   Date & Time
                   <span className="font-normal ml-1">(optional)</span>
                 </label>
-                <input
-                  type="datetime-local"
+                <DateTimePicker
                   value={newInterviewDate}
-                  onChange={(e) => setNewInterviewDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+                  onChange={setNewInterviewDate}
                 />
               </div>
               <button
@@ -2502,10 +2535,32 @@ function ScorecardSubTab({
     : null;
 
   async function handleSaveOrSubmit(doSubmit: boolean) {
-    if (!activeInterview) return;
     setSaving(true);
 
     try {
+      // If no active interview, auto-create one so we have an interview_id for the scorecard
+      let interviewId = activeInterview?.id;
+      if (!interviewId) {
+        const supabase = (await import("@/lib/supabase/client")).createClient();
+        const { data: newInterview, error: intErr } = await supabase
+          .from("interviews")
+          .insert({
+            team_id: teamId,
+            candidate_id: candidate.id,
+            interview_type: "1on1 Interview",
+            status: "completed",
+            notes: "Auto-created for scorecard entry",
+          })
+          .select("id")
+          .single();
+        if (intErr || !newInterview) {
+          console.error("Failed to create interview for scorecard:", intErr);
+          setSaving(false);
+          return;
+        }
+        interviewId = newInterview.id;
+      }
+
       // Build category_scores and answers
       const category_scores: Record<string, number> = {};
       const answers = categories
@@ -2527,7 +2582,7 @@ function ScorecardSubTab({
         body: JSON.stringify({
           action: doSubmit ? "submit" : "save_draft",
           payload: {
-            interview_id: activeInterview.id,
+            interview_id: interviewId,
             interviewer_user_id: currentUserId,
             candidate_id: candidate.id,
             team_id: teamId,
@@ -2596,14 +2651,16 @@ function ScorecardSubTab({
   return (
     <div className="space-y-4">
       {/* Scorecard Form */}
-      {activeInterview && !submitted ? (
+      {!submitted ? (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
           <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-[#272727]">Rate by Category</h3>
-              <p className="text-xs text-[#a59494] mt-0.5">
-                For: {activeInterview.interview_type}
-              </p>
+              {activeInterview && (
+                <p className="text-xs text-[#a59494] mt-0.5">
+                  For: {activeInterview.interview_type}
+                </p>
+              )}
             </div>
             {overallScore !== null && (
               <div className="flex items-center gap-2">
@@ -2707,12 +2764,6 @@ function ScorecardSubTab({
               </button>
             </div>
           </div>
-        </div>
-      ) : !activeInterview ? (
-        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-8 text-center">
-          <p className="text-sm text-[#a59494]">
-            No interview to score yet. Schedule an interview first.
-          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6 text-center">

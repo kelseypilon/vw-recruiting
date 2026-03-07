@@ -13,6 +13,7 @@ export interface Team {
   brand_primary_color: string;
   brand_secondary_color: string;
   brand_show_powered_by: boolean;
+  office_address: string | null;
   created_at: string;
 }
 
@@ -37,6 +38,9 @@ export interface TeamUser {
   title: string | null;
   from_email: string | null;
   google_booking_url: string | null;
+  virtual_booking_url: string | null;
+  inperson_booking_url: string | null;
+  virtual_meeting_link: string | null;
   scorecard_visibility: string;
   photo_url: string | null;
   notification_preferences: {

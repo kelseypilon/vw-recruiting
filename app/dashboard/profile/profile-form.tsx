@@ -52,6 +52,9 @@ export default function ProfileForm({ user }: Props) {
   const [photoUrl, setPhotoUrl] = useState(user.photo_url ?? "");
   const [fromEmail, setFromEmail] = useState(user.from_email ?? "");
   const [bookingUrl, setBookingUrl] = useState(user.google_booking_url ?? "");
+  const [virtualBookingUrl, setVirtualBookingUrl] = useState(user.virtual_booking_url ?? "");
+  const [inpersonBookingUrl, setInpersonBookingUrl] = useState(user.inperson_booking_url ?? "");
+  const [virtualMeetingLink, setVirtualMeetingLink] = useState(user.virtual_meeting_link ?? "");
   const [scorecardVisibility, setScorecardVisibility] = useState(
     user.scorecard_visibility ?? "team"
   );
@@ -73,6 +76,9 @@ export default function ProfileForm({ user }: Props) {
     photoUrl !== (user.photo_url ?? "") ||
     fromEmail !== (user.from_email ?? "") ||
     bookingUrl !== (user.google_booking_url ?? "") ||
+    virtualBookingUrl !== (user.virtual_booking_url ?? "") ||
+    inpersonBookingUrl !== (user.inperson_booking_url ?? "") ||
+    virtualMeetingLink !== (user.virtual_meeting_link ?? "") ||
     scorecardVisibility !== (user.scorecard_visibility ?? "team") ||
     emailReminders !== (user.notification_preferences?.email_reminders ?? true) ||
     digest !== (user.notification_preferences?.digest ?? false);
@@ -140,6 +146,9 @@ export default function ProfileForm({ user }: Props) {
         photo_url: photoUrl.trim() || null,
         from_email: fromEmail.trim() || null,
         google_booking_url: bookingUrl.trim() || null,
+        virtual_booking_url: virtualBookingUrl.trim() || null,
+        inperson_booking_url: inpersonBookingUrl.trim() || null,
+        virtual_meeting_link: virtualMeetingLink.trim() || null,
         scorecard_visibility: scorecardVisibility,
         notification_preferences: {
           email_reminders: emailReminders,
@@ -318,25 +327,74 @@ export default function ProfileForm({ user }: Props) {
           </div>
         </div>
 
-        {/* Booking URL */}
+        {/* Booking URLs */}
         <div className="p-6 space-y-4">
           <h3 className="text-sm font-semibold text-[#272727] uppercase tracking-wide">
-            Scheduling
+            Scheduling &amp; Booking Links
           </h3>
 
           <div>
             <label className="block text-sm font-medium text-[#272727] mb-1">
-              Google Booking URL
+              Virtual Booking Link
+            </label>
+            <input
+              type="url"
+              value={virtualBookingUrl}
+              onChange={(e) => setVirtualBookingUrl(e.target.value)}
+              placeholder="https://calendly.com/... or https://calendar.google.com/..."
+              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <p className="text-xs text-[#a59494] mt-1">
+              Booking link for virtual/video interviews.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              In-Person Booking Link
+            </label>
+            <input
+              type="url"
+              value={inpersonBookingUrl}
+              onChange={(e) => setInpersonBookingUrl(e.target.value)}
+              placeholder="https://calendly.com/... or https://calendar.google.com/..."
+              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <p className="text-xs text-[#a59494] mt-1">
+              Booking link for in-person interviews at the office.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Virtual Meeting Link
+            </label>
+            <input
+              type="url"
+              value={virtualMeetingLink}
+              onChange={(e) => setVirtualMeetingLink(e.target.value)}
+              placeholder="https://zoom.us/j/... or https://meet.google.com/..."
+              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <p className="text-xs text-[#a59494] mt-1">
+              Your personal Zoom or Google Meet link for virtual interviews.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Legacy Booking URL
+              <span className="text-xs font-normal text-[#a59494] ml-1">(deprecated)</span>
             </label>
             <input
               type="url"
               value={bookingUrl}
               onChange={(e) => setBookingUrl(e.target.value)}
               placeholder="https://calendar.google.com/..."
-              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 text-[#a59494]"
             />
             <p className="text-xs text-[#a59494] mt-1">
-              Your personal booking link for scheduling interviews with candidates.
+              Previous booking link. Use the fields above instead.
             </p>
           </div>
         </div>

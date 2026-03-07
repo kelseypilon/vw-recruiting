@@ -104,6 +104,9 @@ export async function POST(req: NextRequest) {
         "photo_url",
         "from_email",
         "google_booking_url",
+        "virtual_booking_url",
+        "inperson_booking_url",
+        "virtual_meeting_link",
         "scorecard_visibility",
         "notification_preferences",
       ];

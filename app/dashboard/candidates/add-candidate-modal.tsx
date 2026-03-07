@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
-  const ROLE_OPTIONS = ["Agent", "Employee", "Admin", "Property Manager", "Other"];
+  const ROLE_OPTIONS = ["Agent", "Employee", "Other"];
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { TeamUser, GroupInterviewSession } from "@/lib/types";
+import DateTimePicker from "@/components/date-time-picker";
 
 interface Props {
   candidateName: string;
@@ -361,11 +362,9 @@ function OneOnOneFlow({
             <label className="block text-sm font-medium text-[#272727] mb-1">
               Date & Time <span className="text-xs font-normal text-[#a59494]">(optional)</span>
             </label>
-            <input
-              type="datetime-local"
+            <DateTimePicker
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              onChange={setScheduledAt}
             />
           </div>
 

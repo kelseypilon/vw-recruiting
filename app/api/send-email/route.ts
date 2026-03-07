@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const resend = new Resend(apiKey);
     const body = await req.json();
-    const { to, subject, body: emailBody, from_email, cc } = body;
+    const { to, subject, body: emailBody, from_email, cc, attachments } = body;
 
     if (!to || !subject || !emailBody) {
       return NextResponse.json(
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       subject: string;
       text: string;
       cc?: string[];
+      attachments?: { filename: string; content: Buffer }[];
     } = {
       from: fromAddress,
       to: Array.isArray(to) ? to : [to],
@@ -42,7 +43,18 @@ export async function POST(req: NextRequest) {
       emailPayload.cc = Array.isArray(cc) ? cc : [cc];
     }
 
-    const { data, error } = await resend.emails.send(emailPayload);
+    // Support file attachments (e.g. .ics calendar files)
+    // Each attachment: { filename: string, content: string }
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      emailPayload.attachments = attachments.map(
+        (a: { filename: string; content: string }) => ({
+          filename: a.filename,
+          content: Buffer.from(a.content, "utf-8"),
+        })
+      );
+    }
+
+    const { data, error } = await resend.emails.send(emailPayload as Parameters<typeof resend.emails.send>[0]);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

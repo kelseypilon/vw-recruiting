@@ -34,7 +34,7 @@ export default async function GroupInterviewsPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("teams")
-      .select("group_interview_zoom_link, group_interview_date")
+      .select("group_interview_date")
       .eq("id", TEAM_ID)
       .single(),
   ]);
@@ -50,7 +50,6 @@ export default async function GroupInterviewsPage() {
       leaders={leaders}
       teamId={TEAM_ID}
       currentUserId={currentUserId}
-      teamZoomLink={teamResult.data?.group_interview_zoom_link ?? null}
       teamInterviewDate={teamResult.data?.group_interview_date ?? null}
     />
   );

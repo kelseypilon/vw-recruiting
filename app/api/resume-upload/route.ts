@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *
  * Uploads a resume file to Supabase storage (admin client, bypasses RLS).
  * Expects multipart/form-data with:
- *   - file: the resume file (PDF or Word, max 10MB)
+ *   - file: the resume file (PDF, Word, or image, max 10MB)
  *   - candidateId: the candidate's ID
  *   - teamId: the team's ID
  */
@@ -24,15 +24,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate file type
+    // Validate file type — PDF, Word, or images
     const allowedTypes = [
       "application/pdf",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
     ];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Please upload a PDF or Word document" },
+        { error: "Please upload a PDF, Word document, or image (JPG/PNG)" },
         { status: 400 }
       );
     }

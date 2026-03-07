@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Candidate, TeamUser, GroupInterviewSession } from "@/lib/types";
 import { usePermissions } from "@/lib/user-permissions-context";
+import DateTimePicker from "@/components/date-time-picker";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -12,7 +13,6 @@ interface Props {
   leaders: TeamUser[];
   teamId: string;
   currentUserId: string;
-  teamZoomLink: string | null;
   teamInterviewDate: string | null;
 }
 
@@ -23,7 +23,6 @@ export default function GroupInterviewsDashboard({
   leaders,
   teamId,
   currentUserId,
-  teamZoomLink,
   teamInterviewDate,
 }: Props) {
   const router = useRouter();
@@ -105,7 +104,6 @@ export default function GroupInterviewsDashboard({
       {showSettings && canManage && (
         <SessionSettingsPanel
           teamId={teamId}
-          initialZoomLink={teamZoomLink}
           initialInterviewDate={teamInterviewDate}
           onClose={() => setShowSettings(false)}
         />
@@ -206,11 +204,6 @@ export default function GroupInterviewsDashboard({
                           <p className="text-sm font-medium text-[#272727]">
                             {session.title}
                           </p>
-                          {session.zoom_link && (
-                            <p className="text-xs text-brand">
-                              Zoom link attached
-                            </p>
-                          )}
                         </div>
                       </div>
                     </td>
@@ -305,16 +298,13 @@ function StatCard({
 
 function SessionSettingsPanel({
   teamId,
-  initialZoomLink,
   initialInterviewDate,
   onClose,
 }: {
   teamId: string;
-  initialZoomLink: string | null;
   initialInterviewDate: string | null;
   onClose: () => void;
 }) {
-  const [zoomLink, setZoomLink] = useState(initialZoomLink ?? "");
   const [interviewDate, setInterviewDate] = useState(
     initialInterviewDate
       ? new Date(initialInterviewDate).toISOString().slice(0, 16)
@@ -334,7 +324,6 @@ function SessionSettingsPanel({
           action: "update_team",
           payload: {
             id: teamId,
-            group_interview_zoom_link: zoomLink || null,
             group_interview_date: interviewDate
               ? new Date(interviewDate).toISOString()
               : null,
@@ -363,7 +352,7 @@ function SessionSettingsPanel({
             Session Settings
           </h3>
           <p className="text-xs text-[#a59494] mt-0.5">
-            Default Zoom link and next scheduled group interview date
+            Next scheduled group interview date
           </p>
         </div>
         <button
@@ -376,28 +365,14 @@ function SessionSettingsPanel({
           </svg>
         </button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-        <div>
-          <label className="block text-sm font-medium text-[#272727] mb-1">
-            Zoom / Meet Link
-          </label>
-          <input
-            type="url"
-            value={zoomLink}
-            onChange={(e) => setZoomLink(e.target.value)}
-            placeholder="https://zoom.us/j/..."
-            className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-          />
-        </div>
+      <div className="max-w-sm">
         <div>
           <label className="block text-sm font-medium text-[#272727] mb-1">
             Next Group Interview Date
           </label>
-          <input
-            type="datetime-local"
+          <DateTimePicker
             value={interviewDate}
-            onChange={(e) => setInterviewDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+            onChange={setInterviewDate}
           />
         </div>
       </div>
@@ -444,7 +419,6 @@ function CreateSessionModal({
     `Group Interview — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
   );
   const [sessionDate, setSessionDate] = useState("");
-  const [zoomLink, setZoomLink] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -467,7 +441,6 @@ function CreateSessionModal({
             team_id: teamId,
             title: title.trim(),
             session_date: sessionDate || null,
-            zoom_link: zoomLink || null,
             created_by: currentUserId || null,
             candidate_ids: selectedCandidates,
           },
@@ -532,26 +505,9 @@ function CreateSessionModal({
             <label className="block text-sm font-medium text-[#272727] mb-1.5">
               Date & Time
             </label>
-            <input
-              type="datetime-local"
+            <DateTimePicker
               value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-            />
-          </div>
-
-          {/* Zoom Link */}
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1.5">
-              Zoom Link{" "}
-              <span className="text-[#a59494] font-normal">(optional)</span>
-            </label>
-            <input
-              type="url"
-              value={zoomLink}
-              onChange={(e) => setZoomLink(e.target.value)}
-              placeholder="https://zoom.us/j/..."
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+              onChange={setSessionDate}
             />
           </div>
 

@@ -18,6 +18,7 @@ export interface EmailPreviewData {
   notes: string;
   cc?: string;
   interviewId?: string; // If set, skip interview creation (already exists)
+  icsData?: string; // .ics calendar file content to attach
 }
 
 interface Props {
@@ -89,6 +90,11 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
         from_email: data.fromEmail || undefined,
       };
       if (data.cc) payload.cc = data.cc;
+      if (data.icsData) {
+        payload.attachments = [
+          { filename: "invite.ics", content: data.icsData },
+        ];
+      }
 
       const res = await fetch("/api/send-email", {
         method: "POST",
