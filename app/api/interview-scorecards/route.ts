@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
         overall_score: overallScore,
         recommendation: sc.recommendation ?? null,
         summary_notes: sc.summary_notes ?? null,
-        submitted_at: action === "submit" ? new Date().toISOString() : null,
+        ...(action === "submit" ? { submitted_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       };
 

@@ -99,6 +99,7 @@ export default function IntegrationsTab({ integrations: initial, teamId }: Props
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ key: string; success: boolean; message: string } | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
 
   function startEdit(intKey: string) {
     const current = integrations[intKey as keyof TeamIntegrations] as Record<string, string> | undefined;
@@ -138,6 +139,7 @@ export default function IntegrationsTab({ integrations: initial, teamId }: Props
           payload: { team_id: teamId, integrations: updated },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setIntegrations(updated);
@@ -161,6 +163,7 @@ export default function IntegrationsTab({ integrations: initial, teamId }: Props
           payload: { team_id: teamId, integration_key: intKey },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
       setTestResult({
         key: intKey,
@@ -245,20 +248,50 @@ export default function IntegrationsTab({ integrations: initial, teamId }: Props
             {isEditing && (
               <div className="border-t border-[#a59494]/10 px-4 py-4 bg-[#f5f0f0]/30">
                 <div className="space-y-3">
-                  {def.fields.map((field) => (
+                  {def.fields.map((field) => {
+                    const fieldId = `${def.key}-${field.key}`;
+                    const isPasswordField = field.type === "password";
+                    const isVisible = visiblePasswords.has(fieldId);
+                    return (
                     <div key={field.key} className="flex flex-col gap-1">
                       <label className="text-xs font-semibold text-[#272727]">
                         {field.label}
                       </label>
-                      <input
-                        type={field.type === "password" ? "text" : field.type}
-                        value={editValues[field.key] ?? ""}
-                        onChange={(e) =>
-                          setEditValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                        }
-                        placeholder={field.placeholder}
-                        className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-                      />
+                      <div className="relative">
+                        <input
+                          type={isPasswordField && !isVisible ? "password" : field.type === "password" ? "text" : field.type}
+                          value={editValues[field.key] ?? ""}
+                          onChange={(e) =>
+                            setEditValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                          }
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition pr-10"
+                        />
+                        {isPasswordField && (
+                          <button
+                            type="button"
+                            onClick={() => setVisiblePasswords((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(fieldId)) next.delete(fieldId);
+                              else next.add(fieldId);
+                              return next;
+                            })}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[#a59494] hover:text-[#272727] transition"
+                            tabIndex={-1}
+                          >
+                            {isVisible ? (
+                              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0012 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                              </svg>
+                            ) : (
+                              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                      </div>
                       {/* Show masked current value if exists and field is password */}
                       {field.type === "password" && Boolean(config?.[field.key]) && !editValues[field.key] && (
                         <p className="text-[10px] text-[#a59494]">
@@ -266,7 +299,8 @@ export default function IntegrationsTab({ integrations: initial, teamId }: Props
                         </p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Enabled toggle */}
                   <label className="flex items-center gap-2 cursor-pointer pt-1">

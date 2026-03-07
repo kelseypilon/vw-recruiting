@@ -214,11 +214,13 @@ export default function ProfileForm({ user }: Props) {
   }
 
   const initials = name
-    .split(" ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
     .map((w) => w[0])
     .join("")
     .toUpperCase()
-    .slice(0, 2);
+    .slice(0, 2) || "?";
 
   return (
     <div className="max-w-2xl mx-auto">

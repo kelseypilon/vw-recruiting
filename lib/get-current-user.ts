@@ -21,7 +21,7 @@ export async function getCurrentUserProfile(): Promise<TeamUser | null> {
     .from("users")
     .select("id, team_id, name, email, role, from_email")
     .eq("team_id", teamId)
-    .eq("email", user.email!)
+    .eq("email", user.email ?? "")
     .single();
 
   return (data as TeamUser) ?? null;

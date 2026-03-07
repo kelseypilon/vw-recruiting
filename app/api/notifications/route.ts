@@ -33,7 +33,7 @@ async function verifyCaller(): Promise<boolean> {
     const { data: profile } = await admin
       .from("users")
       .select("is_super_admin")
-      .eq("email", user.email!)
+      .eq("email", user.email ?? "")
       .eq("is_super_admin", true)
       .maybeSingle();
 

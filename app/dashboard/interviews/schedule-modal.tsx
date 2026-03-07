@@ -122,7 +122,7 @@ export default function ScheduleModal({
     if (scheduledAmPm === "PM" && hour !== 12) hour += 12;
     if (scheduledAmPm === "AM" && hour === 12) hour = 0;
     const min = parseInt(scheduledMinute, 10);
-    const dt = new Date(scheduledDate);
+    const dt = new Date(scheduledDate + "T12:00:00");
     dt.setHours(hour, min, 0, 0);
     return dt.toISOString();
   }

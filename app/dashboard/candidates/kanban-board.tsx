@@ -96,7 +96,7 @@ export default function KanbanBoard({
   /** Optimistic UI-only stage update */
   function updateStageOptimistic(candidateId: string, newStage: string) {
     setCandidates((prev) =>
-      prev.map((c) => (c.id === candidateId ? { ...c, stage: newStage } : c))
+      prev.map((c) => (c.id === candidateId ? { ...c, stage: newStage, daysInStage: 0 } : c))
     );
   }
 
@@ -109,7 +109,7 @@ export default function KanbanBoard({
     const supabase = createClient();
     const { error } = await supabase
       .from("candidates")
-      .update({ stage: toStage })
+      .update({ stage: toStage, stage_entered_at: new Date().toISOString() })
       .eq("id", candidateId);
     if (error) {
       // Revert on failure

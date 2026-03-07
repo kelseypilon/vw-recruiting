@@ -74,7 +74,7 @@ export default function SessionDetail({
 
   async function handleStatusChange(newStatus: string) {
     try {
-      await fetch("/api/group-interviews", {
+      const res = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -82,6 +82,7 @@ export default function SessionDetail({
           payload: { session_id: session.id, status: newStatus },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       setSession((prev) => ({ ...prev, status: newStatus }));
     } catch {
       console.error("Failed to update status");
@@ -148,6 +149,7 @@ export default function SessionDetail({
             },
           }),
         });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
         const json = await res.json();
         if (json.data) {
           setSession((prev) => {
@@ -182,7 +184,7 @@ export default function SessionDetail({
     async (text: string) => {
       setGeneralNotesStatus("saving");
       try {
-        await fetch("/api/group-interviews", {
+        const res = await fetch("/api/group-interviews", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -190,6 +192,7 @@ export default function SessionDetail({
             payload: { session_id: session.id, general_notes: text },
           }),
         });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
         setSession((prev) => ({ ...prev, general_notes: text }));
         setGeneralNotesStatus("saved");
         setTimeout(() => setGeneralNotesStatus("idle"), 2000);
@@ -281,7 +284,7 @@ export default function SessionDetail({
 
   async function saveSummary() {
     try {
-      await fetch("/api/group-interviews", {
+      const res = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -289,6 +292,7 @@ export default function SessionDetail({
           payload: { session_id: session.id, summary: summaryDraft },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       setSession((prev) => ({ ...prev, summary: summaryDraft }));
       setEditingSummary(false);
     } catch {
@@ -300,7 +304,7 @@ export default function SessionDetail({
 
   async function removeCandidate(candidateId: string) {
     try {
-      await fetch("/api/group-interviews", {
+      const res = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -308,6 +312,7 @@ export default function SessionDetail({
           payload: { session_id: session.id, candidate_id: candidateId },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       setSession((prev) => ({
         ...prev,
         candidates: prev.candidates.filter((c) => c.id !== candidateId),
@@ -334,6 +339,7 @@ export default function SessionDetail({
           payload: { session_id: session.id, candidate_id: candidateId },
         }),
       });
+      if (!addRes.ok) throw new Error(`Request failed (${addRes.status})`);
       const addJson = await addRes.json();
       if (addJson.error) {
         console.error("Failed to add candidate:", addJson.error);
@@ -385,6 +391,7 @@ export default function SessionDetail({
           payload: { session_id: session.id },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const json = await res.json();
       if (json.data) {
         setSession(json.data);
@@ -1193,6 +1200,7 @@ function AddCandidateModal({
             payload: { team_id: teamId },
           }),
         });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
         const json = await res.json();
         setAllCandidates(json.data ?? []);
       } catch {

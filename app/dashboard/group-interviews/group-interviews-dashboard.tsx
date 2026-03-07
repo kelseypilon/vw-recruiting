@@ -47,6 +47,7 @@ export default function GroupInterviewsDashboard({
             payload: { team_id: teamId },
           }),
         });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
         const json = await res.json();
         setSessions(json.data ?? []);
       } catch {
@@ -446,6 +447,7 @@ function CreateSessionModal({
           },
         }),
       });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const json = await res.json();
       if (json.data) {
         onCreated({

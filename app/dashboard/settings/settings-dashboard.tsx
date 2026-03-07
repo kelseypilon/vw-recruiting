@@ -113,6 +113,9 @@ async function saveSettings(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, payload }),
   });
+  if (!res.ok) {
+    return { error: `Request failed (${res.status})` };
+  }
   return res.json();
 }
 

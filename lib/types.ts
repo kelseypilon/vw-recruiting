@@ -91,7 +91,7 @@ export interface Candidate {
   phone: string | null;
   role_applied: string | null;
   is_licensed: boolean | null;
-  years_experience: number | null;
+  years_experience: string | number | null;
   transactions_2024: number | null;
   current_role: string | null;
   heard_about: string | null;
@@ -127,6 +127,7 @@ export interface Candidate {
   kanban_hold: boolean;
   kanban_hold_reason: string | null;
   is_isa: boolean;
+  stage_entered_at: string | null;
   created_at: string;
 }
 

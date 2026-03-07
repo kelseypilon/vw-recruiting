@@ -111,12 +111,14 @@ export default function SuperAdminDashboard() {
                       className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                       style={{ backgroundColor: team.brand_primary_color }}
                     >
-                      {(team.brand_name || team.name)
-                        .split(" ")
+                      {(team.brand_name || team.name || "?")
+                        .trim()
+                        .split(/\s+/)
+                        .filter(Boolean)
                         .slice(0, 2)
                         .map((w) => w[0])
                         .join("")
-                        .toUpperCase()}
+                        .toUpperCase() || "?"}
                     </div>
                     <span className="font-medium text-[#272727]">
                       {team.brand_name || team.name}

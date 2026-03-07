@@ -10,7 +10,7 @@ export default async function SuperAdminPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/dashboard");
+    redirect("/login");
   }
 
   // Check is_super_admin column
@@ -18,7 +18,7 @@ export default async function SuperAdminPage() {
   const { data: profile } = await admin
     .from("users")
     .select("is_super_admin")
-    .eq("email", user.email!)
+    .eq("email", user.email ?? "")
     .eq("is_super_admin", true)
     .maybeSingle();
 

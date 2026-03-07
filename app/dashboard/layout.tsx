@@ -56,12 +56,12 @@ export default async function DashboardRootLayout({
       .from("users")
       .select("id, team_id, name, email, role, from_email")
       .eq("team_id", teamId)
-      .eq("email", user.email!)
+      .eq("email", user.email ?? "")
       .single(),
     admin
       .from("users")
       .select("is_super_admin")
-      .eq("email", user.email!)
+      .eq("email", user.email ?? "")
       .eq("is_super_admin", true)
       .maybeSingle(),
   ]);
