@@ -14,6 +14,9 @@ export interface Team {
   brand_secondary_color: string;
   brand_show_powered_by: boolean;
   office_address: string | null;
+  threshold_stuck_days: number;
+  threshold_scorecard_hours: number;
+  threshold_escalation_hours: number;
   created_at: string;
 }
 
@@ -44,6 +47,7 @@ export interface TeamUser {
   scorecard_visibility: string;
   photo_url: string | null;
   is_active: boolean;
+  is_escalation_contact: boolean;
   notification_preferences: {
     email_reminders: boolean;
     digest: boolean;
@@ -94,6 +98,8 @@ export interface Candidate {
   hire_type: string | null;
   interview_score: number | null;
   start_date: string | null;
+  kanban_hold: boolean;
+  kanban_hold_reason: string | null;
   created_at: string;
 }
 
@@ -126,8 +132,12 @@ export interface Interview {
   candidate_id: string;
   interview_type: string;
   scheduled_at: string | null;
-  status: "scheduled" | "completed" | "cancelled" | "no_show";
+  status: "scheduled" | "completed" | "cancelled" | "no_show" | "hold";
   notes: string | null;
+  hold_reason: string | null;
+  hold_follow_up_date: string | null;
+  hold_set_at: string | null;
+  hold_escalation_level: number;
   created_at: string;
   candidate?: { first_name: string; last_name: string; role_applied: string | null; stage: string };
 }
@@ -305,4 +315,29 @@ export interface GroupInterviewNote {
   created_at: string;
   updated_at: string;
   author?: { name: string };
+}
+
+/* ── Notification System ──────────────────────────────────────── */
+
+export interface NotificationLog {
+  id: string;
+  team_id: string;
+  type: string;
+  candidate_id: string | null;
+  interview_id: string | null;
+  sent_to_email: string;
+  sent_at: string;
+  escalation_level: number;
+}
+
+export interface NeedsAttentionItem {
+  id: string;
+  type: "hold" | "no_scorecard" | "stuck";
+  severity: "yellow" | "red";
+  candidateId: string;
+  candidateName: string;
+  reason: string;
+  daysWaiting: number;
+  interviewerName?: string;
+  href: string;
 }

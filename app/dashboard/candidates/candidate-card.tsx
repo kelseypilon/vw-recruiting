@@ -8,6 +8,7 @@ interface Props {
   candidate: CandidateCard;
   stages: PipelineStage[];
   onStageChange: (candidateId: string, newStage: string) => void;
+  thresholdStuckDays?: number;
 }
 
 function scoreBadge(score: number | null) {
@@ -24,6 +25,7 @@ export default function CandidateCardComponent({
   candidate,
   stages,
   onStageChange,
+  thresholdStuckDays = 7,
 }: Props) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
@@ -42,15 +44,37 @@ export default function CandidateCardComponent({
       ? `${candidate.disc_primary}${candidate.disc_secondary ? "/" + candidate.disc_secondary : ""}`
       : "--";
 
+  // Visual flag logic
+  const isOnHold = candidate.kanban_hold;
+  const isStuckRed = candidate.daysInStage >= thresholdStuckDays + 7;
+  const isStuckYellow = !isStuckRed && candidate.daysInStage >= thresholdStuckDays;
+  const showRedBorder = isStuckRed;
+  const showYellowBorder = isOnHold || isStuckYellow;
+
+  let borderClass = "border-[#a59494]/10";
+  if (showRedBorder) borderClass = "border-l-[3px] border-l-[#C0392B] border-t border-r border-b border-t-[#a59494]/10 border-r-[#a59494]/10 border-b-[#a59494]/10";
+  else if (showYellowBorder) borderClass = "border-l-[3px] border-l-amber-400 border-t border-r border-b border-t-[#a59494]/10 border-r-[#a59494]/10 border-b-[#a59494]/10";
+  else borderClass = "border border-[#a59494]/10";
+
   return (
     <Link
       href={`/dashboard/candidates/${candidate.id}`}
-      className="block bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-4 hover:border-brand/30 hover:shadow-md transition"
+      className={`block bg-white rounded-xl shadow-sm p-4 hover:border-brand/30 hover:shadow-md transition relative ${borderClass}`}
     >
+      {/* Hold warning icon */}
+      {isOnHold && (
+        <span className="absolute top-2 right-2 text-amber-500 text-sm" title={candidate.kanban_hold_reason ?? "On hold"}>
+          ⚠️
+        </span>
+      )}
+
       {/* Name and phone */}
       <h4 className="text-sm font-semibold text-[#272727]">
         {candidate.first_name} {candidate.last_name}
       </h4>
+      {isOnHold && candidate.kanban_hold_reason && (
+        <p className="text-[10px] text-amber-600 mt-0.5 truncate">{candidate.kanban_hold_reason}</p>
+      )}
       {candidate.phone && (
         <p className="text-xs text-[#a59494] mt-0.5">{candidate.phone}</p>
       )}

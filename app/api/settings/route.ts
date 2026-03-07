@@ -497,6 +497,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ count: count ?? 0 });
     }
 
+    // ── Escalation Contact ─────────────────────────────────────────
+
+    if (action === "set_escalation_contact") {
+      if (!payload?.user_id || !payload?.team_id) {
+        return NextResponse.json({ error: "user_id and team_id are required" }, { status: 400 });
+      }
+      // Clear all existing escalation contacts on this team
+      await supabase
+        .from("users")
+        .update({ is_escalation_contact: false })
+        .eq("team_id", payload.team_id)
+        .eq("is_escalation_contact", true);
+      // Set the new one
+      const { error } = await supabase
+        .from("users")
+        .update({ is_escalation_contact: true })
+        .eq("id", payload.user_id)
+        .eq("team_id", payload.team_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "clear_escalation_contact") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("users")
+        .update({ is_escalation_contact: false })
+        .eq("team_id", payload.team_id)
+        .eq("is_escalation_contact", true);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Notification Thresholds ──────────────────────────────────────
+
+    if (action === "update_thresholds") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+      const updates: Record<string, unknown> = {};
+      if ("threshold_stuck_days" in payload) updates.threshold_stuck_days = payload.threshold_stuck_days;
+      if ("threshold_scorecard_hours" in payload) updates.threshold_scorecard_hours = payload.threshold_scorecard_hours;
+      if ("threshold_escalation_hours" in payload) updates.threshold_escalation_hours = payload.threshold_escalation_hours;
+
+      if (Object.keys(updates).length === 0) {
+        return NextResponse.json({ error: "No threshold fields provided" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("teams")
+        .update(updates)
+        .eq("id", payload.team_id)
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
     // ── Actions requiring payload.id ────────────────────────────────
 
     if (action === "update_team" || action === "update_user" || action === "update_stage" || action === "update_template" || action === "update_criterion") {

@@ -212,6 +212,11 @@ function TeamTab({
   const [adminCc, setAdminCc] = useState(team?.admin_cc ?? true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [thresholdStuckDays, setThresholdStuckDays] = useState(team?.threshold_stuck_days ?? 7);
+  const [thresholdScorecardHours, setThresholdScorecardHours] = useState(team?.threshold_scorecard_hours ?? 24);
+  const [thresholdEscalationHours, setThresholdEscalationHours] = useState(team?.threshold_escalation_hours ?? 48);
+  const [isSavingThresholds, setIsSavingThresholds] = useState(false);
+  const [thresholdStatus, setThresholdStatus] = useState("");
 
   async function handleSave() {
     if (!team) return;
@@ -233,6 +238,33 @@ function TeamTab({
       setTimeout(() => setSaveStatus(""), 2000);
     }
     setIsSaving(false);
+  }
+
+  async function handleSaveThresholds() {
+    if (!team) return;
+    setIsSavingThresholds(true);
+    setThresholdStatus("");
+
+    const result = await saveSettings("update_thresholds", {
+      team_id: team.id,
+      threshold_stuck_days: thresholdStuckDays,
+      threshold_scorecard_hours: thresholdScorecardHours,
+      threshold_escalation_hours: thresholdEscalationHours,
+    });
+
+    if (result.error) {
+      setThresholdStatus(`Error: ${result.error}`);
+    } else {
+      onTeamUpdated({
+        ...team,
+        threshold_stuck_days: thresholdStuckDays,
+        threshold_scorecard_hours: thresholdScorecardHours,
+        threshold_escalation_hours: thresholdEscalationHours,
+      });
+      setThresholdStatus("Saved!");
+      setTimeout(() => setThresholdStatus(""), 2000);
+    }
+    setIsSavingThresholds(false);
   }
 
   if (!team) return <p className="text-[#a59494]">No team found</p>;
@@ -301,6 +333,78 @@ function TeamTab({
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {/* Notification Thresholds */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6">
+        <h3 className="text-sm font-semibold text-[#272727] mb-1">Notification Thresholds</h3>
+        <p className="text-xs text-[#a59494] mb-4">
+          Configure when the system sends reminder notifications and escalation alerts.
+        </p>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Flag candidate as stuck after
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={thresholdStuckDays}
+                onChange={(e) => setThresholdStuckDays(Number(e.target.value))}
+                className="w-20 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+              <span className="text-sm text-[#a59494]">days in a stage</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Send scorecard reminder after
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={168}
+                value={thresholdScorecardHours}
+                onChange={(e) => setThresholdScorecardHours(Number(e.target.value))}
+                className="w-20 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+              <span className="text-sm text-[#a59494]">hours after interview</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Escalate to escalation contact after
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={336}
+                value={thresholdEscalationHours}
+                onChange={(e) => setThresholdEscalationHours(Number(e.target.value))}
+                className="w-20 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+              <span className="text-sm text-[#a59494]">hours with no action</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 mt-4">
+          {thresholdStatus && (
+            <span className={`text-sm ${thresholdStatus.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+              {thresholdStatus}
+            </span>
+          )}
+          <button
+            onClick={handleSaveThresholds}
+            disabled={isSavingThresholds}
+            className="px-6 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+          >
+            {isSavingThresholds ? "Saving..." : "Save Thresholds"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -336,6 +440,24 @@ function MembersTab({
   const [isSaving, setIsSaving] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [removeMember, setRemoveMember] = useState<TeamUser | null>(null);
+  const [togglingEscalation, setTogglingEscalation] = useState(false);
+
+  const escalationContact = users.find((u) => u.is_escalation_contact);
+
+  async function handleToggleEscalation(userId: string) {
+    setTogglingEscalation(true);
+    const isCurrently = users.find((u) => u.id === userId)?.is_escalation_contact;
+    if (isCurrently) {
+      await saveSettings("clear_escalation_contact", { team_id: teamId });
+      onUsersUpdated(users.map((u) => ({ ...u, is_escalation_contact: false })));
+    } else {
+      await saveSettings("set_escalation_contact", { user_id: userId, team_id: teamId });
+      onUsersUpdated(
+        users.map((u) => ({ ...u, is_escalation_contact: u.id === userId }))
+      );
+    }
+    setTogglingEscalation(false);
+  }
 
   function startEditing(user: TeamUser) {
     setEditingId(user.id);
@@ -389,6 +511,17 @@ function MembersTab({
 
   return (
     <>
+      {/* Warning: no escalation contact */}
+      {!escalationContact && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2">
+          <span className="text-amber-600 text-lg">⚠️</span>
+          <p className="text-sm text-amber-800">
+            No escalation contact set. Notifications that require escalation won&apos;t have a recipient.
+            Designate one team member below.
+          </p>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
         <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
           <div>
@@ -525,6 +658,11 @@ function MembersTab({
                     <div>
                       <p className="text-sm font-medium text-[#272727]">
                         {user.name}
+                        {user.is_escalation_contact && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                            ⚡ Escalation Contact
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-[#a59494]">{user.email}</p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -544,12 +682,26 @@ function MembersTab({
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => startEditing(user)}
-                    className="text-xs font-medium text-brand hover:text-brand-dark transition"
-                  >
-                    Edit
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleToggleEscalation(user.id)}
+                      disabled={togglingEscalation}
+                      className={`text-[10px] font-medium px-2.5 py-1 rounded-full transition ${
+                        user.is_escalation_contact
+                          ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
+                          : "bg-[#f5f0f0] text-[#a59494] hover:bg-[#a59494]/20 hover:text-[#272727]"
+                      }`}
+                      title={user.is_escalation_contact ? "Remove as escalation contact" : "Set as escalation contact"}
+                    >
+                      ⚡ {user.is_escalation_contact ? "Escalation On" : "Set Escalation"}
+                    </button>
+                    <button
+                      onClick={() => startEditing(user)}
+                      className="text-xs font-medium text-brand hover:text-brand-dark transition"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

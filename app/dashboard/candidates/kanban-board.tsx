@@ -40,6 +40,7 @@ interface Props {
   leaders: TeamUser[];
   upcomingSessions: GroupInterviewSession[];
   teamZoomLink: string | null;
+  thresholdStuckDays?: number;
 }
 
 export default function KanbanBoard({
@@ -50,6 +51,7 @@ export default function KanbanBoard({
   leaders,
   upcomingSessions,
   teamZoomLink,
+  thresholdStuckDays = 7,
 }: Props) {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [searchQuery, setSearchQuery] = useState("");
@@ -342,6 +344,7 @@ export default function KanbanBoard({
                                   candidate={candidate}
                                   stages={stages}
                                   onStageChange={handleStageChange}
+                                  thresholdStuckDays={thresholdStuckDays}
                                 />
                               </div>
                             )}
@@ -377,7 +380,7 @@ export default function KanbanBoard({
                 </div>
                 <div className="flex flex-col gap-3 flex-1 min-h-[80px] p-1">
                   {stageCards.map((candidate) => (
-                    <CandidateCardComponent key={candidate.id} candidate={candidate} stages={stages} onStageChange={handleStageChange} />
+                    <CandidateCardComponent key={candidate.id} candidate={candidate} stages={stages} onStageChange={handleStageChange} thresholdStuckDays={thresholdStuckDays} />
                   ))}
                 </div>
               </div>

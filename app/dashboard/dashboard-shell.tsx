@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Candidate, Interview } from "@/lib/types";
+import type { Candidate, Interview, NeedsAttentionItem } from "@/lib/types";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -17,6 +17,7 @@ interface Props {
   recentCandidates: Candidate[];
   upcomingInterviews: Interview[];
   stageCounts: Record<string, number>;
+  needsAttention: NeedsAttentionItem[];
 }
 
 /* ── Stage colors ──────────────────────────────────────────────── */
@@ -39,6 +40,7 @@ export default function DashboardShell({
   recentCandidates,
   upcomingInterviews,
   stageCounts,
+  needsAttention,
 }: Props) {
   const statCards = [
     {
@@ -109,6 +111,71 @@ export default function DashboardShell({
           </Link>
         ))}
       </div>
+
+      {/* Needs Attention */}
+      {needsAttention.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-[#a59494]/10 p-5 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-base">🔔</span>
+            <h3 className="text-sm font-semibold text-[#272727]">
+              Needs Attention
+            </h3>
+            <span className="text-xs font-medium text-white bg-red-500 px-2 py-0.5 rounded-full">
+              {needsAttention.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {needsAttention.slice(0, 8).map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#f5f0f0]/50 transition group"
+              >
+                {/* Severity indicator */}
+                <span className="text-sm shrink-0" title={item.severity === "red" ? "Urgent" : "Warning"}>
+                  {item.severity === "red" ? "🔴" : "⚠️"}
+                </span>
+
+                {/* Type icon */}
+                <span className="text-sm shrink-0" title={item.type === "hold" ? "On Hold" : item.type === "no_scorecard" ? "Missing Scorecard" : "Stuck"}>
+                  {item.type === "hold" ? "⏸️" : item.type === "no_scorecard" ? "📋" : "⏳"}
+                </span>
+
+                {/* Details */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#272727] group-hover:text-brand transition truncate">
+                    {item.candidateName}
+                  </p>
+                  <p className="text-xs text-[#a59494] truncate">
+                    {item.reason}
+                    {item.interviewerName && (
+                      <span className="ml-1 text-[#a59494]/70">
+                        — interviewer: {item.interviewerName}
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Days badge */}
+                <span
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                    item.severity === "red"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {item.daysWaiting}d
+                </span>
+              </Link>
+            ))}
+            {needsAttention.length > 8 && (
+              <p className="text-xs text-center text-[#a59494] pt-2">
+                +{needsAttention.length - 8} more items needing attention
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pipeline distribution */}

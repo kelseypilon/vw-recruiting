@@ -24,6 +24,8 @@ export default function SuperAdminDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [runningNotifications, setRunningNotifications] = useState<string | null>(null);
+  const [notificationResult, setNotificationResult] = useState("");
 
   const fetchTeams = useCallback(async () => {
     setLoading(true);
@@ -59,17 +61,26 @@ export default function SuperAdminDashboard() {
             Manage teams and branding across the platform
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition"
-        >
-          + Add Team
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition"
+          >
+            + Add Team
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
+        </div>
+      )}
+
+      {notificationResult && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex items-center justify-between">
+          <span>Notifications: {notificationResult}</span>
+          <button onClick={() => setNotificationResult("")} className="text-green-500 hover:text-green-700 text-xs">Dismiss</button>
         </div>
       )}
 
@@ -146,15 +157,49 @@ export default function SuperAdminDashboard() {
                   })}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditTeam(team);
-                    }}
-                    className="text-brand hover:text-brand-dark text-sm font-medium transition"
-                  >
-                    Edit
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setRunningNotifications(team.id);
+                        setNotificationResult("");
+                        try {
+                          const res = await fetch("/api/notifications", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ team_id: team.id }),
+                          });
+                          const json = await res.json();
+                          if (json.success) {
+                            const summary = json.results
+                              .map((r: { trigger: string; sent: number; skipped: number }) =>
+                                `${r.trigger}: ${r.sent} sent, ${r.skipped} skipped`
+                              )
+                              .join("; ");
+                            setNotificationResult(summary);
+                          } else {
+                            setNotificationResult(`Error: ${json.error}`);
+                          }
+                        } catch {
+                          setNotificationResult("Failed to run");
+                        }
+                        setRunningNotifications(null);
+                      }}
+                      disabled={runningNotifications === team.id}
+                      className="text-amber-600 hover:text-amber-700 text-xs font-medium transition disabled:opacity-50"
+                    >
+                      {runningNotifications === team.id ? "Running..." : "Run Notifications"}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditTeam(team);
+                      }}
+                      className="text-brand hover:text-brand-dark text-sm font-medium transition"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

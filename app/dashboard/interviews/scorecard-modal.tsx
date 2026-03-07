@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
 import type {
   Interview,
   InterviewQuestion,
@@ -17,6 +18,9 @@ interface Props {
   currentUserId: string;
   teamId: string;
   tips?: string[];
+  stages?: { id: string; name: string; order_index: number }[];
+  leaders?: { id: string; name: string; email: string; from_email?: string | null }[];
+  escalationContact?: { id: string; name: string; email: string; from_email?: string | null } | null;
   onClose: () => void;
   onSaved: (scorecard: InterviewScorecard) => void;
 }
@@ -148,6 +152,9 @@ export default function ScorecardModal({
   currentUserId,
   teamId,
   tips,
+  stages,
+  leaders,
+  escalationContact,
   onClose,
   onSaved,
 }: Props) {
@@ -164,6 +171,13 @@ export default function ScorecardModal({
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Next Step state ──
+  const [nextStepView, setNextStepView] = useState<"choose" | "advance" | "hold" | "not_a_fit" | null>(null);
+  const [holdReason, setHoldReason] = useState("");
+  const [holdFollowUpDate, setHoldFollowUpDate] = useState("");
+  const [isProcessingNextStep, setIsProcessingNextStep] = useState(false);
+  const [nextStepError, setNextStepError] = useState("");
 
   // ── Initialize answers from questions or existing scorecard ──
   useEffect(() => {
@@ -314,6 +328,130 @@ export default function ScorecardModal({
     setIsSubmitted(true);
     setIsSaving(false);
     onSaved(result.data as InterviewScorecard);
+    // Show next step flow
+    setNextStepView("choose");
+  }
+
+  // ── Next step handlers ──
+  const candidateName = `${interview.candidate?.first_name ?? ""} ${interview.candidate?.last_name ?? ""}`.trim();
+
+  async function handleAdvance() {
+    setIsProcessingNextStep(true);
+    setNextStepError("");
+    try {
+      const supabase = createClient();
+      const currentStage = interview.candidate?.stage;
+      const sortedStages = [...(stages ?? [])].sort((a, b) => a.order_index - b.order_index);
+      const currentIdx = sortedStages.findIndex((s) => s.name === currentStage);
+      const nextStage = currentIdx >= 0 && currentIdx < sortedStages.length - 1
+        ? sortedStages[currentIdx + 1]
+        : null;
+
+      if (!nextStage) {
+        setNextStepError("No next stage available");
+        setIsProcessingNextStep(false);
+        return;
+      }
+
+      // Move candidate to next stage
+      await supabase.from("candidates").update({ stage: nextStage.name }).eq("id", interview.candidate_id);
+
+      // Record stage history
+      await supabase.from("stage_history").insert({
+        candidate_id: interview.candidate_id,
+        from_stage: currentStage,
+        to_stage: nextStage.name,
+        changed_by: currentUserId,
+      });
+
+      // Mark interview as completed
+      await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+
+      // Create next interview
+      const { data: newInt } = await supabase.from("interviews").insert({
+        team_id: teamId,
+        candidate_id: interview.candidate_id,
+        interview_type: "1on1 Interview",
+        status: "scheduled",
+        notes: `Advanced from ${currentStage}`,
+      }).select("id").single();
+
+      if (newInt) {
+        await supabase.from("interview_interviewers").insert({
+          interview_id: newInt.id,
+          user_id: currentUserId,
+          role: "lead",
+        });
+      }
+
+      onClose();
+    } catch {
+      setNextStepError("Failed to advance candidate");
+    }
+    setIsProcessingNextStep(false);
+  }
+
+  async function handleHold() {
+    if (!holdReason.trim()) {
+      setNextStepError("Hold reason is required");
+      return;
+    }
+    if (!holdFollowUpDate) {
+      setNextStepError("Follow-up date is required");
+      return;
+    }
+    setIsProcessingNextStep(true);
+    setNextStepError("");
+    try {
+      const supabase = createClient();
+
+      // Update interview to hold status
+      await supabase.from("interviews").update({
+        status: "hold",
+        hold_reason: holdReason,
+        hold_follow_up_date: holdFollowUpDate,
+        hold_set_at: new Date().toISOString(),
+      }).eq("id", interview.id);
+
+      // Set candidate kanban hold
+      await supabase.from("candidates").update({
+        kanban_hold: true,
+        kanban_hold_reason: holdReason,
+      }).eq("id", interview.candidate_id);
+
+      onClose();
+    } catch {
+      setNextStepError("Failed to put candidate on hold");
+    }
+    setIsProcessingNextStep(false);
+  }
+
+  async function handleNotAFit() {
+    setIsProcessingNextStep(true);
+    setNextStepError("");
+    try {
+      const supabase = createClient();
+
+      // Move candidate to "Not a Fit" stage
+      const currentStage = interview.candidate?.stage;
+      await supabase.from("candidates").update({ stage: "Not a Fit" }).eq("id", interview.candidate_id);
+
+      // Record stage history
+      await supabase.from("stage_history").insert({
+        candidate_id: interview.candidate_id,
+        from_stage: currentStage,
+        to_stage: "Not a Fit",
+        changed_by: currentUserId,
+      });
+
+      // Mark interview as completed
+      await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+
+      onClose();
+    } catch {
+      setNextStepError("Failed to update candidate");
+    }
+    setIsProcessingNextStep(false);
   }
 
   // ── Grouped & sorted data ──
@@ -614,6 +752,157 @@ export default function ScorecardModal({
           </div>
         </div>
 
+        {/* ── Next Step View (after submission) ── */}
+        {isSubmitted && nextStepView && (
+          <div className="px-6 py-6 border-t border-[#a59494]/10 shrink-0 bg-[#f5f0f0]/30">
+            {nextStepView === "choose" && (
+              <div>
+                <h4 className="text-base font-bold text-[#272727] mb-1">
+                  What&apos;s next for {candidateName}?
+                </h4>
+                <p className="text-xs text-[#a59494] mb-4">
+                  Scorecard submitted. Choose the next step for this candidate.
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Advance */}
+                  <button
+                    onClick={() => setNextStepView("advance")}
+                    className="p-4 rounded-xl border-2 border-green-200 bg-green-50 hover:border-green-400 transition text-left group"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mb-2 group-hover:bg-green-200 transition">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
+                        <polyline points="7 17 17 7" />
+                        <polyline points="7 7 17 7 17 17" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-green-800">Advance</p>
+                    <p className="text-xs text-green-600 mt-0.5">Move to next stage</p>
+                  </button>
+
+                  {/* Hold */}
+                  <button
+                    onClick={() => setNextStepView("hold")}
+                    className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50 hover:border-amber-400 transition text-left group"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center mb-2 group-hover:bg-amber-200 transition">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-amber-800">Hold</p>
+                    <p className="text-xs text-amber-600 mt-0.5">Pause with follow-up</p>
+                  </button>
+
+                  {/* Not a Fit */}
+                  <button
+                    onClick={() => setNextStepView("not_a_fit")}
+                    className="p-4 rounded-xl border-2 border-red-200 bg-red-50 hover:border-red-400 transition text-left group"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mb-2 group-hover:bg-red-200 transition">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-red-800">Not a Fit</p>
+                    <p className="text-xs text-red-600 mt-0.5">Decline candidate</p>
+                  </button>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="mt-3 text-xs text-[#a59494] hover:text-[#272727] transition"
+                >
+                  Skip — decide later
+                </button>
+              </div>
+            )}
+
+            {nextStepView === "advance" && (
+              <div>
+                <button onClick={() => setNextStepView("choose")} className="text-xs text-brand hover:text-brand-dark mb-3 flex items-center gap-1 transition">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+                  Back
+                </button>
+                <h4 className="text-base font-bold text-[#272727] mb-1">Advance {candidateName}</h4>
+                <p className="text-xs text-[#a59494] mb-4">
+                  Candidate will be moved to the next pipeline stage and a new interview will be created.
+                </p>
+                {nextStepError && <p className="text-sm text-red-600 mb-2">{nextStepError}</p>}
+                <button
+                  onClick={handleAdvance}
+                  disabled={isProcessingNextStep}
+                  className="px-6 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {isProcessingNextStep ? "Advancing..." : "Confirm Advance"}
+                </button>
+              </div>
+            )}
+
+            {nextStepView === "hold" && (
+              <div>
+                <button onClick={() => setNextStepView("choose")} className="text-xs text-brand hover:text-brand-dark mb-3 flex items-center gap-1 transition">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+                  Back
+                </button>
+                <h4 className="text-base font-bold text-[#272727] mb-1">Hold {candidateName}</h4>
+                <p className="text-xs text-[#a59494] mb-3">Candidate will be flagged on the kanban board. You&apos;ll be reminded on the follow-up date.</p>
+                <div className="space-y-3 max-w-md">
+                  <div>
+                    <label className="block text-xs font-medium text-[#272727] mb-1">Hold Reason *</label>
+                    <textarea
+                      value={holdReason}
+                      onChange={(e) => setHoldReason(e.target.value)}
+                      placeholder="Why is this candidate on hold?"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[#a59494]/30 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-1 focus:ring-amber-400 transition resize-none"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[#272727] mb-1">Follow-up Date *</label>
+                    <input
+                      type="date"
+                      value={holdFollowUpDate}
+                      onChange={(e) => setHoldFollowUpDate(e.target.value)}
+                      className="px-3 py-2 text-sm rounded-lg border border-[#a59494]/30 text-[#272727] focus:outline-none focus:ring-1 focus:ring-amber-400 transition"
+                    />
+                  </div>
+                </div>
+                {nextStepError && <p className="text-sm text-red-600 mt-2">{nextStepError}</p>}
+                <button
+                  onClick={handleHold}
+                  disabled={isProcessingNextStep}
+                  className="mt-3 px-6 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {isProcessingNextStep ? "Processing..." : "Confirm Hold"}
+                </button>
+              </div>
+            )}
+
+            {nextStepView === "not_a_fit" && (
+              <div>
+                <button onClick={() => setNextStepView("choose")} className="text-xs text-brand hover:text-brand-dark mb-3 flex items-center gap-1 transition">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+                  Back
+                </button>
+                <h4 className="text-base font-bold text-[#272727] mb-1">Not a Fit — {candidateName}</h4>
+                <p className="text-xs text-[#a59494] mb-4">
+                  Candidate will be moved to &quot;Not a Fit&quot; stage. This action is final.
+                </p>
+                {nextStepError && <p className="text-sm text-red-600 mb-2">{nextStepError}</p>}
+                <button
+                  onClick={handleNotAFit}
+                  disabled={isProcessingNextStep}
+                  className="px-6 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {isProcessingNextStep ? "Processing..." : "Confirm Not a Fit"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Footer ── */}
         <div className="px-6 py-4 border-t border-[#a59494]/10 shrink-0">
           {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
@@ -622,14 +911,22 @@ export default function ScorecardModal({
               {isDirty && !isSubmitted && "Unsaved changes"}
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-              >
-                {isSubmitted ? "Close" : "Cancel"}
-              </button>
+              {isSubmitted && !nextStepView && (
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                >
+                  Close
+                </button>
+              )}
               {!isSubmitted && (
                 <>
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                  >
+                    Cancel
+                  </button>
                   <button
                     onClick={handleSaveDraft}
                     disabled={isSaving}
