@@ -1,29 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import type {
   Interview,
-  ScoringCriterion,
-  Candidate,
   TeamUser,
-  EmailTemplate,
   Team,
 } from "@/lib/types";
-import ScorecardModal from "./scorecard-modal";
-import ScheduleModal from "./schedule-modal";
-import { usePermissions } from "@/lib/user-permissions-context";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
 interface Props {
   interviews: Interview[];
-  criteria: ScoringCriterion[];
-  eligibleCandidates: Candidate[];
   leaders: TeamUser[];
-  emailTemplates: EmailTemplate[];
   teamId: string;
   team: Team | null;
+  currentUserId: string;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -53,19 +45,14 @@ function formatDate(dateStr: string | null) {
 
 export default function InterviewsDashboard({
   interviews: initialInterviews,
-  criteria,
-  eligibleCandidates,
   leaders,
-  emailTemplates,
   teamId,
   team,
+  currentUserId,
 }: Props) {
+  const router = useRouter();
   const [interviews, setInterviews] = useState(initialInterviews);
   const [filter, setFilter] = useState<"all" | "scheduled" | "completed">("all");
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [scorecardInterview, setScorecardInterview] = useState<Interview | null>(null);
-  const { can } = usePermissions();
-  const canManageInterviews = can("manage_interviews");
 
   const filtered = interviews.filter((i) => {
     if (filter === "all") return true;
@@ -91,20 +78,12 @@ export default function InterviewsDashboard({
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as typeof filter)}
-            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
           >
             <option value="all">All Interviews</option>
             <option value="scheduled">Scheduled</option>
             <option value="completed">Completed</option>
           </select>
-          {canManageInterviews && (
-            <button
-              onClick={() => setShowSchedule(true)}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition whitespace-nowrap"
-            >
-              + Schedule Interview
-            </button>
-          )}
         </div>
       </div>
 
@@ -112,19 +91,16 @@ export default function InterviewsDashboard({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard label="Upcoming" value={upcoming.length} color="#3B82F6" />
         <StatCard label="Completed" value={completedCount} color="#10B981" />
-        <StatCard label="Total" value={interviews.length} color="#1c759e" />
+        <StatCard label="Total" value={interviews.length} color="var(--brand-primary)" />
       </div>
 
       {/* Interview list */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-12 text-center">
           <p className="text-[#a59494] mb-2">No interviews found</p>
-          <button
-            onClick={() => setShowSchedule(true)}
-            className="text-sm font-medium text-[#1c759e] hover:text-[#155f82] transition"
-          >
-            Schedule one now
-          </button>
+          <p className="text-xs text-[#a59494]">
+            Interviews are created when candidates are moved to interview stages on the pipeline.
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm overflow-hidden">
@@ -155,8 +131,8 @@ export default function InterviewsDashboard({
                   <tr key={interview.id} className="hover:bg-[#f5f0f0]/50 transition">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#1c759e]/10 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-bold text-[#1c759e]">
+                        <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-brand">
                             {interview.candidate?.first_name?.[0]}
                             {interview.candidate?.last_name?.[0]}
                           </span>
@@ -187,18 +163,21 @@ export default function InterviewsDashboard({
                         {interview.status === "scheduled" && (
                           <>
                             <button
-                              onClick={() => setScorecardInterview(interview)}
-                              className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                              onClick={() => router.push(`/dashboard/candidates/${interview.candidate_id}`)}
+                              className="text-xs font-medium text-brand hover:text-brand-dark transition"
                             >
                               Score
                             </button>
                             <button
                               onClick={async () => {
-                                const supabase = createClient();
-                                await supabase
-                                  .from("interviews")
-                                  .update({ status: "completed" })
-                                  .eq("id", interview.id);
+                                await fetch("/api/interviews", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    action: "update_interview",
+                                    payload: { id: interview.id, status: "completed" },
+                                  }),
+                                });
                                 setInterviews((prev) =>
                                   prev.map((i) =>
                                     i.id === interview.id ? { ...i, status: "completed" as const } : i
@@ -213,8 +192,8 @@ export default function InterviewsDashboard({
                         )}
                         {interview.status === "completed" && (
                           <button
-                            onClick={() => setScorecardInterview(interview)}
-                            className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                            onClick={() => router.push(`/dashboard/candidates/${interview.candidate_id}`)}
+                            className="text-xs font-medium text-brand hover:text-brand-dark transition"
                           >
                             View Scores
                           </button>
@@ -227,39 +206,6 @@ export default function InterviewsDashboard({
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* Schedule Modal */}
-      {showSchedule && (
-        <ScheduleModal
-          eligibleCandidates={eligibleCandidates}
-          leaders={leaders}
-          emailTemplates={emailTemplates}
-          teamId={teamId}
-          team={team}
-          onClose={() => setShowSchedule(false)}
-          onScheduled={(interview) => {
-            setInterviews((prev) => [...prev, interview]);
-            setShowSchedule(false);
-          }}
-        />
-      )}
-
-      {/* Scorecard Modal */}
-      {scorecardInterview && (
-        <ScorecardModal
-          interview={scorecardInterview}
-          criteria={criteria}
-          onClose={() => setScorecardInterview(null)}
-          onScored={() => {
-            setInterviews((prev) =>
-              prev.map((i) =>
-                i.id === scorecardInterview.id ? { ...i, status: "completed" as const } : i
-              )
-            );
-            setScorecardInterview(null);
-          }}
-        />
       )}
     </>
   );

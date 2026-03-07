@@ -3,6 +3,7 @@
 import { useState } from "react";
 import OnboardingTaskList from "./onboarding-task-list";
 import OnboardingEmailModal from "./onboarding-email-modal";
+import { usePermissions } from "@/lib/user-permissions-context";
 import type {
   Candidate,
   OnboardingTask,
@@ -45,6 +46,9 @@ export default function OnboardingDashboard({
   const [emailModalTask, setEmailModalTask] = useState<OnboardingTask | null>(
     null
   );
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState("");
+  const { can } = usePermissions();
 
   const candidate = candidates.find((c) => c.id === selectedCandidate);
   const candidateProgress = progress.filter(
@@ -156,6 +160,33 @@ export default function OnboardingDashboard({
     setEmailModalTask(null);
   }
 
+  async function handleSendReminders() {
+    setIsSendingReminders(true);
+    setReminderMessage("");
+    try {
+      const res = await fetch("/api/onboarding/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_id: teamId }),
+      });
+      const result = await res.json();
+      if (result.error) {
+        setReminderMessage(`Error: ${result.error}`);
+      } else if (result.emails_sent === 0) {
+        setReminderMessage("No overdue or due-today tasks found.");
+      } else {
+        setReminderMessage(
+          `Sent ${result.emails_sent} reminder email${result.emails_sent !== 1 ? "s" : ""} for ${result.total_tasks} task${result.total_tasks !== 1 ? "s" : ""}.`
+        );
+      }
+    } catch {
+      setReminderMessage("Network error — please try again.");
+    }
+    setIsSendingReminders(false);
+    // Clear message after 5 seconds
+    setTimeout(() => setReminderMessage(""), 5000);
+  }
+
   // Filter tasks to only those that have a progress entry (matched to hire type)
   const activeTasks =
     candidateProgress.length > 0
@@ -172,6 +203,54 @@ export default function OnboardingDashboard({
             {candidates.length} candidate
             {candidates.length !== 1 ? "s" : ""} in onboarding
           </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {reminderMessage && (
+            <span
+              className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
+                reminderMessage.startsWith("Error")
+                  ? "bg-red-50 text-red-600"
+                  : "bg-green-50 text-green-600"
+              }`}
+            >
+              {reminderMessage}
+            </span>
+          )}
+          {can("manage_onboarding") && (
+            <button
+              onClick={handleSendReminders}
+              disabled={isSendingReminders}
+              className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
+              title="Send email reminders for overdue and due-today tasks to assigned team members"
+            >
+              {isSendingReminders ? (
+                <span className="flex items-center gap-2">
+                  <svg
+                    className="animate-spin h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Sending...
+                </span>
+              ) : (
+                "Send Reminders Now"
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -254,12 +333,12 @@ export default function OnboardingDashboard({
                       onClick={() => setSelectedCandidate(c.id)}
                       className={`w-full text-left p-3 rounded-lg transition ${
                         isSelected
-                          ? "bg-[#1c759e]/10 border border-[#1c759e]/30"
+                          ? "bg-brand/10 border border-brand/30"
                           : "hover:bg-[#f5f0f0] border border-transparent"
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center shrink-0">
                           <span className="text-xs font-bold text-white">
                             {c.first_name[0]}
                             {c.last_name[0]}
@@ -271,7 +350,7 @@ export default function OnboardingDashboard({
                               {c.first_name} {c.last_name}
                             </p>
                             {c.hire_type && (
-                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e] shrink-0">
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-brand/10 text-brand shrink-0">
                                 {c.hire_type === "agent" ? "AGT" : "EMP"}
                               </span>
                             )}
@@ -309,7 +388,7 @@ export default function OnboardingDashboard({
                           {candidate.first_name} {candidate.last_name}
                         </h3>
                         {candidate.hire_type && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e]">
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand">
                             {candidate.hire_type === "agent"
                               ? "Agent"
                               : "Employee"}
@@ -321,7 +400,7 @@ export default function OnboardingDashboard({
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-[#1c759e]">
+                      <p className="text-2xl font-bold text-brand">
                         {Math.round(progressPercent)}%
                       </p>
                       <p className="text-xs text-[#a59494]">
@@ -336,7 +415,7 @@ export default function OnboardingDashboard({
                       style={{
                         width: `${progressPercent}%`,
                         backgroundColor:
-                          progressPercent === 100 ? "#10B981" : "#1c759e",
+                          progressPercent === 100 ? "#10B981" : "var(--brand-primary)",
                       }}
                     />
                   </div>
@@ -359,7 +438,7 @@ export default function OnboardingDashboard({
                         <button
                           onClick={() => handleInitialize("agent")}
                           disabled={isInitializing}
-                          className="px-5 py-2.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
+                          className="px-5 py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
                         >
                           {isInitializing
                             ? "Initializing..."
@@ -368,7 +447,7 @@ export default function OnboardingDashboard({
                         <button
                           onClick={() => handleInitialize("employee")}
                           disabled={isInitializing}
-                          className="px-5 py-2.5 rounded-lg border-2 border-[#1c759e] text-[#1c759e] hover:bg-[#1c759e]/5 text-sm font-semibold transition disabled:opacity-50"
+                          className="px-5 py-2.5 rounded-lg border-2 border-brand text-brand hover:bg-brand/5 text-sm font-semibold transition disabled:opacity-50"
                         >
                           {isInitializing
                             ? "Initializing..."

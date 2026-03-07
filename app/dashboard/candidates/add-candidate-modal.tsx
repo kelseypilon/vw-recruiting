@@ -58,7 +58,7 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
   }
 
   const inputClass =
-    "w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition";
+    "w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -156,7 +156,7 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
               type="checkbox"
               checked={formData.is_licensed}
               onChange={(e) => updateField("is_licensed", e.target.checked)}
-              className="w-4 h-4 rounded border-[#a59494]/40 text-[#1c759e] focus:ring-[#1c759e]"
+              className="w-4 h-4 rounded border-[#a59494]/40 text-brand focus:ring-brand"
             />
             <span className="text-sm text-[#272727]">Licensed agent</span>
           </label>
@@ -173,7 +173,7 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? "Adding..." : "Add Candidate"}
             </button>

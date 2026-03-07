@@ -40,7 +40,7 @@ function ManualIcon() {
 
 function EmailIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#1c759e]">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-brand">
       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
       <polyline points="22,6 12,13 2,6" />
     </svg>
@@ -54,6 +54,48 @@ function LinkIcon() {
       <polyline points="15 3 21 3 21 9" />
       <line x1="10" y1="14" x2="21" y2="3" />
     </svg>
+  );
+}
+
+/* ── Due-date helpers ─────────────────────────────────────────── */
+
+function getDueDateStatus(
+  dueDate: string | null | undefined,
+  isCompleted: boolean
+): "overdue" | "today" | "upcoming" | null {
+  if (!dueDate || isCompleted) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T00:00:00");
+  if (due < today) return "overdue";
+  if (due.getTime() === today.getTime()) return "today";
+  return "upcoming";
+}
+
+function DueDateBadge({ status, dueDate }: { status: "overdue" | "today" | "upcoming"; dueDate: string }) {
+  const formatted = new Date(dueDate + "T00:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  const styles = {
+    overdue: "bg-red-50 text-red-600 border-red-200",
+    today: "bg-amber-50 text-amber-600 border-amber-200",
+    upcoming: "bg-[#f5f0f0] text-[#a59494] border-[#a59494]/20",
+  };
+
+  const labels = {
+    overdue: "Overdue",
+    today: "Due Today",
+    upcoming: formatted,
+  };
+
+  return (
+    <span
+      className={`text-[10px] font-medium px-1.5 py-0.5 rounded border whitespace-nowrap ${styles[status]}`}
+    >
+      {status === "upcoming" ? formatted : `${labels[status]} · ${formatted}`}
+    </span>
   );
 }
 
@@ -94,6 +136,20 @@ export default function OnboardingTaskList({
       tasksByStage.set(stage, []);
     }
     tasksByStage.get(stage)!.push(task);
+  }
+
+  // Sort tasks within each stage by due_date (nulls last)
+  for (const [, stageTasks] of tasksByStage) {
+    stageTasks.sort((a, b) => {
+      const entryA = progressMap.get(a.id);
+      const entryB = progressMap.get(b.id);
+      const dateA = entryA?.due_date;
+      const dateB = entryB?.due_date;
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return dateA.localeCompare(dateB);
+    });
   }
 
   // Ordered stages (only include stages that have tasks)
@@ -188,6 +244,10 @@ export default function OnboardingTaskList({
                 {stageTasks.map((task) => {
                   const entry = progressMap.get(task.id);
                   const isCompleted = !!entry?.completed_at;
+                  const dueDateStatus = getDueDateStatus(
+                    entry?.due_date,
+                    isCompleted
+                  );
 
                   return (
                     <div
@@ -195,6 +255,8 @@ export default function OnboardingTaskList({
                       className={`flex items-center gap-3 px-4 py-2.5 transition ${
                         isCompleted
                           ? "bg-green-50/30"
+                          : dueDateStatus === "overdue"
+                          ? "bg-red-50/20"
                           : "hover:bg-[#f5f0f0]/30"
                       }`}
                     >
@@ -205,7 +267,7 @@ export default function OnboardingTaskList({
                         className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${
                           isCompleted
                             ? "bg-[#10B981] border-[#10B981]"
-                            : "border-[#a59494]/40 hover:border-[#1c759e]"
+                            : "border-[#a59494]/40 hover:border-brand"
                         } disabled:opacity-40`}
                       >
                         {isCompleted && (
@@ -250,6 +312,12 @@ export default function OnboardingTaskList({
                               {task.done_by}
                             </span>
                           )}
+                          {/* Assignee name */}
+                          {entry?.assigned_user?.name && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
+                              {entry.assigned_user.name}
+                            </span>
+                          )}
                           {task.notes && (
                             <span
                               className="text-[10px] text-[#a59494] truncate max-w-[200px]"
@@ -260,6 +328,11 @@ export default function OnboardingTaskList({
                           )}
                         </div>
                       </div>
+
+                      {/* Due date badge */}
+                      {dueDateStatus && entry?.due_date && (
+                        <DueDateBadge status={dueDateStatus} dueDate={entry.due_date} />
+                      )}
 
                       {/* External link indicator */}
                       {task.action_type === "external_link" &&
@@ -285,7 +358,7 @@ export default function OnboardingTaskList({
                             e.stopPropagation();
                             onEmailTask(task);
                           }}
-                          className="text-[10px] text-[#1c759e] hover:underline shrink-0"
+                          className="text-[10px] text-brand hover:underline shrink-0"
                         >
                           Send
                         </button>

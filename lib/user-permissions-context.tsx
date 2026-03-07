@@ -11,6 +11,8 @@ import {
 /* ── Context value ────────────────────────────────────────────── */
 
 interface UserPermissionsContextValue {
+  /** Current user's ID (from users table) */
+  userId: string;
   /** Current user's role (e.g. "Team Lead", "Admin") */
   userRole: string;
   /** Current user's display name */
@@ -30,6 +32,7 @@ const UserPermissionsContext = createContext<UserPermissionsContextValue | null>
 /* ── Provider ─────────────────────────────────────────────────── */
 
 interface ProviderProps {
+  userId: string;
   userRole: string;
   userName: string;
   userEmail: string;
@@ -38,6 +41,7 @@ interface ProviderProps {
 }
 
 export function UserPermissionsProvider({
+  userId,
   userRole,
   userName,
   userEmail,
@@ -60,7 +64,7 @@ export function UserPermissionsProvider({
 
   return (
     <UserPermissionsContext.Provider
-      value={{ userRole, userName, userEmail, rolePermissions, can }}
+      value={{ userId, userRole, userName, userEmail, rolePermissions, can }}
     >
       {children}
     </UserPermissionsContext.Provider>
@@ -73,7 +77,7 @@ export function UserPermissionsProvider({
  * Access the current user's permissions.
  *
  * Usage:
- *   const { can, userRole } = usePermissions();
+ *   const { can, userRole, userId } = usePermissions();
  *   if (can("send_emails")) { ... }
  */
 export function usePermissions(): UserPermissionsContextValue {
@@ -82,6 +86,7 @@ export function usePermissions(): UserPermissionsContextValue {
     // Fallback for components outside the provider — grant all by default
     // This prevents crashes during SSR/dev when context may not be available
     return {
+      userId: "",
       userRole: "Team Lead",
       userName: "",
       userEmail: "",

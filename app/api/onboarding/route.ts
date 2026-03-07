@@ -7,9 +7,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Actions:
  *   { action: "initialize", candidate_id, hire_type, team_id }
  *     → sets candidate.hire_type, fetches matching tasks, creates candidate_onboarding rows
+ *       with assigned_user_id (from task defaults) and due_date (from offset + anchor)
  *
  *   { action: "toggle", entry_id, completed_at }
  *     → sets completed_at on a candidate_onboarding row
+ *
+ *   { action: "update_task_assignment", task_id, default_assignee_id?, due_offset_days?, due_offset_anchor? }
+ *     → updates default_assignee_id and/or due offset fields on an onboarding_tasks row
+ *
+ *   { action: "reassign", entry_id, assigned_user_id }
+ *     → updates assigned_user_id on a specific candidate_onboarding row
+ *
+ *   { action: "bulk_reassign", team_id, from_user_id, to_user_id }
+ *     → batch updates default_assignee_id on onboarding_tasks where current assignee matches from_user_id
  */
 export async function POST(req: NextRequest) {
   try {
@@ -43,7 +53,7 @@ export async function POST(req: NextRequest) {
         // Already initialized — fetch with joins and return
         const { data, error } = await supabase
           .from("candidate_onboarding")
-          .select("*, task:onboarding_tasks(*)")
+          .select("*, task:onboarding_tasks(*), assigned_user:users!candidate_onboarding_assigned_user_id_fkey(name)")
           .eq("candidate_id", candidate_id);
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 500 });
@@ -64,10 +74,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Fetch matching tasks (hire_type matches or 'both')
+      // Fetch matching tasks (hire_type matches or 'both') — include assignment + scheduling columns
       const { data: tasks, error: tasksError } = await supabase
         .from("onboarding_tasks")
-        .select("id")
+        .select("id, default_assignee_id, due_offset_days, due_offset_anchor")
         .eq("team_id", team_id)
         .eq("is_active", true)
         .in("hire_type", [hire_type, "both"])
@@ -87,16 +97,46 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Insert new entries
-      const entries = tasks.map((task) => ({
-        candidate_id,
-        task_id: task.id,
-      }));
+      // Fetch candidate for start_date and hire_date (for due date calculation)
+      const { data: candidateData } = await supabase
+        .from("candidates")
+        .select("start_date, created_at")
+        .eq("id", candidate_id)
+        .single();
+
+      const startDate = candidateData?.start_date
+        ? new Date(candidateData.start_date)
+        : null;
+      const hireDate = candidateData?.created_at
+        ? new Date(candidateData.created_at)
+        : null;
+
+      // Build entries with assigned_user_id and calculated due_date
+      const entries = tasks.map((task) => {
+        let due_date: string | null = null;
+
+        if (task.due_offset_days != null) {
+          const anchor =
+            task.due_offset_anchor === "hire_date" ? hireDate : startDate;
+          if (anchor) {
+            const d = new Date(anchor);
+            d.setDate(d.getDate() + task.due_offset_days);
+            due_date = d.toISOString().split("T")[0]; // YYYY-MM-DD
+          }
+        }
+
+        return {
+          candidate_id,
+          task_id: task.id,
+          assigned_user_id: task.default_assignee_id ?? null,
+          due_date,
+        };
+      });
 
       const { data, error } = await supabase
         .from("candidate_onboarding")
         .insert(entries)
-        .select("*, task:onboarding_tasks(*)");
+        .select("*, task:onboarding_tasks(*), assigned_user:users!candidate_onboarding_assigned_user_id_fkey(name)");
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -119,6 +159,92 @@ export async function POST(req: NextRequest) {
         .from("candidate_onboarding")
         .update({ completed_at: completed_at ?? null })
         .eq("id", entry_id);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === "update_task_assignment") {
+      const { task_id, ...fields } = body;
+
+      if (!task_id) {
+        return NextResponse.json(
+          { error: "task_id is required" },
+          { status: 400 }
+        );
+      }
+
+      // Build update payload — only include fields that were sent
+      const updates: Record<string, unknown> = {};
+      if ("default_assignee_id" in fields) {
+        updates.default_assignee_id = fields.default_assignee_id ?? null;
+      }
+      if ("due_offset_days" in fields) {
+        updates.due_offset_days = fields.due_offset_days ?? null;
+      }
+      if ("due_offset_anchor" in fields) {
+        updates.due_offset_anchor = fields.due_offset_anchor;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return NextResponse.json(
+          { error: "No update fields provided" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabase
+        .from("onboarding_tasks")
+        .update(updates)
+        .eq("id", task_id);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === "reassign") {
+      const { entry_id, assigned_user_id } = body;
+
+      if (!entry_id) {
+        return NextResponse.json(
+          { error: "entry_id is required" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabase
+        .from("candidate_onboarding")
+        .update({ assigned_user_id: assigned_user_id ?? null })
+        .eq("id", entry_id);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === "bulk_reassign") {
+      const { team_id, from_user_id, to_user_id } = body;
+
+      if (!team_id || !from_user_id || !to_user_id) {
+        return NextResponse.json(
+          { error: "team_id, from_user_id, and to_user_id are required" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabase
+        .from("onboarding_tasks")
+        .update({ default_assignee_id: to_user_id })
+        .eq("team_id", team_id)
+        .eq("default_assignee_id", from_user_id);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

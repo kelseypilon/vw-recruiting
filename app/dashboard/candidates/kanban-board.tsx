@@ -8,25 +8,45 @@ import {
   type DropResult,
 } from "@hello-pangea/dnd";
 import { createClient } from "@/lib/supabase/client";
-import type { PipelineStage, CandidateCard } from "@/lib/types";
+import type { PipelineStage, CandidateCard, TeamUser, GroupInterviewSession } from "@/lib/types";
 import CandidateCardComponent from "./candidate-card";
 import AddCandidateModal from "./add-candidate-modal";
+import InterviewStageModal from "./interview-stage-modal";
+
+const INTERVIEW_STAGES = ["Group Interview", "1on1 Interview"];
+
+interface PendingInterviewMove {
+  candidateId: string;
+  candidateName: string;
+  fromStage: string;
+  toStage: string;
+}
 
 interface Props {
   stages: PipelineStage[];
   candidates: CandidateCard[];
   teamId: string;
+  currentUserId: string;
+  leaders: TeamUser[];
+  upcomingSessions: GroupInterviewSession[];
+  teamZoomLink: string | null;
 }
 
 export default function KanbanBoard({
   stages,
   candidates: initialCandidates,
   teamId,
+  currentUserId,
+  leaders,
+  upcomingSessions,
+  teamZoomLink,
 }: Props) {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [pendingInterviewMove, setPendingInterviewMove] =
+    useState<PendingInterviewMove | null>(null);
 
   // @hello-pangea/dnd requires client-only rendering to avoid SSR hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
@@ -52,10 +72,58 @@ export default function KanbanBoard({
     {} as Record<string, CandidateCard[]>
   );
 
-  function handleStageChange(candidateId: string, newStage: string) {
+  /** Optimistic UI-only stage update */
+  function updateStageOptimistic(candidateId: string, newStage: string) {
     setCandidates((prev) =>
       prev.map((c) => (c.id === candidateId ? { ...c, stage: newStage } : c))
     );
+  }
+
+  /** Persist stage change to DB + record history */
+  async function persistStageChange(
+    candidateId: string,
+    fromStage: string,
+    toStage: string
+  ) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("candidates")
+      .update({ stage: toStage })
+      .eq("id", candidateId);
+    if (error) {
+      // Revert on failure
+      updateStageOptimistic(candidateId, fromStage);
+      return false;
+    }
+    await supabase.from("stage_history").insert({
+      candidate_id: candidateId,
+      from_stage: fromStage,
+      to_stage: toStage,
+    });
+    return true;
+  }
+
+  /** Called by CandidateCard "Move Stage" dropdown */
+  function handleStageChange(candidateId: string, newStage: string) {
+    const candidate = candidates.find((c) => c.id === candidateId);
+    if (!candidate) return;
+    const fromStage = candidate.stage;
+
+    // Optimistic update
+    updateStageOptimistic(candidateId, newStage);
+
+    if (INTERVIEW_STAGES.includes(newStage)) {
+      // Show interview modal — DB persist will happen on modal complete
+      setPendingInterviewMove({
+        candidateId,
+        candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        fromStage,
+        toStage: newStage,
+      });
+    } else {
+      // Persist immediately for non-interview stages
+      persistStageChange(candidateId, fromStage, newStage);
+    }
   }
 
   function handleCandidateAdded(newCandidate: CandidateCard) {
@@ -69,29 +137,47 @@ export default function KanbanBoard({
 
     const newStage = destination.droppableId;
     const candidateId = draggableId;
+    const candidate = candidates.find((c) => c.id === candidateId);
+    if (!candidate) return;
 
     // Optimistic update
-    handleStageChange(candidateId, newStage);
+    updateStageOptimistic(candidateId, newStage);
 
-    // Persist to DB
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("candidates")
-      .update({ stage: newStage })
-      .eq("id", candidateId);
-
-    if (error) {
-      // Revert on failure
-      const oldStage = source.droppableId;
-      handleStageChange(candidateId, oldStage);
-    } else {
-      // Record stage history
-      await supabase.from("stage_history").insert({
-        candidate_id: candidateId,
-        from_stage: source.droppableId,
-        to_stage: newStage,
+    if (INTERVIEW_STAGES.includes(newStage)) {
+      // Show interview modal — DB persist on modal complete
+      setPendingInterviewMove({
+        candidateId,
+        candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        fromStage: source.droppableId,
+        toStage: newStage,
       });
+    } else {
+      // Persist immediately
+      await persistStageChange(candidateId, source.droppableId, newStage);
     }
+  }
+
+  function handleInterviewModalComplete() {
+    if (pendingInterviewMove) {
+      // Persist the stage change (modal already created the interview record)
+      persistStageChange(
+        pendingInterviewMove.candidateId,
+        pendingInterviewMove.fromStage,
+        pendingInterviewMove.toStage
+      );
+    }
+    setPendingInterviewMove(null);
+  }
+
+  function handleInterviewModalCancel() {
+    if (pendingInterviewMove) {
+      // Revert optimistic update
+      updateStageOptimistic(
+        pendingInterviewMove.candidateId,
+        pendingInterviewMove.fromStage
+      );
+    }
+    setPendingInterviewMove(null);
   }
 
   return (
@@ -118,13 +204,13 @@ export default function KanbanBoard({
               placeholder="Search candidates..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-3 py-2 w-56 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="pl-9 pr-3 py-2 w-56 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
           <select
             value={filterStage}
             onChange={(e) => setFilterStage(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
           >
             <option value="">All Stages</option>
             {stages.map((s) => (
@@ -135,7 +221,7 @@ export default function KanbanBoard({
           </select>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition whitespace-nowrap"
+            className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition whitespace-nowrap"
           >
             + Add Candidate
           </button>
@@ -175,7 +261,7 @@ export default function KanbanBoard({
                         {...provided.droppableProps}
                         className={`flex flex-col gap-3 flex-1 overflow-y-auto max-h-[calc(100vh-240px)] pr-1 rounded-lg transition-colors min-h-[80px] p-1 ${
                           snapshot.isDraggingOver
-                            ? "bg-[#1c759e]/5 ring-2 ring-[#1c759e]/20"
+                            ? "bg-brand/5 ring-2 ring-brand/20"
                             : ""
                         }`}
                       >
@@ -192,7 +278,7 @@ export default function KanbanBoard({
                                 {...dragProvided.dragHandleProps}
                                 className={`transition-shadow ${
                                   dragSnapshot.isDragging
-                                    ? "shadow-lg ring-2 ring-[#1c759e]/30 rounded-xl"
+                                    ? "shadow-lg ring-2 ring-brand/30 rounded-xl"
                                     : ""
                                 }`}
                               >
@@ -250,6 +336,22 @@ export default function KanbanBoard({
           teamId={teamId}
           onClose={() => setShowAddModal(false)}
           onAdded={handleCandidateAdded}
+        />
+      )}
+
+      {/* Interview Stage Modal */}
+      {pendingInterviewMove && (
+        <InterviewStageModal
+          candidateName={pendingInterviewMove.candidateName}
+          candidateId={pendingInterviewMove.candidateId}
+          newStage={pendingInterviewMove.toStage}
+          teamId={teamId}
+          currentUserId={currentUserId}
+          leaders={leaders}
+          upcomingSessions={upcomingSessions}
+          teamZoomLink={teamZoomLink}
+          onComplete={handleInterviewModalComplete}
+          onCancel={handleInterviewModalCancel}
         />
       )}
     </>

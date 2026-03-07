@@ -10,10 +10,12 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 
-  /* Vantage West brand colors */
-  --color-lapis: #1c759e;
-  --color-lapis-dark: #155f82;
-  --color-lapis-light: #2a8fc0;
+  /* Brand colors — overridden at runtime by BrandStyleInjector */
+  --color-brand: var(--brand-primary, #1c759e);
+  --color-brand-dark: var(--brand-primary-dark, #155f82);
+  --color-brand-light: var(--brand-primary-light, #2a8fc0);
+
+  /* Neutral colors — stay hardcoded */
   --color-velvet: #272727;
   --color-grey: #a59494;
   --color-grey-light: #c4b8b8;

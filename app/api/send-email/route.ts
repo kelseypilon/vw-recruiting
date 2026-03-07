@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Use provided from_email or default
-    const fromAddress = from_email || "noreply@vantagewestrealestate.com";
+    const fromAddress = from_email || "noreply@recruiting.app";
 
     const emailPayload: {
       from: string;

@@ -7,12 +7,20 @@ import type {
   PipelineStage,
   EmailTemplate,
   ScoringCriterion,
+  InterviewQuestion,
+  OnboardingTask,
+  GroupInterviewPrompt,
 } from "@/lib/types";
+import InterviewQuestionsTab from "./interview-questions-tab";
+import OnboardingTasksTab from "./onboarding-tasks-tab";
+import GroupInterviewPromptsTab from "./group-interview-prompts-tab";
+import { usePermissions } from "@/lib/user-permissions-context";
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
   DEFAULT_ROLES,
   resolveRolePermissions,
+  resolveRolePermissionsWithCustom,
   type TeamRolePermissions,
   type PermissionKey,
 } from "@/lib/permissions";
@@ -25,21 +33,28 @@ interface Props {
   stages: PipelineStage[];
   templates: EmailTemplate[];
   criteria: ScoringCriterion[];
+  interviewQuestions: InterviewQuestion[];
+  onboardingTasks: OnboardingTask[];
+  groupInterviewPrompts: GroupInterviewPrompt[];
   teamId: string;
+  currentUserId: string;
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 
-const TABS = [
+const TABS: { id: string; label: string; permission?: PermissionKey }[] = [
   { id: "team", label: "Team" },
-  { id: "members", label: "Team Members" },
-  { id: "roles", label: "Role Permissions" },
-  { id: "stages", label: "Pipeline Stages" },
-  { id: "templates", label: "Email Templates" },
-  { id: "criteria", label: "Scoring Criteria" },
-] as const;
+  { id: "members", label: "Team Members", permission: "manage_members" },
+  { id: "roles", label: "Role Permissions", permission: "manage_members" },
+  { id: "stages", label: "Pipeline Stages", permission: "manage_settings" },
+  { id: "templates", label: "Email Templates", permission: "manage_templates" },
+  { id: "criteria", label: "Scoring Criteria", permission: "manage_settings" },
+  { id: "questions", label: "Interview Questions" },
+  { id: "onboarding-tasks", label: "Onboarding Tasks", permission: "manage_onboarding" },
+  { id: "group-prompts", label: "Group Interview Prompts", permission: "manage_interviews" },
+];
 
-type TabId = (typeof TABS)[number]["id"];
+type TabId = string;
 
 /* ── Helper: call /api/settings ────────────────────────────────── */
 
@@ -63,7 +78,11 @@ export default function SettingsDashboard({
   stages: initialStages,
   templates: initialTemplates,
   criteria: initialCriteria,
+  interviewQuestions: initialQuestions,
+  onboardingTasks: initialOnboardingTasks,
+  groupInterviewPrompts: initialGroupPrompts,
   teamId,
+  currentUserId,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("team");
   const [team, setTeam] = useState(initialTeam);
@@ -71,6 +90,29 @@ export default function SettingsDashboard({
   const [stages, setStages] = useState(initialStages);
   const [templates, setTemplates] = useState(initialTemplates);
   const [criteria, setCriteria] = useState(initialCriteria);
+  const [questions, setQuestions] = useState(initialQuestions);
+  const [onboardingTasks, setOnboardingTasks] = useState(initialOnboardingTasks);
+  const [groupPrompts] = useState(initialGroupPrompts);
+  const { can, userRole } = usePermissions();
+
+  // Settings tab visibility from team settings
+  const teamSettings = (initialTeam?.settings ?? {}) as Record<string, unknown>;
+  const settingsVisibility = (teamSettings.settings_visibility ?? {}) as Record<string, Record<string, boolean>>;
+
+  // Filter tabs by permission AND settings tab visibility
+  const visibleTabs = TABS.filter((tab) => {
+    // Permission check first
+    if (tab.permission && !can(tab.permission)) return false;
+    // Team Lead always sees all tabs
+    if (userRole === "Team Lead") return true;
+    // If visibility is configured for this role, check it
+    const roleVisibility = settingsVisibility[userRole];
+    if (roleVisibility && tab.id in roleVisibility) {
+      return roleVisibility[tab.id];
+    }
+    // Default: show if user has the required permission (already checked above)
+    return true;
+  });
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -82,14 +124,14 @@ export default function SettingsDashboard({
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-1">
-        {TABS.map((tab) => (
+      <div className="flex gap-1 mb-6 bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-1 overflow-x-auto">
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
+            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition whitespace-nowrap ${
               activeTab === tab.id
-                ? "bg-[#1c759e] text-white"
+                ? "bg-brand text-white"
                 : "text-[#272727] hover:bg-[#f5f0f0]"
             }`}
           >
@@ -103,10 +145,10 @@ export default function SettingsDashboard({
         <TeamTab team={team} onTeamUpdated={setTeam} />
       )}
       {activeTab === "members" && (
-        <MembersTab users={users} onUsersUpdated={setUsers} teamId={teamId} />
+        <MembersTab users={users} onUsersUpdated={setUsers} teamId={teamId} team={team} />
       )}
       {activeTab === "roles" && (
-        <RolesPermissionsTab team={team} onTeamUpdated={setTeam} teamId={teamId} />
+        <RolesPermissionsTab team={team} onTeamUpdated={setTeam} teamId={teamId} users={users} currentUserId={currentUserId} />
       )}
       {activeTab === "stages" && (
         <StagesTab stages={stages} onStagesUpdated={setStages} />
@@ -119,6 +161,36 @@ export default function SettingsDashboard({
       )}
       {activeTab === "criteria" && (
         <CriteriaTab criteria={criteria} onCriteriaUpdated={setCriteria} />
+      )}
+      {activeTab === "questions" && (
+        <InterviewQuestionsTab
+          questions={questions}
+          onQuestionsUpdated={setQuestions}
+          teamId={teamId}
+          currentUserId={currentUserId}
+          users={users}
+        />
+      )}
+      {activeTab === "onboarding-tasks" && (
+        <OnboardingTasksTab
+          tasks={onboardingTasks}
+          onTasksUpdated={setOnboardingTasks}
+          users={users}
+          teamId={teamId}
+        />
+      )}
+      {activeTab === "group-prompts" && (
+        <>
+          <GroupInterviewGuidelinesSection
+            team={team}
+            onTeamUpdated={setTeam}
+            teamId={teamId}
+          />
+          <GroupInterviewPromptsTab
+            prompts={groupPrompts}
+            teamId={teamId}
+          />
+        </>
       )}
     </div>
   );
@@ -136,14 +208,6 @@ function TeamTab({
   const [teamName, setTeamName] = useState(team?.name ?? "");
   const [adminEmail, setAdminEmail] = useState(team?.admin_email ?? "");
   const [adminCc, setAdminCc] = useState(team?.admin_cc ?? true);
-  const [zoomLink, setZoomLink] = useState(
-    team?.group_interview_zoom_link ?? ""
-  );
-  const [interviewDate, setInterviewDate] = useState(
-    team?.group_interview_date
-      ? new Date(team.group_interview_date).toISOString().slice(0, 16)
-      : ""
-  );
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
 
@@ -157,10 +221,6 @@ function TeamTab({
       name: teamName,
       admin_email: adminEmail || null,
       admin_cc: adminCc,
-      group_interview_zoom_link: zoomLink || null,
-      group_interview_date: interviewDate
-        ? new Date(interviewDate).toISOString()
-        : null,
     });
 
     if (result.error) {
@@ -189,7 +249,7 @@ function TeamTab({
               type="text"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
           <div>
@@ -201,7 +261,7 @@ function TeamTab({
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
               placeholder="admin@team.com"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -209,47 +269,12 @@ function TeamTab({
               type="checkbox"
               checked={adminCc}
               onChange={(e) => setAdminCc(e.target.checked)}
-              className="w-4 h-4 rounded border-[#a59494]/40 text-[#1c759e] focus:ring-[#1c759e]"
+              className="w-4 h-4 rounded border-[#a59494]/40 text-brand focus:ring-brand"
             />
             <span className="text-sm text-[#272727]">
               CC admin on all candidate emails
             </span>
           </label>
-        </div>
-      </div>
-
-      {/* Group Interview Settings */}
-      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6">
-        <h3 className="text-sm font-semibold text-[#272727] mb-1">
-          Group Interview Settings
-        </h3>
-        <p className="text-xs text-[#a59494] mb-4">
-          Configure recurring group interview details for the team
-        </p>
-        <div className="space-y-4 max-w-md">
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Zoom Link
-            </label>
-            <input
-              type="url"
-              value={zoomLink}
-              onChange={(e) => setZoomLink(e.target.value)}
-              placeholder="https://zoom.us/j/..."
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Next Group Interview Date
-            </label>
-            <input
-              type="datetime-local"
-              value={interviewDate}
-              onChange={(e) => setInterviewDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-            />
-          </div>
         </div>
       </div>
 
@@ -269,7 +294,7 @@ function TeamTab({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-6 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+          className="px-6 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
         >
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
@@ -280,28 +305,28 @@ function TeamTab({
 
 /* ── Members Tab ───────────────────────────────────────────────── */
 
-const ROLE_OPTIONS = [
-  "Team Lead",
-  "Leader",
-  "Admin",
-  "Front Desk",
-  "VP Ops",
-  "owner",
-  "member",
-];
+function getRoleOptions(team: Team | null): string[] {
+  const customRoles =
+    ((team?.settings as Record<string, unknown>)?.custom_roles as string[]) ??
+    [];
+  return [...DEFAULT_ROLES, ...customRoles];
+}
 
 function MembersTab({
   users,
   onUsersUpdated,
   teamId,
+  team,
 }: {
   users: TeamUser[];
   onUsersUpdated: (users: TeamUser[]) => void;
+  team: Team | null;
   teamId: string;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
+    title: "",
     role: "",
     customRole: "",
     from_email: "",
@@ -310,32 +335,34 @@ function MembersTab({
   const [showAddModal, setShowAddModal] = useState(false);
 
   function startEditing(user: TeamUser) {
-    const isPreset = ROLE_OPTIONS.includes(user.role);
     setEditingId(user.id);
     setEditForm({
       name: user.name,
-      role: isPreset ? user.role : "__custom__",
-      customRole: isPreset ? "" : user.role,
+      title: user.title ?? "",
+      role: user.role,
+      customRole: "",
       from_email: user.from_email ?? "",
     });
   }
 
-  const resolvedEditRole =
-    editForm.role === "__custom__" && editForm.customRole.trim()
-      ? editForm.customRole.trim()
-      : editForm.role === "__custom__"
-      ? "member"
-      : editForm.role;
+  const resolvedEditRole = editForm.role;
 
   async function handleSaveUser() {
     if (!editingId) return;
     setIsSaving(true);
 
+    // Save role + name + from_email
     const result = await saveSettings("update_user", {
       id: editingId,
       name: editForm.name,
       role: resolvedEditRole,
       from_email: editForm.from_email || null,
+    });
+
+    // Save title separately (different column)
+    await saveSettings("update_member_title", {
+      id: editingId,
+      title: editForm.title || null,
     });
 
     if (!result.error) {
@@ -345,6 +372,7 @@ function MembersTab({
             ? {
                 ...u,
                 name: editForm.name,
+                title: editForm.title || null,
                 role: resolvedEditRole,
                 from_email: editForm.from_email || null,
               }
@@ -368,7 +396,7 @@ function MembersTab({
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -383,7 +411,7 @@ function MembersTab({
             <div key={user.id} className="px-6 py-4">
               {editingId === user.id ? (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-[#a59494] mb-1">
                         Name
@@ -394,12 +422,26 @@ function MembersTab({
                         onChange={(e) =>
                           setEditForm((p) => ({ ...p, name: e.target.value }))
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#a59494] mb-1">
-                        Role / Title
+                        Job Title
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.title}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, title: e.target.value }))
+                        }
+                        placeholder="e.g. Recruiter"
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#a59494] mb-1">
+                        Permission Role
                       </label>
                       <select
                         value={editForm.role}
@@ -407,29 +449,16 @@ function MembersTab({
                           setEditForm((p) => ({
                             ...p,
                             role: e.target.value,
-                            customRole: e.target.value === "__custom__" ? p.customRole : "",
                           }))
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
                       >
-                        {ROLE_OPTIONS.map((r) => (
+                        {getRoleOptions(team).map((r) => (
                           <option key={r} value={r}>
                             {r}
                           </option>
                         ))}
-                        <option value="__custom__">Custom…</option>
                       </select>
-                      {editForm.role === "__custom__" && (
-                        <input
-                          type="text"
-                          value={editForm.customRole}
-                          onChange={(e) =>
-                            setEditForm((p) => ({ ...p, customRole: e.target.value }))
-                          }
-                          placeholder="Enter custom role"
-                          className="w-full mt-1.5 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-                        />
-                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -447,7 +476,7 @@ function MembersTab({
                           }))
                         }
                         placeholder="name@team.com"
-                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                        className="w-full px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
                       />
                     </div>
                   </div>
@@ -461,7 +490,7 @@ function MembersTab({
                     <button
                       onClick={handleSaveUser}
                       disabled={isSaving}
-                      className="px-3 py-1.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
                     >
                       {isSaving ? "Saving..." : "Save"}
                     </button>
@@ -470,7 +499,7 @@ function MembersTab({
               ) : (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center shrink-0">
                       <span className="text-white text-sm font-bold">
                         {user.name
                           .split(" ")
@@ -485,9 +514,14 @@ function MembersTab({
                       </p>
                       <p className="text-xs text-[#a59494]">{user.email}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e]">
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand">
                           {user.role}
                         </span>
+                        {user.title && (
+                          <span className="text-[10px] text-[#a59494]">
+                            {user.title}
+                          </span>
+                        )}
                         {user.from_email && (
                           <span className="text-[10px] text-[#a59494]">
                             Sends as: {user.from_email}
@@ -498,7 +532,7 @@ function MembersTab({
                   </div>
                   <button
                     onClick={() => startEditing(user)}
-                    className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                    className="text-xs font-medium text-brand hover:text-brand-dark transition"
                   >
                     Edit
                   </button>
@@ -518,6 +552,7 @@ function MembersTab({
       {showAddModal && (
         <AddMemberModal
           teamId={teamId}
+          team={team}
           onClose={() => setShowAddModal(false)}
           onMemberAdded={(newUser) => {
             onUsersUpdated([...users, newUser]);
@@ -533,26 +568,22 @@ function MembersTab({
 
 function AddMemberModal({
   teamId,
+  team,
   onClose,
   onMemberAdded,
 }: {
   teamId: string;
+  team: Team | null;
   onClose: () => void;
   onMemberAdded: (user: TeamUser) => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Leader");
-  const [customRole, setCustomRole] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const resolvedRole =
-    role === "__custom__" && customRole.trim()
-      ? customRole.trim()
-      : role === "__custom__"
-      ? "member"
-      : role;
+  const resolvedRole = role;
 
   async function handleSave() {
     if (!name.trim() || !email.trim()) {
@@ -612,7 +643,7 @@ function AddMemberModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Brooklyn Smith"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
 
@@ -626,7 +657,7 @@ function AddMemberModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@team.com"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
 
@@ -637,28 +668,15 @@ function AddMemberModal({
             </label>
             <select
               value={role}
-              onChange={(e) => {
-                setRole(e.target.value);
-                if (e.target.value !== "__custom__") setCustomRole("");
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
             >
-              {ROLE_OPTIONS.map((r) => (
+              {getRoleOptions(team).map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
               ))}
-              <option value="__custom__">Custom…</option>
             </select>
-            {role === "__custom__" && (
-              <input
-                type="text"
-                value={customRole}
-                onChange={(e) => setCustomRole(e.target.value)}
-                placeholder="Enter custom role title"
-                className="w-full mt-2 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
-              />
-            )}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -673,7 +691,7 @@ function AddMemberModal({
             <button
               onClick={handleSave}
               disabled={isSaving || !name.trim() || !email.trim()}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Add Member"}
             </button>
@@ -796,14 +814,14 @@ function TemplatesTab({
               onClick={() => handleSelect(tmpl)}
               className={`w-full text-left px-4 py-3 transition ${
                 selected?.id === tmpl.id
-                  ? "bg-[#1c759e]/10"
+                  ? "bg-brand/10"
                   : "hover:bg-[#f5f0f0]"
               }`}
             >
               <p
                 className={`text-sm font-medium truncate ${
                   selected?.id === tmpl.id
-                    ? "text-[#1c759e]"
+                    ? "text-brand"
                     : "text-[#272727]"
                 }`}
               >
@@ -832,7 +850,7 @@ function TemplatesTab({
                 {selected.merge_tags.map((tag) => (
                   <span
                     key={tag}
-                    className="text-xs px-2 py-0.5 rounded bg-[#1c759e]/10 text-[#1c759e] font-mono"
+                    className="text-xs px-2 py-0.5 rounded bg-brand/10 text-brand font-mono"
                   >
                     {`{{${tag}}}`}
                   </span>
@@ -847,7 +865,7 @@ function TemplatesTab({
                 type="text"
                 value={editSubject}
                 onChange={(e) => setEditSubject(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               />
             </div>
             <div>
@@ -858,7 +876,7 @@ function TemplatesTab({
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
                 rows={12}
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition resize-none"
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-none"
               />
             </div>
             <div className="flex items-center justify-end gap-3">
@@ -876,7 +894,7 @@ function TemplatesTab({
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
               >
                 {isSaving ? "Saving..." : "Save Template"}
               </button>
@@ -898,19 +916,182 @@ function RolesPermissionsTab({
   team,
   onTeamUpdated,
   teamId,
+  users,
+  currentUserId,
 }: {
   team: Team | null;
   onTeamUpdated: (team: Team) => void;
   teamId: string;
+  users: TeamUser[];
+  currentUserId: string;
 }) {
-  const stored = (team?.settings as Record<string, unknown>)?.role_permissions as
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const isTeamLead = currentUser?.role === "Team Lead";
+
+  // Settings Tab Visibility
+  const SETTINGS_TABS_CONFIG = [
+    { id: "team", label: "Team" },
+    { id: "members", label: "Team Members" },
+    { id: "roles", label: "Role Permissions" },
+    { id: "stages", label: "Pipeline Stages" },
+    { id: "templates", label: "Email Templates" },
+    { id: "criteria", label: "Scoring Criteria" },
+    { id: "questions", label: "Interview Questions" },
+    { id: "onboarding-tasks", label: "Onboarding Tasks" },
+    { id: "group-prompts", label: "Group Interview Prompts" },
+  ];
+  const settings = (team?.settings ?? {}) as Record<string, unknown>;
+  const stored = settings.role_permissions as
     | Partial<TeamRolePermissions>
     | undefined;
+  const customRoles =
+    (settings.custom_roles as string[]) ?? [];
+
   const [permissions, setPermissions] = useState<TeamRolePermissions>(
-    resolveRolePermissions(stored)
+    resolveRolePermissionsWithCustom(stored, customRoles)
   );
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+
+  // Settings tab visibility state
+  const storedVisibility = (settings.settings_visibility ?? {}) as Record<string, Record<string, boolean>>;
+  const [tabVisibility, setTabVisibility] = useState<Record<string, Record<string, boolean>>>(storedVisibility);
+
+  function toggleTabVisibility(tabId: string, role: string) {
+    if (role === "Team Lead") return; // Team Lead always sees all
+    setTabVisibility((prev) => ({
+      ...prev,
+      [role]: {
+        ...(prev[role] ?? {}),
+        [tabId]: !(prev[role]?.[tabId] ?? false),
+      },
+    }));
+  }
+
+  async function handleSaveVisibility() {
+    setIsSaving(true);
+    setSaveStatus("");
+    const result = await saveSettings("update_settings_visibility", {
+      team_id: teamId,
+      settings_visibility: tabVisibility,
+    });
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      setSaveStatus("Saved!");
+      if (team) {
+        const currentSettings = (team.settings ?? {}) as Record<string, unknown>;
+        onTeamUpdated({
+          ...team,
+          settings: { ...currentSettings, settings_visibility: tabVisibility },
+        });
+      }
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setIsSaving(false);
+  }
+
+  // Manage Roles state
+  const [showAddRole, setShowAddRole] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [editRoleName, setEditRoleName] = useState("");
+  const [deleteRole, setDeleteRole] = useState<string | null>(null);
+  const [reassignTo, setReassignTo] = useState("View Only");
+  const [roleActionLoading, setRoleActionLoading] = useState(false);
+
+  const defaultRoleSet = new Set<string>(DEFAULT_ROLES as unknown as string[]);
+
+  function updateTeamState(newSettings: Record<string, unknown>) {
+    if (team) {
+      onTeamUpdated({ ...team, settings: newSettings });
+    }
+  }
+
+  async function handleAddRole() {
+    if (!newRoleName.trim()) return;
+    setRoleActionLoading(true);
+    const result = await saveSettings("add_custom_role", {
+      team_id: teamId,
+      role_name: newRoleName.trim(),
+    });
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      const newSettings = (result as { settings: Record<string, unknown> }).settings;
+      updateTeamState(newSettings);
+      // Add to local permissions state
+      setPermissions((prev) => {
+        const updated = { ...prev };
+        updated[newRoleName.trim()] = {} as Record<string, boolean> as TeamRolePermissions[string];
+        for (const key of PERMISSION_KEYS) {
+          (updated[newRoleName.trim()] as Record<string, boolean>)[key] = false;
+        }
+        return updated;
+      });
+      setSaveStatus("Role added!");
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setNewRoleName("");
+    setShowAddRole(false);
+    setRoleActionLoading(false);
+  }
+
+  async function handleRenameRole() {
+    if (!editingRole || !editRoleName.trim()) return;
+    setRoleActionLoading(true);
+    const result = await saveSettings("rename_role", {
+      team_id: teamId,
+      old_name: editingRole,
+      new_name: editRoleName.trim(),
+    });
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      const newSettings = (result as { settings: Record<string, unknown> }).settings;
+      updateTeamState(newSettings);
+      // Update local permissions state
+      setPermissions((prev) => {
+        const updated = { ...prev };
+        if (updated[editingRole]) {
+          updated[editRoleName.trim()] = updated[editingRole];
+          delete updated[editingRole];
+        }
+        return updated;
+      });
+      setSaveStatus("Role renamed!");
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setEditingRole(null);
+    setEditRoleName("");
+    setRoleActionLoading(false);
+  }
+
+  async function handleDeleteRole() {
+    if (!deleteRole) return;
+    setRoleActionLoading(true);
+    const result = await saveSettings("delete_role", {
+      team_id: teamId,
+      role_name: deleteRole,
+      reassign_to: reassignTo,
+    });
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      const newSettings = (result as { settings: Record<string, unknown> }).settings;
+      updateTeamState(newSettings);
+      setPermissions((prev) => {
+        const updated = { ...prev };
+        delete updated[deleteRole];
+        return updated;
+      });
+      setSaveStatus("Role deleted!");
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setDeleteRole(null);
+    setReassignTo("View Only");
+    setRoleActionLoading(false);
+  }
 
   function togglePermission(role: string, key: PermissionKey) {
     setPermissions((prev) => ({
@@ -945,7 +1126,6 @@ function RolesPermissionsTab({
       setSaveStatus(`Error: ${result.error}`);
     } else {
       setSaveStatus("Saved!");
-      // Update team state so parent has latest settings
       if (team) {
         const currentSettings = (team.settings ?? {}) as Record<string, unknown>;
         onTeamUpdated({
@@ -960,8 +1140,293 @@ function RolesPermissionsTab({
 
   const roles = Object.keys(permissions);
 
+  const usersPerRole = (roleName: string) =>
+    users.filter((u) => u.role === roleName).length;
+
   return (
     <div className="space-y-6">
+      {/* ── Manage Roles Section (Team Lead only) ─────────────── */}
+      {isTeamLead && (<>
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <h3 className="text-sm font-semibold text-[#272727]">
+            Manage Roles
+          </h3>
+          <p className="text-xs text-[#a59494] mt-0.5">
+            Add, rename, or remove custom roles. Default roles cannot be
+            deleted.
+          </p>
+        </div>
+        <div className="px-6 py-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            {roles.map((role) => {
+              const isDefault = defaultRoleSet.has(role);
+              const count = usersPerRole(role);
+
+              if (editingRole === role) {
+                return (
+                  <div
+                    key={role}
+                    className="flex items-center gap-1 bg-brand/5 border border-brand/20 rounded-full px-3 py-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={editRoleName}
+                      onChange={(e) => setEditRoleName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameRole();
+                        if (e.key === "Escape") setEditingRole(null);
+                      }}
+                      className="text-xs border-none bg-transparent outline-none w-24"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleRenameRole}
+                      disabled={roleActionLoading}
+                      className="text-brand hover:text-brand-dark"
+                      title="Save"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setEditingRole(null)}
+                      className="text-[#a59494] hover:text-[#272727]"
+                      title="Cancel"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={role}
+                  className="group flex items-center gap-1.5 bg-[#f5f0f0] border border-[#a59494]/15 rounded-full px-3 py-1.5"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isDefault ? "bg-brand" : "bg-[#a59494]"
+                    }`}
+                  />
+                  <span className="text-xs font-medium text-[#272727]">
+                    {role}
+                  </span>
+                  {count > 0 && (
+                    <span className="text-[10px] text-[#a59494]">
+                      ({count})
+                    </span>
+                  )}
+                  {isDefault ? (
+                    <span title="Default role — cannot be deleted">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="text-[#a59494] ml-0.5"
+                      >
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition ml-0.5">
+                      <button
+                        onClick={() => {
+                          setEditingRole(role);
+                          setEditRoleName(role);
+                        }}
+                        className="text-[#a59494] hover:text-brand"
+                        title="Rename role"
+                      >
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setDeleteRole(role)}
+                        className="text-[#a59494] hover:text-red-500"
+                        title="Delete role"
+                      >
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Add Role */}
+            {showAddRole ? (
+              <div className="flex items-center gap-1 bg-white border border-brand/30 rounded-full px-3 py-1.5">
+                <input
+                  type="text"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAddRole();
+                    if (e.key === "Escape") {
+                      setShowAddRole(false);
+                      setNewRoleName("");
+                    }
+                  }}
+                  placeholder="Role name..."
+                  className="text-xs border-none bg-transparent outline-none w-24"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAddRole}
+                  disabled={roleActionLoading || !newRoleName.trim()}
+                  className="text-brand hover:text-brand-dark disabled:opacity-40"
+                  title="Add"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddRole(false);
+                    setNewRoleName("");
+                  }}
+                  className="text-[#a59494] hover:text-[#272727]"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowAddRole(true)}
+                className="flex items-center gap-1 border border-dashed border-[#a59494]/40 rounded-full px-3 py-1.5 text-xs text-[#a59494] hover:border-brand hover:text-brand transition"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Role
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Delete Confirmation Modal ──────────────────────────── */}
+      {deleteRole && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-sm font-semibold text-[#272727] mb-2">
+              Delete &ldquo;{deleteRole}&rdquo;?
+            </h3>
+            <p className="text-xs text-[#a59494] mb-4">
+              {usersPerRole(deleteRole) > 0
+                ? `${usersPerRole(deleteRole)} user(s) currently have this role. They will be reassigned.`
+                : "No users currently have this role."}
+            </p>
+            {usersPerRole(deleteRole) > 0 && (
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-[#272727] mb-1">
+                  Reassign users to:
+                </label>
+                <select
+                  value={reassignTo}
+                  onChange={(e) => setReassignTo(e.target.value)}
+                  className="w-full border border-[#a59494]/30 rounded-lg px-3 py-2 text-sm"
+                >
+                  {roles
+                    .filter((r) => r !== deleteRole)
+                    .map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteRole(null)}
+                className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteRole}
+                disabled={roleActionLoading}
+                className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {roleActionLoading ? "Deleting..." : "Delete Role"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>)}
+
+      {/* ── Permissions Matrix ──────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
         <div className="px-6 py-4 border-b border-[#a59494]/10">
           <h3 className="text-sm font-semibold text-[#272727]">
@@ -988,7 +1453,7 @@ function RolesPermissionsTab({
                     <div className="flex justify-center gap-1 mt-1.5">
                       <button
                         onClick={() => toggleAllForRole(role, true)}
-                        className="text-[10px] text-[#1c759e] hover:underline"
+                        className="text-[10px] text-brand hover:underline"
                         title="Enable all"
                       >
                         All
@@ -1025,7 +1490,7 @@ function RolesPermissionsTab({
                           onClick={() => togglePermission(role, key)}
                           className={`w-8 h-5 rounded-full relative transition-colors duration-200 ${
                             permissions[role]?.[key]
-                              ? "bg-[#1c759e]"
+                              ? "bg-brand"
                               : "bg-[#a59494]/30"
                           }`}
                           title={`${permissions[role]?.[key] ? "Disable" : "Enable"} ${meta.label} for ${role}`}
@@ -1048,7 +1513,7 @@ function RolesPermissionsTab({
         </div>
       </div>
 
-      {/* Save button */}
+      {/* Save Permissions button */}
       <div className="flex items-center justify-end gap-3">
         {saveStatus && (
           <span
@@ -1064,9 +1529,211 @@ function RolesPermissionsTab({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-6 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+          className="px-6 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
         >
           {isSaving ? "Saving..." : "Save Permissions"}
+        </button>
+      </div>
+
+      {/* ── Settings Tab Visibility (Team Lead only) ──────────── */}
+      {isTeamLead && (
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <h3 className="text-sm font-semibold text-[#272727]">
+            Settings Tab Visibility
+          </h3>
+          <p className="text-xs text-[#a59494] mt-0.5">
+            Control which Settings tabs each role can see. Team Lead always sees all tabs.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#a59494]/10">
+                <th className="text-left px-6 py-3 text-xs font-semibold text-[#272727] w-52">
+                  Tab
+                </th>
+                {roles.map((role) => (
+                  <th
+                    key={role}
+                    className="px-3 py-3 text-xs font-semibold text-[#272727] text-center min-w-[100px]"
+                  >
+                    {role}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#a59494]/10">
+              {SETTINGS_TABS_CONFIG.map((tab) => (
+                <tr key={tab.id} className="hover:bg-[#f5f0f0]/50 transition">
+                  <td className="px-6 py-3 text-sm font-medium text-[#272727]">
+                    {tab.label}
+                  </td>
+                  {roles.map((role) => {
+                    const isLead = role === "Team Lead";
+                    const isOn = isLead || (tabVisibility[role]?.[tab.id] ?? false);
+                    return (
+                      <td key={role} className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => toggleTabVisibility(tab.id, role)}
+                          disabled={isLead}
+                          className={`w-8 h-5 rounded-full relative transition-colors duration-200 ${
+                            isOn ? "bg-brand" : "bg-[#a59494]/30"
+                          } ${isLead ? "opacity-60 cursor-not-allowed" : ""}`}
+                          title={isLead ? "Team Lead always sees all tabs" : `${isOn ? "Hide" : "Show"} ${tab.label} for ${role}`}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
+                              isOn ? "left-3.5" : "left-0.5"
+                            }`}
+                          />
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#a59494]/10 flex justify-end">
+          <button
+            onClick={handleSaveVisibility}
+            disabled={isSaving}
+            className="px-6 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : "Save Visibility"}
+          </button>
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Group Interview Guidelines Section ───────────────────────── */
+
+function GroupInterviewGuidelinesSection({
+  team,
+  onTeamUpdated,
+  teamId,
+}: {
+  team: Team | null;
+  onTeamUpdated: (team: Team) => void;
+  teamId: string;
+}) {
+  const settings = (team?.settings ?? {}) as Record<string, unknown>;
+  const saved = (settings.group_interview_guidelines as string[]) ?? [];
+  const [guidelines, setGuidelines] = useState<string[]>(saved);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  function updateGuideline(index: number, value: string) {
+    setGuidelines((prev) => prev.map((g, i) => (i === index ? value : g)));
+  }
+
+  function addGuideline() {
+    setGuidelines((prev) => [...prev, ""]);
+  }
+
+  function removeGuideline(index: number) {
+    setGuidelines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setSaveStatus("");
+    const filtered = guidelines.filter((g) => g.trim());
+    const result = await saveSettings("update_group_guidelines", {
+      team_id: teamId,
+      guidelines: filtered,
+    });
+    if (result.error) {
+      setSaveStatus(`Error: ${result.error}`);
+    } else {
+      setGuidelines(filtered);
+      setSaveStatus("Saved!");
+      if (team) {
+        const currentSettings = (team.settings ?? {}) as Record<string, unknown>;
+        onTeamUpdated({
+          ...team,
+          settings: { ...currentSettings, group_interview_guidelines: filtered },
+        });
+      }
+      setTimeout(() => setSaveStatus(""), 2000);
+    }
+    setIsSaving(false);
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm mb-6">
+      <div className="px-6 py-4 border-b border-[#a59494]/10">
+        <h3 className="text-sm font-semibold text-[#272727]">
+          Group Interview Guidelines
+        </h3>
+        <p className="text-xs text-[#a59494] mt-0.5">
+          These guidelines will be shown to interviewers on the group interview
+          session page
+        </p>
+      </div>
+      <div className="p-6 space-y-3">
+        {guidelines.map((g, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="text-xs text-[#a59494] mt-2.5 w-5 shrink-0 text-right">
+              {i + 1}.
+            </span>
+            <textarea
+              value={g}
+              onChange={(e) => updateGuideline(i, e.target.value)}
+              rows={2}
+              className="flex-1 border border-[#a59494]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none"
+              placeholder="Enter a guideline..."
+            />
+            <button
+              onClick={() => removeGuideline(i)}
+              className="mt-2 text-[#a59494] hover:text-red-500 transition"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={addGuideline}
+          className="text-xs text-brand hover:underline font-medium"
+        >
+          + Add Guideline
+        </button>
+      </div>
+      <div className="px-6 pb-4 flex items-center justify-end gap-3">
+        {saveStatus && (
+          <span
+            className={`text-sm ${
+              saveStatus.startsWith("Error")
+                ? "text-red-600"
+                : "text-green-600"
+            }`}
+          >
+            {saveStatus}
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+        >
+          {isSaving ? "Saving..." : "Save Guidelines"}
         </button>
       </div>
     </div>
@@ -1185,7 +1852,7 @@ function CriteriaTab({
                             min={0}
                             max={100}
                             step={0.5}
-                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
                           />
                         </div>
                         <div className="flex items-center gap-2">
@@ -1202,7 +1869,7 @@ function CriteriaTab({
                             max={10}
                             step={0.5}
                             placeholder="None"
-                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
                           />
                         </div>
                         <div className="flex gap-2 ml-auto">
@@ -1215,7 +1882,7 @@ function CriteriaTab({
                           <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="px-3 py-1 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-xs font-semibold transition disabled:opacity-50"
+                            className="px-3 py-1 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
                           >
                             {isSaving ? "..." : "Save"}
                           </button>
@@ -1230,7 +1897,7 @@ function CriteriaTab({
                       <span className="text-sm text-[#272727] flex-1">
                         {c.name}
                       </span>
-                      <span className="text-xs text-[#1c759e] font-medium">
+                      <span className="text-xs text-brand font-medium">
                         {c.weight_percent}%
                       </span>
                       {c.min_threshold !== null && (
@@ -1240,7 +1907,7 @@ function CriteriaTab({
                       )}
                       <button
                         onClick={() => startEditing(c)}
-                        className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+                        className="text-xs font-medium text-brand hover:text-brand-dark transition"
                       >
                         Edit
                       </button>

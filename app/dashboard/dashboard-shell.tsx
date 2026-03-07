@@ -44,7 +44,7 @@ export default function DashboardShell({
     {
       label: "Total Candidates",
       value: stats.totalCandidates,
-      color: "#1c759e",
+      color: "var(--brand-primary)",
       href: "/dashboard/candidates",
     },
     {
@@ -103,7 +103,7 @@ export default function DashboardShell({
                 style={{ backgroundColor: card.color }}
               />
             </div>
-            <p className="text-3xl font-bold text-[#272727] group-hover:text-[#1c759e] transition">
+            <p className="text-3xl font-bold text-[#272727] group-hover:text-brand transition">
               {card.value}
             </p>
           </Link>
@@ -119,7 +119,7 @@ export default function DashboardShell({
             </h3>
             <Link
               href="/dashboard/candidates"
-              className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+              className="text-xs font-medium text-brand hover:text-brand-dark transition"
             >
               View All
             </Link>
@@ -165,7 +165,7 @@ export default function DashboardShell({
             </h3>
             <Link
               href="/dashboard/candidates"
-              className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+              className="text-xs font-medium text-brand hover:text-brand-dark transition"
             >
               View All
             </Link>
@@ -184,7 +184,7 @@ export default function DashboardShell({
                     href={`/dashboard/candidates/${c.id}`}
                     className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[#f5f0f0]/50 transition"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-white">
                         {c.first_name[0]}
                         {c.last_name[0]}
@@ -232,7 +232,7 @@ export default function DashboardShell({
             </h3>
             <Link
               href="/dashboard/interviews"
-              className="text-xs font-medium text-[#1c759e] hover:text-[#155f82] transition"
+              className="text-xs font-medium text-brand hover:text-brand-dark transition"
             >
               View All
             </Link>
@@ -265,8 +265,8 @@ export default function DashboardShell({
                     >
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#1c759e]/10 flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-[#1c759e]">
+                          <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-bold text-brand">
                               {interview.candidate?.first_name?.[0]}
                               {interview.candidate?.last_name?.[0]}
                             </span>

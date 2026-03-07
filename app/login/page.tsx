@@ -1,18 +1,50 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import type { TeamBranding } from "@/lib/types";
+import { getBrandingFooter } from "@/lib/branding";
+
+/** Default branding (Vantage West) used before API response arrives */
+const DEFAULT_BRANDING: TeamBranding = {
+  mode: "vantage",
+  name: "Vantage West Realty",
+  logoUrl: null,
+  primaryColor: "#1c759e",
+  secondaryColor: "#272727",
+  primaryDark: "#155f82",
+  primaryLight: "#2a8fc0",
+  showPoweredBy: false,
+  initials: "VW",
+};
 
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [branding, setBranding] = useState<TeamBranding>(DEFAULT_BRANDING);
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const authError = searchParams.get("error");
+  const teamSlug = searchParams.get("team");
+
+  // Fetch branding for ?team=slug
+  useEffect(() => {
+    if (!teamSlug) return;
+    async function loadBranding() {
+      try {
+        const res = await fetch(`/api/team-branding?slug=${encodeURIComponent(teamSlug!)}`);
+        const json = await res.json();
+        if (json.data) setBranding(json.data);
+      } catch {
+        // keep defaults
+      }
+    }
+    loadBranding();
+  }, [teamSlug]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,11 +72,24 @@ function LoginForm() {
       <div className="w-full max-w-md px-8 py-10 bg-white rounded-2xl shadow-lg">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-[#1c759e] flex items-center justify-center mb-4">
-            <span className="text-white text-2xl font-bold tracking-wide">VW</span>
-          </div>
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt={branding.name}
+              className="w-20 h-20 rounded-full object-cover mb-4"
+            />
+          ) : (
+            <div
+              className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: branding.primaryColor }}
+            >
+              <span className="text-white text-2xl font-bold tracking-wide">
+                {branding.initials}
+              </span>
+            </div>
+          )}
           <h1 className="text-2xl font-bold text-[#272727] tracking-tight">
-            Vantage West Realty
+            {branding.name}
           </h1>
           <p className="text-sm text-[#a59494] mt-1 font-medium">Recruiting Portal</p>
         </div>
@@ -70,7 +115,8 @@ function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition text-sm"
+              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
+              style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
             />
           </div>
 
@@ -86,21 +132,29 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition text-sm"
+              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
+              style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 w-full py-2.5 px-4 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white font-semibold text-sm tracking-wide transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="mt-2 w-full py-2.5 px-4 rounded-lg text-white font-semibold text-sm tracking-wide transition disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ backgroundColor: branding.primaryColor }}
+            onMouseEnter={(e) =>
+              !loading && (e.currentTarget.style.backgroundColor = branding.primaryDark)
+            }
+            onMouseLeave={(e) =>
+              !loading && (e.currentTarget.style.backgroundColor = branding.primaryColor)
+            }
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
 
         <p className="mt-6 text-center text-xs text-[#a59494]">
-          &copy; {new Date().getFullYear()} Vantage West Realty. All rights reserved.
+          {getBrandingFooter(branding)}
         </p>
       </div>
     </div>

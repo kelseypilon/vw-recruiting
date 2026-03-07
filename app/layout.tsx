@@ -9,8 +9,8 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  title: "VW Recruiting | Vantage West Realty",
-  description: "Real estate agent recruiting platform for Vantage West Realty",
+  title: "Recruiting Portal",
+  description: "Real estate agent recruiting platform",
 };
 
 export default function RootLayout({

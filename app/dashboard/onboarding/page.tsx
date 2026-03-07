@@ -57,7 +57,7 @@ export default async function OnboardingPage() {
   if (candidateIds.length > 0) {
     const { data } = await supabase
       .from("candidate_onboarding")
-      .select("*, task:onboarding_tasks(*), assignee:users(name)")
+      .select("*, task:onboarding_tasks(*), assignee:users(name), assigned_user:users!candidate_onboarding_assigned_user_id_fkey(name)")
       .in("candidate_id", candidateIds)
       .order("created_at");
     progress = (data ?? []) as CandidateOnboarding[];

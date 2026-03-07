@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/user-permissions-context";
@@ -14,8 +14,15 @@ import type {
   OnboardingTask,
   CandidateOnboarding,
   Team,
+  Interview,
+  InterviewScorecard,
+  InterviewQuestion,
+  CandidateGroupSession,
+  GroupInterviewNote,
 } from "@/lib/types";
 import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
+import EmailPreviewModal from "@/app/dashboard/interviews/email-preview-modal";
+import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-modal";
 import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
 import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-modal";
 
@@ -32,6 +39,12 @@ interface Props {
   onboardingTasks: OnboardingTask[];
   onboardingProgress: CandidateOnboarding[];
   team: Team | null;
+  interviews: Interview[];
+  scorecards: InterviewScorecard[];
+  interviewQuestions: InterviewQuestion[];
+  currentUserId: string;
+  groupSessions?: CandidateGroupSession[];
+  groupNotes?: GroupInterviewNote[];
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -47,19 +60,27 @@ export default function CandidateProfile({
   onboardingTasks,
   onboardingProgress: initialOnboardingProgress,
   team,
+  interviews,
+  scorecards,
+  interviewQuestions,
+  currentUserId,
+  groupSessions = [],
+  groupNotes = [],
 }: Props) {
   const [candidate, setCandidate] = useState(initialCandidate);
   const [notes, setNotes] = useState(initialNotes);
   const [history, setHistory] = useState(initialHistory);
+  const [localInterviews, setLocalInterviews] = useState(interviews);
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<"profile" | "onboarding">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews">("profile");
 
   const currentStage = stages.find((s) => s.name === candidate.stage);
 
   const tabs = [
     { key: "profile" as const, label: "Profile" },
+    { key: "interviews" as const, label: "Interviews" },
     { key: "onboarding" as const, label: "Onboarding" },
   ];
 
@@ -68,7 +89,7 @@ export default function CandidateProfile({
       {/* Back link */}
       <Link
         href="/dashboard/candidates"
-        className="inline-flex items-center gap-1.5 text-sm text-[#a59494] hover:text-[#1c759e] transition mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-[#a59494] hover:text-brand transition mb-6"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <polyline points="15 18 9 12 15 6" />
@@ -80,7 +101,7 @@ export default function CandidateProfile({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[#1c759e] flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 rounded-full bg-brand flex items-center justify-center shrink-0">
               <span className="text-white text-lg font-bold">
                 {candidate.first_name[0]}
                 {candidate.last_name[0]}
@@ -148,6 +169,40 @@ export default function CandidateProfile({
                 },
                 ...prev,
               ]);
+
+              // Auto-create interview when moving to interview stages
+              const interviewStages = ["Group Interview", "1on1 Interview"];
+              if (interviewStages.includes(newStage)) {
+                const { data: newInterview } = await supabase
+                  .from("interviews")
+                  .insert({
+                    team_id: teamId,
+                    candidate_id: candidate.id,
+                    interview_type: newStage,
+                    status: "scheduled",
+                    scheduled_at: null,
+                    notes: `Auto-created when moved to ${newStage}`,
+                  })
+                  .select(
+                    "*, candidate:candidates(first_name, last_name, role_applied, stage)"
+                  )
+                  .single();
+                if (newInterview) {
+                  setLocalInterviews((prev) => [
+                    ...prev,
+                    newInterview as Interview,
+                  ]);
+                  // Link current user as interviewer
+                  if (currentUserId) {
+                    await supabase
+                      .from("interview_interviewers")
+                      .insert({
+                        interview_id: newInterview.id,
+                        user_id: currentUserId,
+                      });
+                  }
+                }
+              }
             }
             setIsMoving(false);
           }}
@@ -162,7 +217,7 @@ export default function CandidateProfile({
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px ${
               activeTab === tab.key
-                ? "text-[#1c759e] border-[#1c759e]"
+                ? "text-brand border-brand"
                 : "text-[#a59494] border-transparent hover:text-[#272727]"
             }`}
           >
@@ -199,6 +254,7 @@ export default function CandidateProfile({
             <NotesSection
               candidateId={candidate.id}
               notes={notes}
+              groupNotes={groupNotes}
               onNoteAdded={(note) => setNotes((prev) => [note, ...prev])}
             />
 
@@ -218,6 +274,21 @@ export default function CandidateProfile({
           team={team}
           teamId={teamId}
           onCandidateUpdate={(c) => setCandidate(c)}
+        />
+      )}
+
+      {activeTab === "interviews" && (
+        <InterviewsTab
+          candidate={candidate}
+          interviews={localInterviews}
+          scorecards={scorecards}
+          interviewQuestions={interviewQuestions}
+          currentUserId={currentUserId}
+          teamId={teamId}
+          team={team}
+          groupSessions={groupSessions}
+          emailTemplates={emailTemplates}
+          leaders={leaders}
         />
       )}
 
@@ -276,6 +347,8 @@ function OnboardingTab({
   const [emailModalTask, setEmailModalTask] = useState<OnboardingTask | null>(
     null
   );
+  const [startDate, setStartDate] = useState(candidate.start_date ?? "");
+  const [isSavingStartDate, setIsSavingStartDate] = useState(false);
 
   const progressMap = new Map<string, CandidateOnboarding>();
   progress.forEach((p) => progressMap.set(p.task_id, p));
@@ -284,6 +357,24 @@ function OnboardingTab({
   const totalTasks = progress.length || tasks.length;
   const progressPercent =
     totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
+
+  async function handleStartDateSave(newDate: string) {
+    setIsSavingStartDate(true);
+    try {
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { error: saveErr } = await supabase
+        .from("candidates")
+        .update({ start_date: newDate || null })
+        .eq("id", candidate.id);
+      if (!saveErr) {
+        setStartDate(newDate);
+        onCandidateUpdate({ ...candidate, start_date: newDate || null });
+      }
+    } catch {
+      // silently fail — user can retry
+    }
+    setIsSavingStartDate(false);
+  }
 
   async function handleInitialize(hireType: "agent" | "employee") {
     if (isInitializing) return;
@@ -411,19 +502,37 @@ function OnboardingTab({
               <h3 className="text-sm font-semibold text-[#272727]">
                 Onboarding Progress
               </h3>
-              {candidate.hire_type && (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1c759e]/10 text-[#1c759e] mt-1 inline-block">
-                  {candidate.hire_type === "agent" ? "Agent" : "Employee"}
-                </span>
-              )}
+              <div className="flex items-center gap-2 mt-1">
+                {candidate.hire_type && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                    {candidate.hire_type === "agent" ? "Agent" : "Employee"}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-lg font-bold text-[#1c759e]">
-                {Math.round(progressPercent)}%
-              </span>
-              <span className="text-xs text-[#a59494] ml-2">
-                {completedCount} of {totalTasks} tasks
-              </span>
+            <div className="flex items-center gap-4">
+              {/* Start Date field */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-[#a59494] whitespace-nowrap">Start Date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    handleStartDateSave(e.target.value);
+                  }}
+                  disabled={isSavingStartDate}
+                  className="px-2 py-1 rounded-lg border border-[#a59494]/30 text-xs text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition disabled:opacity-50"
+                />
+              </div>
+              <div className="text-right">
+                <span className="text-lg font-bold text-brand">
+                  {Math.round(progressPercent)}%
+                </span>
+                <span className="text-xs text-[#a59494] ml-2">
+                  {completedCount} of {totalTasks} tasks
+                </span>
+              </div>
             </div>
           </div>
           <div className="h-2 bg-[#f5f0f0] rounded-full overflow-hidden">
@@ -432,7 +541,7 @@ function OnboardingTab({
               style={{
                 width: `${progressPercent}%`,
                 backgroundColor:
-                  progressPercent === 100 ? "#10B981" : "#1c759e",
+                  progressPercent === 100 ? "#10B981" : "var(--brand-primary)",
               }}
             />
           </div>
@@ -455,14 +564,14 @@ function OnboardingTab({
                 <button
                   onClick={() => handleInitialize("agent")}
                   disabled={isInitializing}
-                  className="px-5 py-2.5 rounded-lg bg-[#1c759e] hover:bg-[#155f82] text-white text-sm font-semibold transition disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
                 >
                   {isInitializing ? "Initializing..." : "Start as Agent"}
                 </button>
                 <button
                   onClick={() => handleInitialize("employee")}
                   disabled={isInitializing}
-                  className="px-5 py-2.5 rounded-lg border-2 border-[#1c759e] text-[#1c759e] hover:bg-[#1c759e]/5 text-sm font-semibold transition disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-lg border-2 border-brand text-brand hover:bg-brand/5 text-sm font-semibold transition disabled:opacity-50"
                 >
                   {isInitializing ? "Initializing..." : "Start as Employee"}
                 </button>
@@ -515,7 +624,7 @@ function ContactCard({ candidate }: { candidate: Candidate }) {
               href={candidate.website_url.startsWith("http") ? candidate.website_url : `https://${candidate.website_url}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-[#1c759e] hover:underline break-all"
+              className="text-sm text-brand hover:underline break-all"
             >
               {candidate.website_url}
             </a>
@@ -659,7 +768,7 @@ function ResumeCard({
               height="20"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#1c759e"
+              stroke="var(--brand-primary)"
               strokeWidth="2"
               className="shrink-0"
             >
@@ -676,7 +785,7 @@ function ResumeCard({
               href={candidate.resume_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs font-medium text-[#1c759e] hover:underline shrink-0"
+              className="text-xs font-medium text-brand hover:underline shrink-0"
             >
               View
             </a>
@@ -684,7 +793,7 @@ function ResumeCard({
 
           {/* Replace resume */}
           <label className="block text-center cursor-pointer">
-            <span className="text-xs text-[#a59494] hover:text-[#1c759e] transition">
+            <span className="text-xs text-[#a59494] hover:text-brand transition">
               {isUploading ? "Uploading..." : "Replace resume"}
             </span>
             <input
@@ -697,7 +806,7 @@ function ResumeCard({
           </label>
         </div>
       ) : (
-        <label className="flex flex-col items-center gap-2 py-6 cursor-pointer rounded-lg border-2 border-dashed border-[#a59494]/30 hover:border-[#1c759e]/50 transition">
+        <label className="flex flex-col items-center gap-2 py-6 cursor-pointer rounded-lg border-2 border-dashed border-[#a59494]/30 hover:border-brand/50 transition">
           <svg
             width="24"
             height="24"
@@ -836,7 +945,7 @@ function AQCard({ candidate }: { candidate: Candidate }) {
                 cy="18"
                 r="15.5"
                 fill="none"
-                stroke="#1c759e"
+                stroke="var(--brand-primary)"
                 strokeWidth="3"
                 strokeDasharray={`${(candidate.aq_normalized! / 100) * 97.4} 97.4`}
                 strokeLinecap="round"
@@ -904,10 +1013,12 @@ function CompositeCard({ candidate }: { candidate: Candidate }) {
 function NotesSection({
   candidateId,
   notes,
+  groupNotes = [],
   onNoteAdded,
 }: {
   candidateId: string;
   notes: CandidateNote[];
+  groupNotes?: GroupInterviewNote[];
   onNoteAdded: (note: CandidateNote) => void;
 }) {
   const [newNote, setNewNote] = useState("");
@@ -948,24 +1059,24 @@ function NotesSection({
           onChange={(e) => setNewNote(e.target.value)}
           placeholder="Add a note..."
           rows={2}
-          className="flex-1 px-3 py-2 text-sm rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition resize-none"
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-none"
         />
         <button
           onClick={handleAddNote}
           disabled={!newNote.trim() || isSaving}
-          className="self-end px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          className="self-end px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {isSaving ? "Saving..." : "Add Note"}
         </button>
       </div>
 
       {/* Notes list */}
-      {notes.length === 0 ? (
+      {notes.length === 0 && groupNotes.length === 0 ? (
         <p className="text-sm text-[#a59494] text-center py-4">
           No notes yet. Add one above.
         </p>
       ) : (
-        <div className="space-y-3 max-h-64 overflow-y-auto">
+        <div className="space-y-3 max-h-80 overflow-y-auto">
           {notes.map((note) => (
             <div
               key={note.id}
@@ -981,6 +1092,38 @@ function NotesSection({
                 <span className="text-xs text-[#a59494]">·</span>
                 <span className="text-xs text-[#a59494]">
                   {new Date(note.created_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {/* Group Interview Notes */}
+          {groupNotes.map((gn) => (
+            <div
+              key={gn.id}
+              className="p-3 rounded-lg bg-brand/5 border border-brand/10"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                  From Group Interview
+                </span>
+              </div>
+              <p className="text-sm text-[#272727] whitespace-pre-wrap">
+                {gn.note_text}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-[#a59494]">
+                  {gn.author?.name ?? "Unknown"}
+                </span>
+                <span className="text-xs text-[#a59494]">·</span>
+                <span className="text-xs text-[#a59494]">
+                  {new Date(gn.updated_at).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -1190,7 +1333,7 @@ function ActionButtons({
         <button
           onClick={() => onMoveStage("Onboarding")}
           disabled={isMoving || candidate.stage === "Onboarding"}
-          className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Move to Onboarding
         </button>
@@ -1232,10 +1375,10 @@ function SendEmailModal({
     return text
       .replace(/\{\{first_name\}\}/g, candidate.first_name)
       .replace(/\{\{last_name\}\}/g, candidate.last_name)
-      .replace(/\{\{team_name\}\}/g, team?.name ?? "Vantage West")
+      .replace(/\{\{team_name\}\}/g, team?.name ?? "Our Team")
       .replace(
         /\{\{sender_name\}\}/g,
-        selectedSender?.name ?? "Vantage West Recruiting"
+        selectedSender?.name ?? "Recruiting Team"
       );
   }
 
@@ -1308,7 +1451,7 @@ function SendEmailModal({
               <select
                 value={fromUserId}
                 onChange={(e) => setFromUserId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
               >
                 {senders.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -1346,7 +1489,7 @@ function SendEmailModal({
               value={ccEmail}
               onChange={(e) => setCcEmail(e.target.value)}
               placeholder="cc@team.com"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
             {team?.admin_cc && team?.admin_email && (
               <p className="text-xs text-[#a59494] mt-1">
@@ -1363,7 +1506,7 @@ function SendEmailModal({
             <select
               value={selectedTemplateId}
               onChange={(e) => handleTemplateChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition bg-white"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
             >
               <option value="">Blank email (no template)</option>
               {templates
@@ -1385,7 +1528,7 @@ function SendEmailModal({
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
 
@@ -1398,7 +1541,7 @@ function SendEmailModal({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={10}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-none"
             />
           </div>
 
@@ -1426,13 +1569,864 @@ function SendEmailModal({
             <button
               onClick={handleSend}
               disabled={isSending || !subject.trim() || !body.trim()}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
             >
               {isSending ? "Sending..." : "Send Email"}
             </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Interviews Tab ────────────────────────────────────────────── */
+
+const INTERVIEW_CATEGORY_ORDER = [
+  "Timeline & Rapport", "Values - Joy", "Values - Ownership", "Values - Grit",
+  "Coachability", "Curiosity", "Work Ethic", "Intelligence",
+  "Prior Success", "Passion", "Adaptability", "Emotional Intelligence",
+  "Resilience", "Confidence", "Closing",
+];
+
+const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = {
+  strong_yes: { label: "Strong Yes", color: "bg-green-600 text-white" },
+  yes: { label: "Yes", color: "bg-green-500 text-white" },
+  hold: { label: "Hold", color: "bg-amber-500 text-white" },
+  no: { label: "No", color: "bg-red-500 text-white" },
+};
+
+function scoreColor(score: number) {
+  if (score >= 4) return "text-green-700 bg-green-50";
+  if (score >= 3) return "text-amber-700 bg-amber-50";
+  return "text-red-700 bg-red-50";
+}
+
+function InterviewsTab({
+  candidate,
+  interviews,
+  scorecards,
+  interviewQuestions,
+  currentUserId,
+  teamId,
+  team,
+  groupSessions = [],
+  emailTemplates = [],
+  leaders = [],
+}: {
+  candidate: Candidate;
+  interviews: Interview[];
+  scorecards: InterviewScorecard[];
+  interviewQuestions: InterviewQuestion[];
+  currentUserId: string;
+  teamId: string;
+  team: Team | null;
+  groupSessions?: CandidateGroupSession[];
+  emailTemplates?: EmailTemplate[];
+  leaders?: TeamUser[];
+}) {
+  const [subTab, setSubTab] = useState<"scheduled" | "guide" | "scorecard">("scheduled");
+
+  const subTabs = [
+    { key: "scheduled" as const, label: "Scheduled" },
+    { key: "guide" as const, label: "Interview Guide" },
+    { key: "scorecard" as const, label: "Scorecard" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab navigation */}
+      <div className="flex gap-1 bg-[#f5f0f0]/50 rounded-lg p-1">
+        {subTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key)}
+            className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition ${
+              subTab === tab.key
+                ? "bg-white text-[#272727] shadow-sm"
+                : "text-[#a59494] hover:text-[#272727]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "scheduled" && (
+        <ScheduledSubTab
+          candidate={candidate}
+          interviews={interviews}
+          scorecards={scorecards}
+          currentUserId={currentUserId}
+          teamId={teamId}
+          team={team}
+          groupSessions={groupSessions}
+          leaders={leaders}
+        />
+      )}
+
+      {subTab === "guide" && (
+        <InterviewGuideSubTab
+          interviewQuestions={interviewQuestions}
+          candidateId={candidate.id}
+          teamId={teamId}
+          currentUserId={currentUserId}
+        />
+      )}
+
+      {subTab === "scorecard" && (
+        <ScorecardSubTab
+          candidate={candidate}
+          interviews={interviews}
+          scorecards={scorecards}
+          interviewQuestions={interviewQuestions}
+          currentUserId={currentUserId}
+          teamId={teamId}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Scheduled Sub-Tab ─────────────────────────────────────────── */
+
+function ScheduledSubTab({
+  candidate,
+  interviews,
+  scorecards,
+  currentUserId,
+  teamId,
+  team,
+  groupSessions = [],
+  leaders = [],
+}: {
+  candidate: Candidate;
+  interviews: Interview[];
+  scorecards: InterviewScorecard[];
+  currentUserId: string;
+  teamId: string;
+  team: Team | null;
+  groupSessions?: CandidateGroupSession[];
+  leaders?: TeamUser[];
+}) {
+  const [emailInterview, setEmailInterview] = useState<Interview | null>(null);
+  const [localInterviewsList, setLocalInterviewsList] = useState(interviews);
+  const [showNewInterviewForm, setShowNewInterviewForm] = useState(false);
+  const [newInterviewType, setNewInterviewType] = useState("1on1 Interview");
+  const [newInterviewDate, setNewInterviewDate] = useState("");
+  const [creatingInterview, setCreatingInterview] = useState(false);
+
+  const candidateInterviews = localInterviewsList.filter(
+    (i) => i.candidate_id === candidate.id
+  );
+
+  async function handleCreateInterview() {
+    setCreatingInterview(true);
+    try {
+      const res = await fetch("/api/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_interview",
+          payload: {
+            team_id: teamId,
+            candidate_id: candidate.id,
+            interview_type: newInterviewType,
+            status: "scheduled",
+            scheduled_at: newInterviewDate || null,
+            notes: "",
+            interviewer_ids: [currentUserId],
+          },
+        }),
+      });
+      const json = await res.json();
+      if (json.data) {
+        setLocalInterviewsList((prev) => [...prev, json.data as Interview]);
+        setShowNewInterviewForm(false);
+        setNewInterviewDate("");
+      }
+    } catch (err) {
+      console.error("Failed to create interview:", err);
+    }
+    setCreatingInterview(false);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Interview list */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#272727]">
+            Interviews ({candidateInterviews.length})
+          </h3>
+          <button
+            onClick={() => setShowNewInterviewForm(!showNewInterviewForm)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark transition"
+          >
+            {showNewInterviewForm ? "Cancel" : "+ Schedule Interview"}
+          </button>
+        </div>
+
+        {showNewInterviewForm && (
+          <div className="px-6 py-4 border-b border-[#a59494]/10 bg-[#f5f0f0]/30">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
+                  Type
+                </label>
+                <select
+                  value={newInterviewType}
+                  onChange={(e) => setNewInterviewType(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+                >
+                  <option value="1on1 Interview">1-on-1 Interview</option>
+                  <option value="Phone Screen">Phone Screen</option>
+                  <option value="Coffee Chat">Coffee Chat</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
+                  Date & Time
+                  <span className="font-normal ml-1">(optional)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={newInterviewDate}
+                  onChange={(e) => setNewInterviewDate(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+                />
+              </div>
+              <button
+                onClick={handleCreateInterview}
+                disabled={creatingInterview}
+                className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-50"
+              >
+                {creatingInterview ? "Creating..." : "Create"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {candidateInterviews.length === 0 && !showNewInterviewForm ? (
+          <div className="p-6 text-center">
+            <p className="text-sm text-[#a59494] mb-3">No interviews scheduled yet</p>
+            <button
+              onClick={() => setShowNewInterviewForm(true)}
+              className="text-sm font-medium text-brand hover:text-brand-dark transition"
+            >
+              + Schedule first interview
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#a59494]/10">
+            {candidateInterviews.map((interview) => {
+              const allSc = scorecards.filter(
+                (s) => s.interview_id === interview.id && s.submitted_at
+              );
+              return (
+                <div key={interview.id} className="px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[#272727]">
+                      {interview.interview_type}
+                    </p>
+                    <p className="text-xs text-[#a59494]">
+                      {interview.scheduled_at
+                        ? new Date(interview.scheduled_at).toLocaleDateString("en-US", {
+                            month: "short", day: "numeric", year: "numeric",
+                          })
+                        : "Not scheduled"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {allSc.length > 0 && (
+                      <span className="text-xs text-[#a59494]">
+                        {allSc.length} scorecard{allSc.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {candidate.email && interview.status === "scheduled" && (
+                      <button
+                        onClick={() => setEmailInterview(interview)}
+                        className="text-xs font-medium px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
+                        title="Send invite email for this interview"
+                      >
+                        Email
+                      </button>
+                    )}
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        interview.status === "completed"
+                          ? "bg-green-100 text-green-700"
+                          : interview.status === "scheduled"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {interview.status.charAt(0).toUpperCase() + interview.status.slice(1)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Group Interview Sessions */}
+      {groupSessions.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-6 py-4 border-b border-[#a59494]/10">
+            <h3 className="text-sm font-semibold text-[#272727]">
+              Group Interview Sessions ({groupSessions.length})
+            </h3>
+            <p className="text-xs text-[#a59494] mt-0.5">
+              Group interviews are managed from the{" "}
+              <Link href="/dashboard/group-interviews" className="text-brand hover:underline">
+                Group Interviews page
+              </Link>
+            </p>
+          </div>
+          <div className="divide-y divide-[#a59494]/10">
+            {groupSessions.map((gs) => {
+              const session = gs.session;
+              if (!session) return null;
+              const statusColor =
+                session.status === "completed"
+                  ? "bg-green-100 text-green-700"
+                  : session.status === "in_progress"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-blue-100 text-blue-700";
+              return (
+                <Link
+                  key={gs.session_id}
+                  href={`/dashboard/group-interviews/${session.id}`}
+                  className="flex items-center justify-between px-6 py-3 hover:bg-[#f5f0f0]/50 transition"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-[#272727]">{session.title}</p>
+                    <span className="text-xs text-[#a59494]">
+                      {session.session_date
+                        ? new Date(session.session_date).toLocaleDateString("en-US", {
+                            month: "short", day: "numeric", year: "numeric",
+                          })
+                        : "Date not set"}
+                    </span>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor}`}>
+                    {session.status === "in_progress"
+                      ? "In Progress"
+                      : session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Send Email for Existing Interview */}
+      {emailInterview && candidate.email && (
+        <EmailPreviewModal
+          data={{
+            to: candidate.email,
+            fromEmail: "",
+            subject: `Your ${emailInterview.interview_type} with ${team?.name ?? "Our Team"}`,
+            body: `Hi ${candidate.first_name},\n\nWe're reaching out regarding your upcoming ${emailInterview.interview_type} interview.\n\n${emailInterview.scheduled_at ? `Date: ${new Date(emailInterview.scheduled_at).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}` : "We will confirm the date and time shortly."}\n\nIf you have any questions, don't hesitate to reach out.\n\nBest,\n${team?.name ?? "Our Team"}`,
+            teamId,
+            candidateId: candidate.id,
+            interviewType: emailInterview.interview_type,
+            scheduledAt: emailInterview.scheduled_at,
+            notes: emailInterview.notes ?? "",
+            cc: team?.admin_cc && team?.admin_email ? team.admin_email : undefined,
+            interviewId: emailInterview.id,
+          } as EmailPreviewData}
+          onClose={() => setEmailInterview(null)}
+          onSent={() => setEmailInterview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Interview Guide Sub-Tab ───────────────────────────────────── */
+
+function InterviewGuideSubTab({
+  interviewQuestions,
+  candidateId,
+  teamId,
+  currentUserId,
+}: {
+  interviewQuestions: InterviewQuestion[];
+  candidateId: string;
+  teamId: string;
+  currentUserId: string;
+}) {
+  const [guideNotes, setGuideNotes] = useState<Record<string, string>>({});
+  const debounceTimers = useState<Record<string, ReturnType<typeof setTimeout>>>({})[0];
+
+  // Load existing guide notes on mount
+  useEffect(() => {
+    async function loadNotes() {
+      try {
+        const res = await fetch("/api/interview-scorecards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "get_guide_notes",
+            payload: { candidate_id: candidateId, author_user_id: currentUserId },
+          }),
+        });
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data)) {
+          const notes: Record<string, string> = {};
+          for (const n of json.data) {
+            if (n.note_text) notes[n.question_id] = n.note_text;
+          }
+          setGuideNotes(notes);
+        }
+      } catch {}
+    }
+    loadNotes();
+  }, [candidateId, currentUserId]);
+
+  // Group questions by category in CATEGORY_ORDER
+  const grouped: Record<string, InterviewQuestion[]> = {};
+  for (const q of interviewQuestions) {
+    if (!grouped[q.category]) grouped[q.category] = [];
+    grouped[q.category].push(q);
+  }
+  const sortedCategoryKeys = Object.keys(grouped).sort((a, b) => {
+    const ai = INTERVIEW_CATEGORY_ORDER.indexOf(a);
+    const bi = INTERVIEW_CATEGORY_ORDER.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  function handleNoteChange(questionId: string, text: string) {
+    setGuideNotes((prev) => ({ ...prev, [questionId]: text }));
+
+    // Debounced auto-save (2s)
+    if (debounceTimers[questionId]) clearTimeout(debounceTimers[questionId]);
+    debounceTimers[questionId] = setTimeout(() => {
+      // Save note via API (fire-and-forget)
+      fetch("/api/interview-scorecards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_guide_note",
+          payload: {
+            candidate_id: candidateId,
+            question_id: questionId,
+            team_id: teamId,
+            author_user_id: currentUserId,
+            note_text: text,
+          },
+        }),
+      }).catch(() => {});
+    }, 2000);
+  }
+
+  if (interviewQuestions.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-8 text-center">
+        <p className="text-sm text-[#a59494] mb-2">No interview questions configured</p>
+        <p className="text-xs text-[#a59494]">
+          Add questions in{" "}
+          <Link href="/dashboard/settings" className="text-brand hover:underline">
+            Settings
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {sortedCategoryKeys.map((category) => (
+        <div key={category} className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-5 py-3 border-b border-[#a59494]/10">
+            <h4 className="text-xs font-bold text-brand uppercase tracking-wider">
+              {category}
+            </h4>
+          </div>
+          <div className="divide-y divide-[#a59494]/5">
+            {grouped[category].map((q) => (
+              <div key={q.id} className="px-5 py-3">
+                <p className="text-sm text-[#272727] mb-2">{q.question_text}</p>
+                <textarea
+                  placeholder="Notes..."
+                  value={guideNotes[q.id] ?? ""}
+                  onChange={(e) => handleNoteChange(q.id, e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Scorecard Sub-Tab ─────────────────────────────────────────── */
+
+function ScorecardSubTab({
+  candidate,
+  interviews,
+  scorecards,
+  interviewQuestions,
+  currentUserId,
+  teamId,
+}: {
+  candidate: Candidate;
+  interviews: Interview[];
+  scorecards: InterviewScorecard[];
+  interviewQuestions: InterviewQuestion[];
+  currentUserId: string;
+  teamId: string;
+}) {
+  // Get unique categories from questions
+  const categories = [...new Set(interviewQuestions.map((q) => q.category))].sort(
+    (a, b) => {
+      const ai = INTERVIEW_CATEGORY_ORDER.indexOf(a);
+      const bi = INTERVIEW_CATEGORY_ORDER.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    }
+  );
+
+  const [categoryRatings, setCategoryRatings] = useState<Record<string, number>>({});
+  const [recommendation, setRecommendation] = useState<string>("");
+  const [summaryNotes, setSummaryNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [localScorecards, setLocalScorecards] = useState(scorecards);
+
+  const { userRole } = usePermissions();
+  const FULL_ACCESS_ROLES = ["Team Lead", "Admin", "VP Ops"];
+  const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
+
+  // Pick the first scheduled/completed interview for this candidate to attach scorecard to
+  const candidateInterviews = interviews.filter((i) => i.candidate_id === candidate.id);
+  const activeInterview = candidateInterviews.find((i) => i.status === "scheduled" || i.status === "completed");
+
+  // Calculate overall score from rated categories
+  const ratedValues = Object.values(categoryRatings).filter((v) => v > 0);
+  const overallScore = ratedValues.length > 0
+    ? Number((ratedValues.reduce((a, b) => a + b, 0) / ratedValues.length).toFixed(2))
+    : null;
+
+  async function handleSaveOrSubmit(doSubmit: boolean) {
+    if (!activeInterview) return;
+    setSaving(true);
+
+    try {
+      // Build category_scores and answers
+      const category_scores: Record<string, number> = {};
+      const answers = categories
+        .filter((cat) => categoryRatings[cat] && categoryRatings[cat] > 0)
+        .map((cat) => {
+          category_scores[cat] = categoryRatings[cat];
+          return {
+            question_id: cat,
+            question_text: cat,
+            category: cat,
+            score: categoryRatings[cat],
+            notes: "",
+          };
+        });
+
+      const res = await fetch("/api/interview-scorecards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: doSubmit ? "submit" : "save_draft",
+          payload: {
+            interview_id: activeInterview.id,
+            interviewer_user_id: currentUserId,
+            candidate_id: candidate.id,
+            team_id: teamId,
+            answers,
+            category_scores,
+            overall_score: overallScore,
+            recommendation: recommendation || null,
+            summary_notes: summaryNotes || null,
+          },
+        }),
+      });
+      const result = await res.json();
+
+      if (result.data) {
+        setLocalScorecards((prev) => {
+          const idx = prev.findIndex((sc) => sc.id === result.data.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = result.data;
+            return next;
+          }
+          return [...prev, result.data];
+        });
+        if (doSubmit) setSubmitted(true);
+      }
+    } catch (err) {
+      console.error("Failed to save scorecard:", err);
+    }
+    setSaving(false);
+  }
+
+  // Visibility filtering for submitted scorecards
+  const viewerHasSubmitted = localScorecards.some(
+    (sc) => sc.interviewer_user_id === currentUserId && sc.submitted_at
+  );
+  const submittedScorecards = localScorecards
+    .filter((sc) => sc.submitted_at)
+    .filter((sc) => {
+      if (sc.interviewer_user_id === currentUserId) return true;
+      if (isFullAccess) return true;
+      const vis = (sc.evaluator as Record<string, unknown> | null)?.scorecard_visibility as string | undefined;
+      if (vis === "never") return false;
+      if (vis === "after_submit") return viewerHasSubmitted;
+      return true;
+    });
+
+  // Comparison grid data
+  const allCategories = new Set<string>();
+  submittedScorecards.forEach((sc) => {
+    Object.keys(sc.category_scores).forEach((cat) => allCategories.add(cat));
+  });
+  const sortedCategories = [...allCategories].sort((a, b) => {
+    const ai = INTERVIEW_CATEGORY_ORDER.indexOf(a);
+    const bi = INTERVIEW_CATEGORY_ORDER.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+  const combinedOverall =
+    submittedScorecards.length > 0
+      ? Number(
+          (submittedScorecards.reduce((sum, sc) => sum + (sc.overall_score ?? 0), 0) /
+            submittedScorecards.length
+          ).toFixed(2)
+        )
+      : null;
+
+  return (
+    <div className="space-y-4">
+      {/* Scorecard Form */}
+      {activeInterview && !submitted ? (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-[#272727]">Rate by Category</h3>
+              <p className="text-xs text-[#a59494] mt-0.5">
+                For: {activeInterview.interview_type}
+              </p>
+            </div>
+            {overallScore !== null && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#a59494]">Overall</span>
+                <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(overallScore)}`}>
+                  {overallScore.toFixed(1)}/5
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="divide-y divide-[#a59494]/5">
+            {categories.map((cat) => (
+              <div key={cat} className="px-6 py-3 flex items-center justify-between">
+                <span className="text-sm text-[#272727] font-medium">{cat}</span>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() =>
+                        setCategoryRatings((prev) => ({ ...prev, [cat]: star }))
+                      }
+                      className="transition"
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "none"}
+                        stroke={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "#a59494"}
+                        strokeWidth="2"
+                      >
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 py-4 border-t border-[#a59494]/10 space-y-3">
+            {/* Recommendation */}
+            <div>
+              <label className="block text-xs font-semibold text-[#272727] mb-1.5">
+                Recommendation
+              </label>
+              <div className="flex gap-2">
+                {[
+                  { value: "strong_yes", label: "Strong Yes", color: "bg-green-600" },
+                  { value: "yes", label: "Yes", color: "bg-green-500" },
+                  { value: "hold", label: "Hold", color: "bg-amber-500" },
+                  { value: "no", label: "No", color: "bg-red-500" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRecommendation(opt.value)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      recommendation === opt.value
+                        ? `${opt.color} text-white`
+                        : "border border-[#a59494]/30 text-[#272727] hover:bg-[#f5f0f0]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Summary notes */}
+            <div>
+              <label className="block text-xs font-semibold text-[#272727] mb-1">
+                General Notes
+              </label>
+              <textarea
+                value={summaryNotes}
+                onChange={(e) => setSummaryNotes(e.target.value)}
+                rows={3}
+                placeholder="Overall thoughts about this candidate..."
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => handleSaveOrSubmit(false)}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg border border-[#a59494]/30 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save Draft"}
+              </button>
+              <button
+                onClick={() => handleSaveOrSubmit(true)}
+                disabled={saving || ratedValues.length === 0}
+                className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {saving ? "Submitting..." : "Submit Scorecard"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : !activeInterview ? (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-8 text-center">
+          <p className="text-sm text-[#a59494]">
+            No interview to score yet. Schedule an interview first.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6 text-center">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-[#272727]">Scorecard Submitted</p>
+          <p className="text-xs text-[#a59494] mt-1">Your evaluation has been recorded.</p>
+        </div>
+      )}
+
+      {/* Score Comparison Grid */}
+      {submittedScorecards.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-6 py-4 border-b border-[#a59494]/10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#272727]">Score Comparison</h3>
+              {combinedOverall !== null && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#a59494]">Combined</span>
+                  <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(combinedOverall)}`}>
+                    {combinedOverall.toFixed(1)}/5
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#a59494]/10">
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[160px]">
+                    Category
+                  </th>
+                  {submittedScorecards.map((sc) => (
+                    <th key={sc.id} className="text-center px-3 py-2.5 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[80px]">
+                      {sc.evaluator?.name ?? "Evaluator"}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#a59494]/5">
+                {sortedCategories.map((cat) => (
+                  <tr key={cat} className="hover:bg-[#f5f0f0]/30 transition">
+                    <td className="px-4 py-2 text-xs font-medium text-[#272727]">{cat}</td>
+                    {submittedScorecards.map((sc) => {
+                      const s = sc.category_scores[cat];
+                      return (
+                        <td key={sc.id} className="text-center px-3 py-2">
+                          {s !== undefined ? (
+                            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${scoreColor(s)}`}>
+                              {s.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#a59494]">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-[#a59494]/20 bg-[#f5f0f0]/30">
+                  <td className="px-4 py-2.5 text-xs font-bold text-[#272727]">Overall</td>
+                  {submittedScorecards.map((sc) => (
+                    <td key={sc.id} className="text-center px-3 py-2.5">
+                      {sc.overall_score !== null ? (
+                        <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
+                          {sc.overall_score.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#a59494]">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Recommendation badges */}
+          <div className="px-6 py-3 border-t border-[#a59494]/10 flex flex-wrap gap-3">
+            {submittedScorecards.map((sc) => {
+              const rec = sc.recommendation ? RECOMMENDATION_LABELS[sc.recommendation] : null;
+              return (
+                <div key={sc.id} className="flex items-center gap-2">
+                  <span className="text-xs text-[#a59494]">{sc.evaluator?.name ?? "Evaluator"}:</span>
+                  {rec ? (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rec.color}`}>
+                      {rec.label}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[#a59494]">No recommendation</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,13 +11,17 @@ const NAV_ITEMS: {
   href: string;
   icon: React.ComponentType<{ active: boolean }>;
   permission?: PermissionKey;
+  emailGate?: string;
 }[] = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
   { label: "Candidates", href: "/dashboard/candidates", icon: CandidatesIcon, permission: "view_candidates" },
   { label: "Interviews", href: "/dashboard/interviews", icon: InterviewsIcon, permission: "manage_interviews" },
-  { label: "Onboarding", href: "/dashboard/onboarding", icon: OnboardingIcon },
+  { label: "Group Interviews", href: "/dashboard/group-interviews", icon: GroupInterviewsIcon, permission: "manage_interviews" },
+  { label: "Onboarding", href: "/dashboard/onboarding", icon: OnboardingIcon, permission: "view_onboarding" },
   { label: "Settings", href: "/dashboard/settings", icon: SettingsIcon, permission: "manage_settings" },
+  { label: "Profile", href: "/dashboard/profile", icon: ProfileIcon },
   { label: "Help", href: "/dashboard/help", icon: HelpIcon },
+  { label: "Super Admin", href: "/dashboard/super-admin", icon: SuperAdminIcon, emailGate: "info@ajhazzi.com" },
 ];
 
 export default function DashboardLayout({
@@ -28,24 +32,39 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { teamId, teamName, teams, switchTeam } = useTeam();
-  const { can, userRole } = usePermissions();
+  const { teamId, teamName, teams, switchTeam, branding } = useTeam();
+  const { can } = usePermissions();
 
-  // Filter nav items based on user permissions
-  const visibleNavItems = NAV_ITEMS.filter(
-    (item) => !item.permission || can(item.permission)
-  );
+  // Filter nav items based on user permissions and email gates
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.emailGate && email !== item.emailGate) return false;
+    if (item.permission && !can(item.permission)) return false;
+    return true;
+  });
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f0f0]">
       {/* Header */}
       <header className="h-16 bg-white border-b border-[#a59494]/20 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-[#1c759e] flex items-center justify-center">
-            <span className="text-white text-sm font-bold">VW</span>
-          </div>
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt={branding.name}
+              className="w-9 h-9 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: branding.primaryColor }}
+            >
+              <span className="text-white text-sm font-bold">
+                {branding.initials}
+              </span>
+            </div>
+          )}
           <span className="text-lg font-bold text-[#272727] tracking-tight">
-            {teamName || "VW Recruiting"}
+            {teamName || branding.name}
           </span>
 
           {/* Team Switcher */}
@@ -53,7 +72,7 @@ export default function DashboardLayout({
             <select
               value={teamId}
               onChange={(e) => switchTeam(e.target.value)}
-              className="ml-3 text-sm border border-[#a59494]/30 rounded-lg px-2.5 py-1.5 bg-[#f5f0f0] text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e]/30 cursor-pointer"
+              className="ml-3 text-sm border border-[#a59494]/30 rounded-lg px-2.5 py-1.5 bg-[#f5f0f0] text-[#272727] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/30 cursor-pointer"
             >
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -68,7 +87,14 @@ export default function DashboardLayout({
           <form action="/auth/signout" method="POST">
             <button
               type="submit"
-              className="text-sm font-medium text-[#1c759e] hover:text-[#155f82] transition"
+              className="text-sm font-medium transition"
+              style={{ color: branding.primaryColor }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = branding.primaryDark)
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = branding.primaryColor)
+              }
             >
               Sign Out
             </button>
@@ -78,8 +104,8 @@ export default function DashboardLayout({
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-60 bg-white border-r border-[#a59494]/20 py-6 shrink-0">
-          <nav className="flex flex-col gap-1 px-3">
+        <aside className="w-60 bg-white border-r border-[#a59494]/20 py-6 shrink-0 flex flex-col">
+          <nav className="flex flex-col gap-1 px-3 flex-1">
             {visibleNavItems.map((item) => {
               const active =
                 item.href === "/dashboard"
@@ -91,9 +117,16 @@ export default function DashboardLayout({
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     active
-                      ? "bg-[#1c759e]/10 text-[#1c759e]"
+                      ? "text-[var(--brand-primary)]"
                       : "text-[#272727] hover:bg-[#f5f0f0]"
                   }`}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: `color-mix(in srgb, ${branding.primaryColor} 10%, transparent)`,
+                        }
+                      : undefined
+                  }
                 >
                   <item.icon active={active} />
                   {item.label}
@@ -101,6 +134,13 @@ export default function DashboardLayout({
               );
             })}
           </nav>
+
+          {/* Powered by footer for custom branding */}
+          {branding.mode === "custom" && branding.showPoweredBy && (
+            <div className="px-6 py-3 text-xs text-[#a59494]">
+              Powered by Vantage West
+            </div>
+          )}
         </aside>
 
         {/* Main content */}
@@ -113,7 +153,7 @@ export default function DashboardLayout({
 /* ── Sidebar icons ────────────────────────────────────────────── */
 
 function DashboardIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -125,7 +165,7 @@ function DashboardIcon({ active }: { active: boolean }) {
 }
 
 function CandidatesIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -137,7 +177,7 @@ function CandidatesIcon({ active }: { active: boolean }) {
 }
 
 function InterviewsIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -149,7 +189,7 @@ function InterviewsIcon({ active }: { active: boolean }) {
 }
 
 function OnboardingIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
@@ -159,7 +199,7 @@ function OnboardingIcon({ active }: { active: boolean }) {
 }
 
 function SettingsIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
@@ -168,13 +208,46 @@ function SettingsIcon({ active }: { active: boolean }) {
   );
 }
 
+function GroupInterviewsIcon({ active }: { active: boolean }) {
+  const color = active ? "var(--brand-primary)" : "#a59494";
+  return (
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function ProfileIcon({ active }: { active: boolean }) {
+  const color = active ? "var(--brand-primary)" : "#a59494";
+  return (
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
 function HelpIcon({ active }: { active: boolean }) {
-  const color = active ? "#1c759e" : "#a59494";
+  const color = active ? "var(--brand-primary)" : "#a59494";
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function SuperAdminIcon({ active }: { active: boolean }) {
+  const color = active ? "var(--brand-primary)" : "#a59494";
+  return (
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path d="M2 17l10 5 10-5" />
+      <path d="M2 12l10 5 10-5" />
     </svg>
   );
 }

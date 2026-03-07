@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import type { TeamBranding } from "./types";
 
 interface TeamOption {
   id: string;
@@ -11,6 +12,7 @@ interface TeamContextValue {
   teamId: string;
   teamName: string;
   teams: TeamOption[];
+  branding: TeamBranding;
   switchTeam: (id: string) => void;
 }
 
@@ -25,10 +27,12 @@ export function useTeam() {
 export function TeamProvider({
   initialTeamId,
   teams,
+  branding,
   children,
 }: {
   initialTeamId: string;
   teams: TeamOption[];
+  branding: TeamBranding;
   children: ReactNode;
 }) {
   const [teamId, setTeamId] = useState(initialTeamId);
@@ -48,7 +52,13 @@ export function TeamProvider({
 
   return (
     <TeamContext.Provider
-      value={{ teamId: current?.id ?? teamId, teamName: current?.name ?? "", teams, switchTeam }}
+      value={{
+        teamId: current?.id ?? teamId,
+        teamName: current?.name ?? "",
+        teams,
+        branding,
+        switchTeam,
+      }}
     >
       {children}
     </TeamContext.Provider>

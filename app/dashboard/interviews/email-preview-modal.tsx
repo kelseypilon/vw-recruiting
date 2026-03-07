@@ -17,6 +17,7 @@ export interface EmailPreviewData {
   scheduledAt: string | null;
   notes: string;
   cc?: string;
+  interviewId?: string; // If set, skip interview creation (already exists)
 }
 
 interface Props {
@@ -39,29 +40,47 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
 
     const supabase = createClient();
 
-    // 1. Create interview record in DB
-    const { data: interviewData, error: dbError } = await supabase
-      .from("interviews")
-      .insert({
-        team_id: data.teamId,
-        candidate_id: data.candidateId,
-        interview_type: data.interviewType,
-        status: "scheduled",
-        scheduled_at: data.scheduledAt,
-        notes: data.notes,
-      })
-      .select(
-        "*, candidate:candidates(first_name, last_name, role_applied, stage)"
-      )
-      .single();
+    let interviewData: Record<string, unknown> | null = null;
 
-    if (dbError || !interviewData) {
-      setError(dbError?.message ?? "Failed to create interview record");
-      setIsSending(false);
-      return;
+    if (data.interviewId) {
+      // Interview already exists — fetch it for the callback
+      const { data: existing, error: fetchErr } = await supabase
+        .from("interviews")
+        .select("*, candidate:candidates(first_name, last_name, role_applied, stage)")
+        .eq("id", data.interviewId)
+        .single();
+      if (fetchErr || !existing) {
+        setError(fetchErr?.message ?? "Failed to find existing interview");
+        setIsSending(false);
+        return;
+      }
+      interviewData = existing;
+    } else {
+      // Create new interview record in DB
+      const { data: created, error: dbError } = await supabase
+        .from("interviews")
+        .insert({
+          team_id: data.teamId,
+          candidate_id: data.candidateId,
+          interview_type: data.interviewType,
+          status: "scheduled",
+          scheduled_at: data.scheduledAt,
+          notes: data.notes,
+        })
+        .select(
+          "*, candidate:candidates(first_name, last_name, role_applied, stage)"
+        )
+        .single();
+
+      if (dbError || !created) {
+        setError(dbError?.message ?? "Failed to create interview record");
+        setIsSending(false);
+        return;
+      }
+      interviewData = created;
     }
 
-    // 2. Send email via Resend API
+    // Send email via Resend API
     try {
       const payload: Record<string, unknown> = {
         to: data.to,
@@ -79,20 +98,20 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
       const result = await res.json();
 
       if (result.error) {
-        setError(`Interview created but email failed: ${result.error}`);
+        setError(`${data.interviewId ? "Email" : "Interview created but email"} failed: ${result.error}`);
         setIsSending(false);
-        onSent(interviewData as Interview);
+        onSent(interviewData as unknown as Interview);
         return;
       }
     } catch {
-      setError("Interview created but email failed to send");
+      setError(`${data.interviewId ? "Email" : "Interview created but email"} failed to send`);
       setIsSending(false);
-      onSent(interviewData as Interview);
+      onSent(interviewData as unknown as Interview);
       return;
     }
 
-    // 3. Success — close both modals
-    onSent(interviewData as Interview);
+    // Success — close both modals
+    onSent(interviewData as unknown as Interview);
   }
 
   return (
@@ -136,7 +155,7 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
               From
             </label>
             <div className="px-3 py-2 rounded-lg border border-[#a59494]/20 bg-[#f5f0f0] text-sm text-[#272727]">
-              {data.fromEmail || "noreply@vantagewestrealestate.com"}
+              {data.fromEmail || "noreply@recruiting.app"}
             </div>
           </div>
 
@@ -149,7 +168,7 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
               type="text"
               value={editSubject}
               onChange={(e) => setEditSubject(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
           </div>
 
@@ -162,7 +181,7 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
               rows={12}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1c759e] focus:border-transparent transition resize-y min-h-[200px]"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-y min-h-[200px]"
             />
           </div>
 
@@ -183,7 +202,7 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
               type="button"
               onClick={handleSend}
               disabled={isSending || !editSubject.trim() || !editBody.trim()}
-              className="px-4 py-2 rounded-lg bg-[#1c759e] hover:bg-[#155f82] active:bg-[#0e4a66] text-white text-sm font-semibold transition disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
             >
               {isSending ? "Sending..." : "Send"}
             </button>
