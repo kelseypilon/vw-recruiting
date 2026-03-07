@@ -354,27 +354,31 @@ export default function ScorecardModal({
       }
 
       // Move candidate to next stage
-      await supabase.from("candidates").update({ stage: nextStage.name }).eq("id", interview.candidate_id);
+      const { error: stageErr } = await supabase.from("candidates").update({ stage: nextStage.name }).eq("id", interview.candidate_id);
+      if (stageErr) throw new Error(`Stage update failed: ${stageErr.message}`);
 
       // Record stage history
-      await supabase.from("stage_history").insert({
+      const { error: histErr } = await supabase.from("stage_history").insert({
         candidate_id: interview.candidate_id,
         from_stage: currentStage,
         to_stage: nextStage.name,
         changed_by: currentUserId,
       });
+      if (histErr) throw new Error(`Stage history failed: ${histErr.message}`);
 
       // Mark interview as completed
-      await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+      const { error: intErr } = await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+      if (intErr) throw new Error(`Interview update failed: ${intErr.message}`);
 
       // Create next interview
-      const { data: newInt } = await supabase.from("interviews").insert({
+      const { data: newInt, error: newIntErr } = await supabase.from("interviews").insert({
         team_id: teamId,
         candidate_id: interview.candidate_id,
         interview_type: "1on1 Interview",
         status: "scheduled",
         notes: `Advanced from ${currentStage}`,
       }).select("id").single();
+      if (newIntErr) throw new Error(`New interview failed: ${newIntErr.message}`);
 
       if (newInt) {
         await supabase.from("interview_interviewers").insert({
@@ -385,8 +389,8 @@ export default function ScorecardModal({
       }
 
       onClose();
-    } catch {
-      setNextStepError("Failed to advance candidate");
+    } catch (err) {
+      setNextStepError(err instanceof Error ? err.message : "Failed to advance candidate");
     }
     setIsProcessingNextStep(false);
   }
@@ -406,22 +410,24 @@ export default function ScorecardModal({
       const supabase = createClient();
 
       // Update interview to hold status
-      await supabase.from("interviews").update({
+      const { error: holdErr } = await supabase.from("interviews").update({
         status: "hold",
         hold_reason: holdReason,
         hold_follow_up_date: holdFollowUpDate,
         hold_set_at: new Date().toISOString(),
       }).eq("id", interview.id);
+      if (holdErr) throw new Error(`Hold update failed: ${holdErr.message}`);
 
       // Set candidate kanban hold
-      await supabase.from("candidates").update({
+      const { error: kanbanErr } = await supabase.from("candidates").update({
         kanban_hold: true,
         kanban_hold_reason: holdReason,
       }).eq("id", interview.candidate_id);
+      if (kanbanErr) throw new Error(`Kanban hold failed: ${kanbanErr.message}`);
 
       onClose();
-    } catch {
-      setNextStepError("Failed to put candidate on hold");
+    } catch (err) {
+      setNextStepError(err instanceof Error ? err.message : "Failed to put candidate on hold");
     }
     setIsProcessingNextStep(false);
   }
@@ -434,22 +440,25 @@ export default function ScorecardModal({
 
       // Move candidate to "Not a Fit" stage
       const currentStage = interview.candidate?.stage;
-      await supabase.from("candidates").update({ stage: "Not a Fit" }).eq("id", interview.candidate_id);
+      const { error: stageErr } = await supabase.from("candidates").update({ stage: "Not a Fit" }).eq("id", interview.candidate_id);
+      if (stageErr) throw new Error(`Stage update failed: ${stageErr.message}`);
 
       // Record stage history
-      await supabase.from("stage_history").insert({
+      const { error: histErr } = await supabase.from("stage_history").insert({
         candidate_id: interview.candidate_id,
         from_stage: currentStage,
         to_stage: "Not a Fit",
         changed_by: currentUserId,
       });
+      if (histErr) throw new Error(`Stage history failed: ${histErr.message}`);
 
       // Mark interview as completed
-      await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+      const { error: intErr } = await supabase.from("interviews").update({ status: "completed" }).eq("id", interview.id);
+      if (intErr) throw new Error(`Interview update failed: ${intErr.message}`);
 
       onClose();
-    } catch {
-      setNextStepError("Failed to update candidate");
+    } catch (err) {
+      setNextStepError(err instanceof Error ? err.message : "Failed to update candidate");
     }
     setIsProcessingNextStep(false);
   }

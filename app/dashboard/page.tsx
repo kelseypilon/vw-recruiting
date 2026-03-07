@@ -90,7 +90,7 @@ export default async function DashboardPage() {
   });
 
   // ── Needs Attention ─────────────────────────────────────────────
-  const [teamSettingsResult, holdCandidatesResult, completedNoScorecardResult, stuckCandidatesResult] =
+  const [teamSettingsResult, holdCandidatesResult, completedInterviewsResult, stuckCandidatesResult] =
     await Promise.all([
       // Team thresholds
       supabase
@@ -104,18 +104,20 @@ export default async function DashboardPage() {
         .select("id, first_name, last_name, kanban_hold_reason, updated_at")
         .eq("team_id", teamId)
         .eq("kanban_hold", true),
-      // Completed interviews without scorecards (past 48 hours)
+      // Completed interviews — we'll check for missing scorecards below
       supabase
         .from("interviews")
-        .select("id, candidate_id, interview_type, completed_at, candidate:candidates(first_name, last_name), interviewer:users!interviews_interviewer_id_fkey(first_name, last_name)")
+        .select(`
+          id, candidate_id, interview_type, scheduled_at,
+          candidate:candidates!inner(first_name, last_name),
+          interviewers:interview_interviewers(user:users(name))
+        `)
         .eq("team_id", teamId)
-        .eq("status", "completed")
-        .is("scorecard_submitted_at", null)
-        .not("completed_at", "is", null),
+        .eq("status", "completed"),
       // Candidates stuck in interview stages
       supabase
         .from("candidates")
-        .select("id, first_name, last_name, stage, stage_entered_at")
+        .select("id, first_name, last_name, stage, created_at")
         .eq("team_id", teamId)
         .in("stage", ["Group Interview", "1on1 Interview"]),
     ]);
@@ -143,16 +145,35 @@ export default async function DashboardPage() {
   });
 
   // 2) Completed interviews without scorecards
+  // Check each completed interview for a submitted scorecard in the interview_scorecards table
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (completedNoScorecardResult.data ?? []).forEach((i: any) => {
-    if (!i.completed_at) return;
+  for (const i of (completedInterviewsResult.data ?? []) as any[]) {
+    const refTime = i.scheduled_at as string | null;
+    if (!refTime) continue;
+
     const hoursSince = Math.floor(
-      (Date.now() - new Date(i.completed_at).getTime()) / (1000 * 60 * 60)
+      (Date.now() - new Date(refTime).getTime()) / (1000 * 60 * 60)
     );
-    if (hoursSince < thresholdScorecardHours) return;
+    if (hoursSince < thresholdScorecardHours) continue;
+
+    // Check if any submitted scorecard exists for this interview
+    const { data: scorecards } = await supabase
+      .from("interview_scorecards")
+      .select("id")
+      .eq("interview_id", i.id)
+      .not("submitted_at", "is", null)
+      .limit(1);
+
+    if (scorecards && scorecards.length > 0) continue; // scorecard exists
+
     const daysSince = Math.floor(hoursSince / 24);
+    // Supabase !inner join returns object for many-to-one; handle both shapes
     const cand = Array.isArray(i.candidate) ? i.candidate[0] : i.candidate;
-    const inter = Array.isArray(i.interviewer) ? i.interviewer[0] : i.interviewer;
+    const interviewer = i.interviewers?.[0];
+    const interviewerUser = interviewer?.user
+      ? (Array.isArray(interviewer.user) ? interviewer.user[0] : interviewer.user)
+      : null;
+
     needsAttention.push({
       id: `scorecard-${i.id}`,
       type: "no_scorecard",
@@ -161,18 +182,35 @@ export default async function DashboardPage() {
       candidateName: cand ? `${cand.first_name} ${cand.last_name}` : "Unknown",
       reason: `No scorecard after ${i.interview_type} — ${daysSince}d overdue`,
       daysWaiting: daysSince,
-      interviewerName: inter ? `${inter.first_name} ${inter.last_name}` : undefined,
+      interviewerName: interviewerUser?.name ?? undefined,
       href: `/dashboard/candidates/${i.candidate_id}`,
     });
-  });
+  }
 
   // 3) Stuck candidates in interview stages
-  (stuckCandidatesResult.data ?? []).forEach((c: { id: string; first_name: string; last_name: string; stage: string; stage_entered_at: string | null }) => {
-    if (!c.stage_entered_at) return;
+  // Use stage_history to find when each candidate entered their current stage
+  for (const c of (stuckCandidatesResult.data ?? []) as Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    stage: string;
+    created_at: string;
+  }>) {
+    // Find latest stage_history entry for the candidate's current stage
+    const { data: stageEntry } = await supabase
+      .from("stage_history")
+      .select("created_at")
+      .eq("candidate_id", c.id)
+      .eq("to_stage", c.stage)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const enteredAt = stageEntry?.[0]?.created_at ?? c.created_at;
     const daysInStage = Math.floor(
-      (Date.now() - new Date(c.stage_entered_at).getTime()) / (1000 * 60 * 60 * 24)
+      (Date.now() - new Date(enteredAt).getTime()) / (1000 * 60 * 60 * 24)
     );
-    if (daysInStage < thresholdStuckDays) return;
+    if (daysInStage < thresholdStuckDays) continue;
+
     needsAttention.push({
       id: `stuck-${c.id}`,
       type: "stuck",
@@ -183,7 +221,7 @@ export default async function DashboardPage() {
       daysWaiting: daysInStage,
       href: `/dashboard/candidates/${c.id}`,
     });
-  });
+  }
 
   // Sort: red items first, then by days waiting descending
   needsAttention.sort((a, b) => {
