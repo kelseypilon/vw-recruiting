@@ -230,6 +230,96 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Task CRUD ────────────────────────────────────────────────────
+
+    if (body.action === "create_task") {
+      const { team_id, title, stage, hire_type, action_type, done_by, due_offset_days, due_offset_anchor, action_url, notes, default_assignee_id } = body;
+      if (!team_id || !title) {
+        return NextResponse.json({ error: "team_id and title are required" }, { status: 400 });
+      }
+      // Get max order_index for this stage
+      const { data: maxTask } = await supabase
+        .from("onboarding_tasks")
+        .select("order_index")
+        .eq("team_id", team_id)
+        .eq("stage", stage ?? null)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
+      const nextOrder = (maxTask?.order_index ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("onboarding_tasks")
+        .insert({
+          team_id,
+          title,
+          stage: stage ?? null,
+          hire_type: hire_type ?? "both",
+          action_type: action_type ?? "manual",
+          done_by: done_by ?? null,
+          owner_role: done_by ?? "Team Lead",
+          due_offset_days: due_offset_days ?? null,
+          due_offset_anchor: due_offset_anchor ?? "start_date",
+          action_url: action_url ?? null,
+          notes: notes ?? null,
+          default_assignee_id: default_assignee_id ?? null,
+          order_index: nextOrder,
+          is_active: true,
+        })
+        .select("*, default_assignee:users!onboarding_tasks_default_assignee_id_fkey(name)")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (body.action === "update_task_full") {
+      const { task_id, ...fields } = body;
+      if (!task_id) {
+        return NextResponse.json({ error: "task_id is required" }, { status: 400 });
+      }
+      const allowed = [
+        "title", "stage", "hire_type", "action_type", "done_by",
+        "due_offset_days", "due_offset_anchor", "action_url", "notes",
+        "default_assignee_id", "is_active",
+      ];
+      const updates: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (key in fields) updates[key] = fields[key];
+      }
+      // Keep owner_role in sync with done_by
+      if ("done_by" in fields) updates.owner_role = fields.done_by ?? "Team Lead";
+
+      if (Object.keys(updates).length === 0) {
+        return NextResponse.json({ error: "No update fields provided" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("onboarding_tasks")
+        .update(updates)
+        .eq("id", task_id)
+        .select("*, default_assignee:users!onboarding_tasks_default_assignee_id_fkey(name)")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (body.action === "delete_task") {
+      const { task_id } = body;
+      if (!task_id) {
+        return NextResponse.json({ error: "task_id is required" }, { status: 400 });
+      }
+      // Delete related candidate_onboarding entries first
+      await supabase
+        .from("candidate_onboarding")
+        .delete()
+        .eq("task_id", task_id);
+      const { error } = await supabase
+        .from("onboarding_tasks")
+        .delete()
+        .eq("id", task_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
     if (body.action === "bulk_reassign") {
       const { team_id, from_user_id, to_user_id } = body;
 

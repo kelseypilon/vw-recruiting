@@ -14,8 +14,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *   create_user             { team_id, name, email, role }
  *   update_role_permissions { team_id, role_permissions }
  *   update_stage            { id, name?, color? }
+ *   create_stage            { team_id, name, color? }
+ *   delete_stage            { id, move_candidates_to? }
+ *   reorder_stages          { stages: { id, order_index }[] }
+ *   get_stage_candidate_count { stage_name, team_id }
  *   update_template         { id, subject?, body? }
+ *   create_template         { team_id, name, subject, body }
+ *   delete_template         { id }
  *   update_criterion        { id, weight_percent?, min_threshold? }
+ *   deactivate_user         { id, reassign_interviews_to?, reassign_onboarding_to? }
+ *   get_user_assignments    { id, team_id }
+ *   get_role_user_count     { team_id, role_name }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -193,9 +202,24 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.role_name) {
         return NextResponse.json({ error: "team_id and role_name are required" }, { status: 400 });
       }
-      const defaultRoles = ["Team Lead", "Leader", "Admin", "Front Desk", "VP Ops", "Interviewer", "View Only"];
-      if (defaultRoles.includes(payload.role_name)) {
-        return NextResponse.json({ error: "Cannot delete a default role" }, { status: 400 });
+      const protectedRoles = ["Admin", "Team Lead", "Leader", "Agent", "Employee"];
+      if (protectedRoles.includes(payload.role_name)) {
+        return NextResponse.json({ error: "Cannot delete a protected role" }, { status: 400 });
+      }
+
+      // Check if any active users have this role
+      const { count: userCount } = await supabase
+        .from("users")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", payload.team_id)
+        .eq("role", payload.role_name)
+        .eq("is_active", true);
+
+      if ((userCount ?? 0) > 0) {
+        return NextResponse.json({
+          error: `${userCount} user${userCount !== 1 ? "s" : ""} have this role. Reassign them first.`,
+          user_count: userCount,
+        }, { status: 400 });
       }
 
       const { data: team, error: fetchErr } = await supabase
@@ -210,9 +234,6 @@ export async function POST(req: NextRequest) {
       const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms };
       const { error: updateErr } = await supabase.from("teams").update({ settings: newSettings }).eq("id", payload.team_id);
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-
-      const reassignTo = payload.reassign_to ?? "View Only";
-      await supabase.from("users").update({ role: reassignTo }).eq("team_id", payload.team_id).eq("role", payload.role_name);
       return NextResponse.json({ success: true, settings: newSettings });
     }
 
@@ -250,6 +271,230 @@ export async function POST(req: NextRequest) {
       const { error: updateErr } = await supabase.from("teams").update({ settings: newSettings }).eq("id", payload.team_id);
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
       return NextResponse.json({ success: true, settings: newSettings });
+    }
+
+    // ── Pipeline Stage CRUD ──────────────────────────────────────────
+
+    if (action === "create_stage") {
+      if (!payload?.team_id || !payload?.name) {
+        return NextResponse.json({ error: "team_id and name are required" }, { status: 400 });
+      }
+      // Get max order_index
+      const { data: maxStage } = await supabase
+        .from("pipeline_stages")
+        .select("order_index")
+        .eq("team_id", payload.team_id)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
+      const nextOrder = (maxStage?.order_index ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("pipeline_stages")
+        .insert({
+          team_id: payload.team_id,
+          name: payload.name,
+          color: payload.color ?? "#6B7280",
+          order_index: nextOrder,
+          is_active: true,
+        })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "delete_stage") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      // Get the stage to find its name
+      const { data: stage } = await supabase
+        .from("pipeline_stages")
+        .select("name, team_id")
+        .eq("id", payload.id)
+        .single();
+      if (!stage) return NextResponse.json({ error: "Stage not found" }, { status: 404 });
+
+      // Move candidates if a target stage is specified
+      if (payload.move_candidates_to) {
+        await supabase
+          .from("candidates")
+          .update({ stage: payload.move_candidates_to })
+          .eq("team_id", stage.team_id)
+          .eq("stage", stage.name);
+      }
+
+      const { error } = await supabase
+        .from("pipeline_stages")
+        .delete()
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "reorder_stages") {
+      if (!payload?.stages || !Array.isArray(payload.stages)) {
+        return NextResponse.json({ error: "stages array is required" }, { status: 400 });
+      }
+      // Update each stage's order_index
+      for (const s of payload.stages as { id: string; order_index: number }[]) {
+        const { error } = await supabase
+          .from("pipeline_stages")
+          .update({ order_index: s.order_index })
+          .eq("id", s.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "get_stage_candidate_count") {
+      if (!payload?.stage_name || !payload?.team_id) {
+        return NextResponse.json({ error: "stage_name and team_id are required" }, { status: 400 });
+      }
+      const { count, error } = await supabase
+        .from("candidates")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", payload.team_id)
+        .eq("stage", payload.stage_name);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ count: count ?? 0 });
+    }
+
+    // ── Template CRUD ───────────────────────────────────────────────
+
+    if (action === "create_template") {
+      if (!payload?.team_id || !payload?.name || !payload?.subject) {
+        return NextResponse.json({ error: "team_id, name, and subject are required" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("email_templates")
+        .insert({
+          team_id: payload.team_id,
+          name: payload.name,
+          subject: payload.subject,
+          body: payload.body ?? "",
+          merge_tags: payload.merge_tags ?? [],
+          is_active: true,
+        })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "delete_template") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      // Verify it's not a system template
+      const { data: tmpl } = await supabase
+        .from("email_templates")
+        .select("trigger")
+        .eq("id", payload.id)
+        .single();
+      const systemTriggers = ["interview_invite", "not_a_fit", "assessment_invite", "welcome"];
+      if (tmpl?.trigger && systemTriggers.includes(tmpl.trigger)) {
+        return NextResponse.json({ error: "Cannot delete a system template" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("email_templates")
+        .delete()
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    // ── User Deactivation ───────────────────────────────────────────
+
+    if (action === "deactivate_user") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      // Get user info for the "(former member)" suffix
+      const { data: user } = await supabase
+        .from("users")
+        .select("name, team_id")
+        .eq("id", payload.id)
+        .single();
+      if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+      // Reassign interviews if specified
+      if (payload.reassign_interviews_to) {
+        // Reassign as interviewer in interview_interviewers
+        await supabase
+          .from("interview_interviewers")
+          .update({ user_id: payload.reassign_interviews_to })
+          .eq("user_id", payload.id);
+      }
+
+      // Reassign onboarding tasks if specified
+      if (payload.reassign_onboarding_to) {
+        // Reassign default assignee on tasks
+        await supabase
+          .from("onboarding_tasks")
+          .update({ default_assignee_id: payload.reassign_onboarding_to })
+          .eq("team_id", user.team_id)
+          .eq("default_assignee_id", payload.id);
+        // Reassign active candidate onboarding entries
+        await supabase
+          .from("candidate_onboarding")
+          .update({ assigned_user_id: payload.reassign_onboarding_to })
+          .eq("assigned_user_id", payload.id)
+          .is("completed_at", null);
+      }
+
+      // Deactivate the user (soft delete)
+      const { error } = await supabase
+        .from("users")
+        .update({ is_active: false })
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "get_user_assignments") {
+      if (!payload?.id || !payload?.team_id) {
+        return NextResponse.json({ error: "id and team_id are required" }, { status: 400 });
+      }
+      // Count open interviews where user is an interviewer
+      const { count: interviewCount } = await supabase
+        .from("interview_interviewers")
+        .select("interview_id", { count: "exact", head: true })
+        .eq("user_id", payload.id);
+
+      // Count onboarding tasks assigned to user (uncompleted)
+      const { count: onboardingCount } = await supabase
+        .from("candidate_onboarding")
+        .select("id", { count: "exact", head: true })
+        .eq("assigned_user_id", payload.id)
+        .is("completed_at", null);
+
+      // Count onboarding task templates with this default assignee
+      const { count: taskTemplateCount } = await supabase
+        .from("onboarding_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", payload.team_id)
+        .eq("default_assignee_id", payload.id);
+
+      return NextResponse.json({
+        interviews: interviewCount ?? 0,
+        onboarding: (onboardingCount ?? 0) + (taskTemplateCount ?? 0),
+      });
+    }
+
+    if (action === "get_role_user_count") {
+      if (!payload?.team_id || !payload?.role_name) {
+        return NextResponse.json({ error: "team_id and role_name are required" }, { status: 400 });
+      }
+      const { count, error } = await supabase
+        .from("users")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", payload.team_id)
+        .eq("role", payload.role_name)
+        .eq("is_active", true);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ count: count ?? 0 });
     }
 
     // ── Actions requiring payload.id ────────────────────────────────

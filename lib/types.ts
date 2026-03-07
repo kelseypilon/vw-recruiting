@@ -43,6 +43,7 @@ export interface TeamUser {
   virtual_meeting_link: string | null;
   scorecard_visibility: string;
   photo_url: string | null;
+  is_active: boolean;
   notification_preferences: {
     email_reminders: boolean;
     digest: boolean;
