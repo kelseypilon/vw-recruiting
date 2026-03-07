@@ -686,6 +686,82 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Interested In Options CRUD ──────────────────────────────────
+
+    if (action === "create_interested_in") {
+      if (!payload?.team_id || !payload?.label) {
+        return NextResponse.json({ error: "team_id and label are required" }, { status: 400 });
+      }
+      // Get max order_index
+      const { data: maxOpt } = await supabase
+        .from("interested_in_options")
+        .select("order_index")
+        .eq("team_id", payload.team_id)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
+      const nextOrder = (maxOpt?.order_index ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("interested_in_options")
+        .insert({
+          team_id: payload.team_id,
+          label: payload.label,
+          order_index: nextOrder,
+          is_active: true,
+        })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "update_interested_in") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      const allowed = ["label", "is_active", "order_index"];
+      const updates: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (key in payload) updates[key] = payload[key];
+      }
+      if (Object.keys(updates).length === 0) {
+        return NextResponse.json({ error: "No update fields provided" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("interested_in_options")
+        .update(updates)
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "delete_interested_in") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("interested_in_options")
+        .delete()
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "reorder_interested_in") {
+      if (!payload?.items || !Array.isArray(payload.items)) {
+        return NextResponse.json({ error: "items array is required" }, { status: 400 });
+      }
+      for (const item of payload.items as { id: string; order_index: number }[]) {
+        const { error } = await supabase
+          .from("interested_in_options")
+          .update({ order_index: item.order_index })
+          .eq("id", item.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
     // ── Business Units ──────────────────────────────────────────────
 
     if (action === "update_business_units") {

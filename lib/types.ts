@@ -122,6 +122,7 @@ export interface Candidate {
   start_date: string | null;
   kanban_hold: boolean;
   kanban_hold_reason: string | null;
+  is_isa: boolean;
   created_at: string;
 }
 
@@ -219,6 +220,25 @@ export interface EmailTemplate {
   body: string;
   merge_tags: string[];
   is_active: boolean;
+  is_system_template: boolean;
+  folder_id: string | null;
+}
+
+export interface EmailTemplateFolder {
+  id: string;
+  team_id: string;
+  name: string;
+  order_index: number;
+  created_at: string;
+}
+
+export interface InterestedInOption {
+  id: string;
+  team_id: string;
+  label: string;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface CandidateOnboarding {

@@ -68,6 +68,81 @@ export default function OnboardingTasksTab({
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
   const [filterTrack, setFilterTrack] = useState<"all" | "agent" | "employee">("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAssignTo, setBulkAssignTo] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllInStage(stageKey: string) {
+    const stageTasks = tasksByStage.get(stageKey) ?? [];
+    const allSelected = stageTasks.every((t) => selectedIds.has(t.id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const t of stageTasks) {
+        if (allSelected) next.delete(t.id); else next.add(t.id);
+      }
+      return next;
+    });
+  }
+
+  async function handleBulkAssign() {
+    if (!bulkAssignTo || selectedIds.size === 0) return;
+    setBulkSaving(true);
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      await saveOnboarding("update_task_full", {
+        task_id: id,
+        default_assignee_id: bulkAssignTo || null,
+      });
+    }
+    // Update local state
+    const assignee = users.find((u) => u.id === bulkAssignTo);
+    onTasksUpdated(
+      tasks.map((t) =>
+        selectedIds.has(t.id)
+          ? { ...t, default_assignee_id: bulkAssignTo || null, default_assignee: assignee ? { name: assignee.name } : null }
+          : t
+      )
+    );
+    setSelectedIds(new Set());
+    setBulkAssignTo("");
+    setBulkSaving(false);
+  }
+
+  async function handleBulkCopyToTrack(targetTrack: string) {
+    if (selectedIds.size === 0) return;
+    setBulkSaving(true);
+    const toCopy = tasks.filter((t) => selectedIds.has(t.id));
+    for (const task of toCopy) {
+      await saveOnboarding("create_task", {
+        team_id: teamId,
+        title: task.title,
+        stage: task.stage,
+        hire_type: targetTrack,
+        hire_track: targetTrack,
+        action_type: task.action_type,
+        done_by: task.done_by,
+        due_offset_days: task.due_offset_days,
+        due_offset_anchor: task.due_offset_anchor,
+        action_url: task.action_url,
+        notes: task.notes,
+        default_assignee_id: task.default_assignee_id,
+      });
+    }
+    // Refetch would be better but for now we just clear selection
+    setSelectedIds(new Set());
+    setBulkSaving(false);
+    // Trigger a refresh by signaling parent — just flash a message for now
+    window.location.reload();
+  }
 
   // Filter tasks by hire_track
   const filteredTasks = filterTrack === "all"
@@ -163,13 +238,67 @@ export default function OnboardingTasksTab({
             <option value="employee">Employee</option>
           </select>
         </div>
-        <button
-          onClick={() => setShowBulkReassign(true)}
-          className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-        >
-          Bulk Reassign
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <span className="text-xs font-medium text-brand">{selectedIds.size} selected</span>
+          )}
+          <button
+            onClick={() => setShowBulkReassign(true)}
+            className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+          >
+            Bulk Reassign
+          </button>
+        </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-brand/5 border border-brand/20 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold text-brand">{selectedIds.size} task{selectedIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex items-center gap-2">
+            <select
+              value={bulkAssignTo}
+              onChange={(e) => setBulkAssignTo(e.target.value)}
+              className="px-2 py-1 rounded border border-[#a59494]/40 text-xs text-[#272727] bg-white"
+            >
+              <option value="">Assign to...</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleBulkAssign}
+              disabled={!bulkAssignTo || bulkSaving}
+              className="px-3 py-1 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-dark transition disabled:opacity-50"
+            >
+              {bulkSaving ? "Saving..." : "Assign"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 border-l border-brand/20 pl-3">
+            <span className="text-xs text-[#a59494]">Copy to:</span>
+            <button
+              onClick={() => handleBulkCopyToTrack("agent")}
+              disabled={bulkSaving}
+              className="px-2 py-1 rounded border border-[#a59494]/30 text-xs text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
+            >
+              Agent
+            </button>
+            <button
+              onClick={() => handleBulkCopyToTrack("employee")}
+              disabled={bulkSaving}
+              className="px-2 py-1 rounded border border-[#a59494]/30 text-xs text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
+            >
+              Employee
+            </button>
+          </div>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-[#a59494] hover:text-[#272727] transition ml-auto"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Tasks grouped by stage — accordion */}
       {stageKeys.map((stageKey) => {
@@ -182,28 +311,43 @@ export default function OnboardingTasksTab({
             key={stageKey}
             className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
           >
-            <button
-              onClick={() => toggleStage(stageKey)}
+            <div
               className="w-full px-5 py-3 border-b border-[#a59494]/10 bg-[#f5f0f0]/50 flex items-center justify-between hover:bg-[#f5f0f0] transition rounded-t-xl"
             >
               <div className="flex items-center gap-2">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className={`text-[#a59494] transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                {showBulkReassign === false && (
+                  <input
+                    type="checkbox"
+                    checked={stageTasks.length > 0 && stageTasks.every((t) => selectedIds.has(t.id))}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      selectAllInStage(stageKey);
+                    }}
+                    className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40 cursor-pointer shrink-0"
+                  />
+                )}
+                <button
+                  onClick={() => toggleStage(stageKey)}
+                  className="flex items-center gap-2"
                 >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-                <h4 className="text-sm font-semibold text-[#272727]">
-                  {stageLabel}
-                </h4>
-                <span className="text-xs text-[#a59494]">
-                  ({stageTasks.length})
-                </span>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className={`text-[#a59494] transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  <h4 className="text-sm font-semibold text-[#272727]">
+                    {stageLabel}
+                  </h4>
+                  <span className="text-xs text-[#a59494]">
+                    ({stageTasks.length})
+                  </span>
+                </button>
               </div>
               <button
                 onClick={(e) => {
@@ -220,64 +364,77 @@ export default function OnboardingTasksTab({
                 </svg>
                 Add
               </button>
-            </button>
+            </div>
 
             {isExpanded && (
               <div className="divide-y divide-[#a59494]/5">
                 {stageTasks.map((task) => (
-                  <button
+                  <div
                     key={task.id}
-                    onClick={() => setEditingTask(task)}
                     className="w-full text-left px-5 py-3 flex items-center gap-4 hover:bg-[#f5f0f0]/50 transition"
                   >
-                    {/* Drag handle placeholder */}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#a59494]/40 shrink-0">
-                      <circle cx="9" cy="6" r="1.5" fill="currentColor" />
-                      <circle cx="15" cy="6" r="1.5" fill="currentColor" />
-                      <circle cx="9" cy="12" r="1.5" fill="currentColor" />
-                      <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-                      <circle cx="9" cy="18" r="1.5" fill="currentColor" />
-                      <circle cx="15" cy="18" r="1.5" fill="currentColor" />
-                    </svg>
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(task.id)}
+                      onChange={() => toggleSelected(task.id)}
+                      className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40 cursor-pointer shrink-0"
+                    />
 
-                    {/* Task info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#272727] truncate">
-                        {task.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
-                          {(task.hire_track ?? task.hire_type) === "both"
-                            ? "All"
-                            : (task.hire_track ?? task.hire_type) === "agent"
-                            ? "Agent"
-                            : "Employee"}
-                        </span>
-                        {task.action_type && (
-                          <span className="text-[10px] text-[#a59494]" title={task.action_type}>
-                            {ACTION_TYPE_ICONS[task.action_type] ?? task.action_type}
+                    {/* Clickable row area */}
+                    <button
+                      onClick={() => setEditingTask(task)}
+                      className="flex-1 flex items-center gap-4 text-left min-w-0"
+                    >
+                      {/* Drag handle placeholder */}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#a59494]/40 shrink-0">
+                        <circle cx="9" cy="6" r="1.5" fill="currentColor" />
+                        <circle cx="15" cy="6" r="1.5" fill="currentColor" />
+                        <circle cx="9" cy="12" r="1.5" fill="currentColor" />
+                        <circle cx="15" cy="12" r="1.5" fill="currentColor" />
+                        <circle cx="9" cy="18" r="1.5" fill="currentColor" />
+                        <circle cx="15" cy="18" r="1.5" fill="currentColor" />
+                      </svg>
+
+                      {/* Task info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#272727] truncate">
+                          {task.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
+                            {(task.hire_track ?? task.hire_type) === "both"
+                              ? "All"
+                              : (task.hire_track ?? task.hire_type) === "agent"
+                              ? "Agent"
+                              : "Employee"}
                           </span>
-                        )}
-                        {task.done_by && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f5f0f0] text-[#a59494] font-medium">
-                            {task.done_by}
-                          </span>
-                        )}
+                          {task.action_type && (
+                            <span className="text-[10px] text-[#a59494]" title={task.action_type}>
+                              {ACTION_TYPE_ICONS[task.action_type] ?? task.action_type}
+                            </span>
+                          )}
+                          {task.done_by && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f5f0f0] text-[#a59494] font-medium">
+                              {task.done_by}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Assignee */}
-                    <span className="text-xs text-[#a59494] w-28 text-right truncate">
-                      {task.default_assignee?.name ?? "Unassigned"}
-                    </span>
+                      {/* Assignee */}
+                      <span className="text-xs text-[#a59494] w-28 text-right truncate">
+                        {task.default_assignee?.name ?? "Unassigned"}
+                      </span>
 
-                    {/* Due offset */}
-                    <span className="text-xs text-[#a59494] w-24 text-right">
-                      {task.due_offset_days != null
-                        ? `${task.due_offset_days}d after ${task.due_offset_anchor === "hire_date" ? "hire" : "start"}`
-                        : "—"}
-                    </span>
-                  </button>
+                      {/* Due offset */}
+                      <span className="text-xs text-[#a59494] w-24 text-right">
+                        {task.due_offset_days != null
+                          ? `${task.due_offset_days}d after ${task.due_offset_anchor === "hire_date" ? "hire" : "start"}`
+                          : "—"}
+                      </span>
+                    </button>
+                  </div>
                 ))}
 
                 {stageTasks.length === 0 && !addingToStage && (

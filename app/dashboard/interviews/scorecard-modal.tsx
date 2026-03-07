@@ -101,44 +101,31 @@ function computeOverallScore(answers: ScorecardAnswer[]) {
   );
 }
 
-/* ── Star Rating Component ─────────────────────────────────────── */
+/* ── Score Input Component (1-10) ──────────────────────────────── */
 
-function StarRating({
+function ScoreInput({
   value,
   onChange,
-  size = 20,
 }: {
   value: number | null;
   onChange: (v: number) => void;
-  size?: number;
 }) {
-  const [hover, setHover] = useState(0);
-
   return (
-    <div className="flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
-      {[1, 2, 3, 4, 5].map((star) => {
-        const filled = star <= (hover || (value ?? 0));
-        return (
-          <button
-            key={star}
-            type="button"
-            onClick={() => onChange(star)}
-            onMouseEnter={() => setHover(star)}
-            className="transition-transform hover:scale-110"
-          >
-            <svg
-              width={size}
-              height={size}
-              viewBox="0 0 24 24"
-              fill={filled ? "#f59e0b" : "none"}
-              stroke={filled ? "#f59e0b" : "#d1d5db"}
-              strokeWidth="1.5"
-            >
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
-          </button>
-        );
-      })}
+    <div className="flex items-center gap-1">
+      <select
+        value={value ?? ""}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (v >= 1 && v <= 10) onChange(v);
+        }}
+        className="w-16 px-2 py-1 rounded border border-[#a59494]/40 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand/40 transition"
+      >
+        <option value="">—</option>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+      </select>
+      <span className="text-[10px] text-[#a59494]">/10</span>
     </div>
   );
 }
@@ -1025,10 +1012,9 @@ function QuestionRow({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <StarRating
+          <ScoreInput
             value={answer.score}
             onChange={(s) => !disabled && onScoreChange(s)}
-            size={18}
           />
           <button
             type="button"

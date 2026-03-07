@@ -63,6 +63,7 @@ export default function PipelineStagesTab({
 
   const colorInputRef = useRef<HTMLInputElement>(null);
   const [colorEditId, setColorEditId] = useState<string | null>(null);
+  const [pendingColorChanges, setPendingColorChanges] = useState<Record<string, string>>({});
 
   function flash(msg: string) {
     setSaveStatus(msg);
@@ -142,15 +143,25 @@ export default function PipelineStagesTab({
     setTimeout(() => colorInputRef.current?.click(), 0);
   }
 
-  async function handleColorChange(stageId: string, color: string) {
+  function handleColorChange(stageId: string, color: string) {
     const updated = stages.map((s) =>
       s.id === stageId ? { ...s, color } : s
     );
     setStages(updated);
     setColorEditId(null);
+    setPendingColorChanges((prev) => ({ ...prev, [stageId]: color }));
+  }
 
-    await callSettings("update_stage", { id: stageId, color });
-    onStagesUpdated(updated);
+  async function handleSaveColors() {
+    setIsSaving(true);
+    const entries = Object.entries(pendingColorChanges);
+    for (const [stageId, color] of entries) {
+      await callSettings("update_stage", { id: stageId, color });
+    }
+    onStagesUpdated(stages);
+    setPendingColorChanges({});
+    flash("Colors saved!");
+    setIsSaving(false);
   }
 
   /* ── Add stage ───────────────────────────────────── */
@@ -249,6 +260,15 @@ export default function PipelineStagesTab({
               >
                 {saveStatus}
               </span>
+            )}
+            {Object.keys(pendingColorChanges).length > 0 && (
+              <button
+                onClick={handleSaveColors}
+                disabled={isSaving}
+                className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : `Save Colors (${Object.keys(pendingColorChanges).length})`}
+              </button>
             )}
             {orderChanged && (
               <button

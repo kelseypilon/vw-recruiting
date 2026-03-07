@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import type { NeedsAttentionItem } from "@/lib/types";
 
@@ -31,6 +32,12 @@ interface UpcomingInterview {
   status: string;
 }
 
+interface CandidateStageRow {
+  stage: string;
+  hire_track: string;
+  is_isa: boolean;
+}
+
 interface Props {
   stats: Stats;
   needsAttention: NeedsAttentionItem[];
@@ -39,6 +46,7 @@ interface Props {
   conversionRates: Record<string, number>;
   activityFeed: ActivityItem[];
   upcomingInterviews: UpcomingInterview[];
+  candidateStageRows?: CandidateStageRow[];
 }
 
 /* ── Helpers ────────────────────────────────────────────────────── */
@@ -84,11 +92,55 @@ export default function AdminDashboard({
   conversionRates,
   activityFeed,
   upcomingInterviews,
+  candidateStageRows,
 }: Props) {
+  const [hireTrackFilter, setHireTrackFilter] = useState<"all" | "agent" | "employee">("all");
+
+  // Compute filtered stage counts based on hire track toggle
+  const filteredStageCounts = useMemo(() => {
+    if (hireTrackFilter === "all" || !candidateStageRows) return stageCounts;
+    const counts: Record<string, number> = {};
+    for (const row of candidateStageRows) {
+      if (row.hire_track === hireTrackFilter || row.hire_track === "all" || row.hire_track === "both") {
+        counts[row.stage] = (counts[row.stage] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [hireTrackFilter, candidateStageRows, stageCounts]);
+
+  // Recompute conversion rates for filtered counts
+  const filteredConversionRates = useMemo(() => {
+    if (hireTrackFilter === "all") return conversionRates;
+    const rates: Record<string, number> = {};
+    for (let i = 0; i < orderedStages.length - 1; i++) {
+      const current = filteredStageCounts[orderedStages[i].name] ?? 0;
+      const next = filteredStageCounts[orderedStages[i + 1].name] ?? 0;
+      rates[orderedStages[i].name] = current > 0 ? Math.round((next / current) * 100) : 0;
+    }
+    return rates;
+  }, [hireTrackFilter, filteredStageCounts, orderedStages, conversionRates]);
+
+  // ISA count badge
+  const isaCount = useMemo(() => {
+    if (!candidateStageRows) return 0;
+    return candidateStageRows.filter((r) => r.is_isa).length;
+  }, [candidateStageRows]);
+
+  // Compute filtered active count
+  const filteredActiveCount = useMemo(() => {
+    if (hireTrackFilter === "all" || !candidateStageRows) return stats.activeCandidates;
+    const excluded = new Set(["Not a Fit", "Archived"]);
+    return candidateStageRows.filter(
+      (r) =>
+        !excluded.has(r.stage) &&
+        (r.hire_track === hireTrackFilter || r.hire_track === "all" || r.hire_track === "both")
+    ).length;
+  }, [hireTrackFilter, candidateStageRows, stats.activeCandidates]);
+
   const statCards = [
     {
       label: "Active Candidates",
-      value: stats.activeCandidates,
+      value: filteredActiveCount,
       color: "var(--color-lapis)",
       href: "/dashboard/candidates",
     },
@@ -112,10 +164,34 @@ export default function AdminDashboard({
     },
   ];
 
-  const maxStageCount = Math.max(...orderedStages.map((s) => stageCounts[s.name] ?? 0), 1);
+  const maxStageCount = Math.max(...orderedStages.map((s) => filteredStageCounts[s.name] ?? 0), 1);
 
   return (
     <>
+      {/* ── Hire Track Toggle + ISA Badge ──────────────────── */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          {(["all", "agent", "employee"] as const).map((track) => (
+            <button
+              key={track}
+              onClick={() => setHireTrackFilter(track)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                hireTrackFilter === track
+                  ? "bg-lapis text-white"
+                  : "bg-white border border-[#a59494]/20 text-[#272727] hover:bg-[#f5f0f0]"
+              }`}
+            >
+              {track === "all" ? "All" : track === "agent" ? "Agent" : "Employee"}
+            </button>
+          ))}
+        </div>
+        {isaCount > 0 && (
+          <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
+            ISA Candidates: {isaCount}
+          </span>
+        )}
+      </div>
+
       {/* ── Stat cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {statCards.map((card) => (
@@ -214,9 +290,9 @@ export default function AdminDashboard({
           </div>
           <div className="space-y-2">
             {orderedStages.map((stage) => {
-              const count = stageCounts[stage.name] ?? 0;
+              const count = filteredStageCounts[stage.name] ?? 0;
               const color = stage.color ?? FALLBACK_COLORS[stage.name] ?? "#6B7280";
-              const rate = conversionRates[stage.name];
+              const rate = filteredConversionRates[stage.name];
               return (
                 <div key={stage.name}>
                   <Link

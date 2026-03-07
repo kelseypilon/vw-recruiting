@@ -65,10 +65,10 @@ export default function SessionDetail({
   const [summaryDraft, setSummaryDraft] = useState(session.summary ?? "");
   const [addingCandidate, setAddingCandidate] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [sendEmailOnAdd, setSendEmailOnAdd] = useState(true);
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [quickViewCandidate, setQuickViewCandidate] = useState<SessionCandidate | null>(null);
-  const [promptsExpanded, setPromptsExpanded] = useState(false);
-  const [guidelinesExpanded, setGuidelinesExpanded] = useState(false);
+  const [sessionGuideExpanded, setSessionGuideExpanded] = useState(false);
 
   const isCompleted = session.status === "completed";
 
@@ -341,6 +341,28 @@ export default function SessionDetail({
         return;
       }
 
+      // Send email if opted-in
+      if (sendEmailOnAdd) {
+        try {
+          await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              candidate_id: candidateId,
+              team_id: teamId,
+              trigger: "group_interview_invite",
+              context: {
+                session_title: session.title,
+                interview_date: session.session_date,
+                zoom_link: session.zoom_link || "",
+              },
+            }),
+          });
+        } catch {
+          // Email failure shouldn't block the flow
+        }
+      }
+
       // Optimistic update: use candidate data returned from the API
       if (addJson.candidate) {
         const newCandidate = addJson.candidate as SessionCandidate;
@@ -589,11 +611,11 @@ export default function SessionDetail({
         />
       </div>
 
-      {/* Guidelines — collapsible */}
-      {guidelines.length > 0 && (
+      {/* Session Guide — combined guidelines + prompts */}
+      {(guidelines.length > 0 || prompts.length > 0) && (
         <div className="bg-brand/5 border border-brand/10 rounded-xl shadow-sm overflow-hidden">
           <button
-            onClick={() => setGuidelinesExpanded(!guidelinesExpanded)}
+            onClick={() => setSessionGuideExpanded(!sessionGuideExpanded)}
             className="w-full flex items-center gap-2 px-5 py-3 text-left hover:bg-brand/10 transition"
           >
             <svg
@@ -603,7 +625,7 @@ export default function SessionDetail({
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth="2"
-              className={`transition-transform text-brand ${guidelinesExpanded ? "rotate-90" : ""}`}
+              className={`transition-transform text-brand ${sessionGuideExpanded ? "rotate-90" : ""}`}
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
@@ -611,17 +633,36 @@ export default function SessionDetail({
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
             </svg>
             <span className="text-xs font-semibold text-brand uppercase tracking-wider">
-              Interview Guidelines ({guidelines.length})
+              Session Guide ({guidelines.length + prompts.length})
             </span>
           </button>
-          {guidelinesExpanded && (
-            <div className="px-5 pb-4 space-y-1.5">
-              {guidelines.map((g, i) => (
-                <div key={i} className="flex gap-2 text-sm text-[#272727]">
-                  <span className="text-brand font-semibold shrink-0">{i + 1}.</span>
-                  <span>{g}</span>
+          {sessionGuideExpanded && (
+            <div className="px-5 pb-4 space-y-4">
+              {guidelines.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-brand mb-2">Guidelines</h4>
+                  <div className="space-y-1.5">
+                    {guidelines.map((g, i) => (
+                      <div key={i} className="flex gap-2 text-sm text-[#272727]">
+                        <span className="text-brand font-semibold shrink-0">{i + 1}.</span>
+                        <span>{g}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
+              {prompts.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-brand mb-2">Interview Prompts</h4>
+                  <div className="space-y-1.5">
+                    {prompts.map((p) => (
+                      <p key={p.id} className="text-sm text-[#272727]">
+                        &bull; {p.prompt_text}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -782,50 +823,6 @@ export default function SessionDetail({
 
               {/* Notes content */}
               <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-                {/* Group Interview Prompts — collapsible */}
-                {prompts.length > 0 && (
-                  <div>
-                    <button
-                      onClick={() => setPromptsExpanded(!promptsExpanded)}
-                      className="flex items-center gap-2 text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2 hover:text-[#272727] transition"
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        className={`transition-transform ${promptsExpanded ? "rotate-90" : ""}`}
-                      >
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                      Interview Prompts ({prompts.length})
-                    </button>
-                    {promptsExpanded ? (
-                      <div className="space-y-1.5 mb-3 pl-5">
-                        {prompts.map((p) => (
-                          <p key={p.id} className="text-sm text-[#272727]">
-                            &bull; {p.prompt_text}
-                          </p>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5 mb-3 pl-5">
-                        {prompts.map((p) => (
-                          <span
-                            key={p.id}
-                            className="inline-block px-2 py-0.5 rounded-full bg-[#f5f0f0] text-[10px] text-[#272727] truncate max-w-[200px]"
-                            title={p.prompt_text}
-                          >
-                            {p.prompt_text}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {showAllNotes ? (
                   /* ── View All Notes mode: side-by-side from all evaluators ── */
                   <div className="space-y-4">
@@ -1001,6 +998,8 @@ export default function SessionDetail({
           teamId={teamId}
           search={candidateSearch}
           setSearch={setCandidateSearch}
+          sendEmail={sendEmailOnAdd}
+          setSendEmail={setSendEmailOnAdd}
         />
       )}
 
@@ -1166,6 +1165,8 @@ function AddCandidateModal({
   teamId,
   search,
   setSearch,
+  sendEmail,
+  setSendEmail,
 }: {
   sessionCandidateIds: string[];
   onAdd: (candidateId: string) => void;
@@ -1173,6 +1174,8 @@ function AddCandidateModal({
   teamId: string;
   search: string;
   setSearch: (s: string) => void;
+  sendEmail: boolean;
+  setSendEmail: (v: boolean) => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [allCandidates, setAllCandidates] = useState<
@@ -1223,7 +1226,7 @@ function AddCandidateModal({
             </svg>
           </button>
         </div>
-        <div className="p-4">
+        <div className="p-4 space-y-3">
           <input
             type="text"
             value={search}
@@ -1232,6 +1235,17 @@ function AddCandidateModal({
             className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
             autoFocus
           />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sendEmail}
+              onChange={(e) => setSendEmail(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40"
+            />
+            <span className="text-xs text-[#272727]">
+              Send interview invitation email on add
+            </span>
+          </label>
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-[#a59494]/10">
           {loading ? (

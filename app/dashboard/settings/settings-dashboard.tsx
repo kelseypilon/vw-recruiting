@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type {
   Team,
   TeamUser,
@@ -11,6 +11,7 @@ import type {
   OnboardingTask,
   GroupInterviewPrompt,
   TeamIntegrations,
+  InterestedInOption,
 } from "@/lib/types";
 import InterviewQuestionsTab from "./interview-questions-tab";
 import OnboardingTasksTab from "./onboarding-tasks-tab";
@@ -39,24 +40,63 @@ interface Props {
   interviewQuestions: InterviewQuestion[];
   onboardingTasks: OnboardingTask[];
   groupInterviewPrompts: GroupInterviewPrompt[];
+  interestedInOptions: InterestedInOption[];
   teamId: string;
   currentUserId: string;
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 
-const TABS: { id: string; label: string; permission?: PermissionKey }[] = [
-  { id: "team", label: "Team" },
-  { id: "members", label: "Team Members", permission: "manage_members" },
-  { id: "roles", label: "Role Permissions", permission: "manage_members" },
-  { id: "stages", label: "Pipeline Stages", permission: "manage_settings" },
-  { id: "templates", label: "Email Templates", permission: "manage_templates" },
-  { id: "criteria", label: "Scoring Criteria", permission: "manage_settings" },
-  { id: "questions", label: "Interview Questions" },
-  { id: "onboarding-tasks", label: "Onboarding Tasks", permission: "manage_onboarding" },
-  { id: "group-prompts", label: "Group Interview Prompts", permission: "manage_interviews" },
-  { id: "integrations", label: "Integrations", permission: "manage_settings" },
+/* ── Sidebar sections with grouped tabs ─────────────────────── */
+
+interface TabItem {
+  id: string;
+  label: string;
+  permission?: PermissionKey;
+  icon: string;
+}
+
+interface SidebarSection {
+  title: string;
+  tabs: TabItem[];
+}
+
+const SIDEBAR_SECTIONS: SidebarSection[] = [
+  {
+    title: "TEAM",
+    tabs: [
+      { id: "team", label: "General", icon: "⚙️" },
+      { id: "members", label: "Team Members", permission: "manage_members", icon: "👥" },
+      { id: "roles", label: "Roles & Permissions", permission: "manage_members", icon: "🔐" },
+    ],
+  },
+  {
+    title: "RECRUITING",
+    tabs: [
+      { id: "stages", label: "Pipeline Stages", permission: "manage_settings", icon: "📊" },
+      { id: "templates", label: "Email Templates", permission: "manage_templates", icon: "📧" },
+      { id: "criteria", label: "Scoring Criteria", permission: "manage_settings", icon: "📏" },
+      { id: "questions", label: "Interview Questions", icon: "❓" },
+      { id: "group-prompts", label: "Session Guide", permission: "manage_interviews", icon: "📋" },
+      { id: "interested-in", label: "Interested In Options", permission: "manage_settings", icon: "🏷️" },
+    ],
+  },
+  {
+    title: "ONBOARDING",
+    tabs: [
+      { id: "onboarding-tasks", label: "Onboarding Tasks", permission: "manage_onboarding", icon: "✅" },
+    ],
+  },
+  {
+    title: "INTEGRATIONS",
+    tabs: [
+      { id: "integrations", label: "Integrations", permission: "manage_settings", icon: "🔌" },
+    ],
+  },
 ];
+
+// Flatten for backward compat
+const ALL_TABS = SIDEBAR_SECTIONS.flatMap((s) => s.tabs);
 
 type TabId = string;
 
@@ -85,6 +125,7 @@ export default function SettingsDashboard({
   interviewQuestions: initialQuestions,
   onboardingTasks: initialOnboardingTasks,
   groupInterviewPrompts: initialGroupPrompts,
+  interestedInOptions: initialInterestedInOptions,
   teamId,
   currentUserId,
 }: Props) {
@@ -97,29 +138,32 @@ export default function SettingsDashboard({
   const [questions, setQuestions] = useState(initialQuestions);
   const [onboardingTasks, setOnboardingTasks] = useState(initialOnboardingTasks);
   const [groupPrompts] = useState(initialGroupPrompts);
+  const [interestedInOptions, setInterestedInOptions] = useState(initialInterestedInOptions);
   const { can, userRole } = usePermissions();
 
   // Settings tab visibility from team settings
   const teamSettings = (initialTeam?.settings ?? {}) as Record<string, unknown>;
   const settingsVisibility = (teamSettings.settings_visibility ?? {}) as Record<string, Record<string, boolean>>;
 
-  // Filter tabs by permission AND settings tab visibility
-  const visibleTabs = TABS.filter((tab) => {
-    // Permission check first
+  // Filter function for tab visibility
+  function isTabVisible(tab: TabItem): boolean {
     if (tab.permission && !can(tab.permission)) return false;
-    // Team Lead always sees all tabs
     if (userRole === "Team Lead") return true;
-    // If visibility is configured for this role, check it
     const roleVisibility = settingsVisibility[userRole];
     if (roleVisibility && tab.id in roleVisibility) {
       return roleVisibility[tab.id];
     }
-    // Default: show if user has the required permission (already checked above)
     return true;
-  });
+  }
+
+  // Filter sidebar sections — hide sections with no visible tabs
+  const visibleSections = SIDEBAR_SECTIONS.map((section) => ({
+    ...section,
+    tabs: section.tabs.filter(isTabVisible),
+  })).filter((section) => section.tabs.length > 0);
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-[#272727]">Settings</h2>
         <p className="text-sm text-[#a59494] mt-0.5">
@@ -127,22 +171,41 @@ export default function SettingsDashboard({
         </p>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-1 overflow-x-auto">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition whitespace-nowrap ${
-              activeTab === tab.id
-                ? "bg-brand text-white"
-                : "text-[#272727] hover:bg-[#f5f0f0]"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex gap-6">
+        {/* Left sidebar */}
+        <nav className="w-56 shrink-0">
+          <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm overflow-hidden sticky top-24">
+            {visibleSections.map((section, idx) => (
+              <div key={section.title}>
+                {idx > 0 && <div className="border-t border-[#a59494]/10" />}
+                <div className="px-4 pt-3 pb-1">
+                  <p className="text-[10px] font-bold tracking-wider text-[#a59494] uppercase">
+                    {section.title}
+                  </p>
+                </div>
+                <div className="pb-1">
+                  {section.tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm transition text-left ${
+                        activeTab === tab.id
+                          ? "bg-brand/10 text-brand font-semibold border-r-2 border-brand"
+                          : "text-[#272727] hover:bg-[#f5f0f0]"
+                      }`}
+                    >
+                      <span className="text-sm">{tab.icon}</span>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
 
       {/* Tab content */}
       {activeTab === "team" && (
@@ -197,12 +260,21 @@ export default function SettingsDashboard({
           />
         </>
       )}
+      {activeTab === "interested-in" && (
+        <InterestedInTab
+          options={interestedInOptions}
+          onOptionsUpdated={setInterestedInOptions}
+          teamId={teamId}
+        />
+      )}
       {activeTab === "integrations" && (
         <IntegrationsTab
           integrations={(team?.integrations ?? {}) as TeamIntegrations}
           teamId={teamId}
         />
       )}
+        </div>{/* end flex-1 */}
+      </div>{/* end flex gap-6 */}
     </div>
   );
 }
@@ -525,16 +597,46 @@ function MembersTab({
 
   return (
     <>
-      {/* Warning: no escalation contact */}
-      {!escalationContact && (
-        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2">
-          <span className="text-amber-600 text-lg">⚠️</span>
-          <p className="text-sm text-amber-800">
-            No escalation contact set. Notifications that require escalation won&apos;t have a recipient.
-            Designate one team member below.
-          </p>
+      {/* Escalation Contact Dropdown */}
+      <div className="mb-4 bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-[#272727] flex items-center gap-2">
+              ⚡ Escalation Contact
+            </h4>
+            <p className="text-xs text-[#a59494] mt-0.5">
+              Receives escalation notifications when action is overdue
+            </p>
+          </div>
+          <select
+            value={escalationContact?.id ?? ""}
+            onChange={async (e) => {
+              const selectedId = e.target.value;
+              setTogglingEscalation(true);
+              if (!selectedId) {
+                await saveSettings("clear_escalation_contact", { team_id: teamId });
+                onUsersUpdated(users.map((u) => ({ ...u, is_escalation_contact: false })));
+              } else {
+                await saveSettings("set_escalation_contact", { user_id: selectedId, team_id: teamId });
+                onUsersUpdated(users.map((u) => ({ ...u, is_escalation_contact: u.id === selectedId })));
+              }
+              setTogglingEscalation(false);
+            }}
+            disabled={togglingEscalation}
+            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition min-w-[200px]"
+          >
+            <option value="">None selected</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
         </div>
-      )}
+        {!escalationContact && (
+          <p className="text-xs text-amber-600 mt-2">
+            ⚠️ No escalation contact set. Notifications that require escalation won&apos;t have a recipient.
+          </p>
+        )}
+      </div>
 
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
         <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
@@ -547,16 +649,6 @@ function MembersTab({
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setShowInviteInput(!showInviteInput); setInviteResult(null); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand text-brand hover:bg-brand/5 text-xs font-semibold transition"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-              Invite
-            </button>
-            <button
-              onClick={() => setShowAddModal(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -568,9 +660,10 @@ function MembersTab({
           </div>
         </div>
 
-        {/* Invite Input Row */}
+        {/* Add / Invite row */}
         {showInviteInput && (
           <div className="px-6 py-3 border-b border-[#a59494]/10 bg-brand/5">
+            <p className="text-xs text-[#272727] font-medium mb-2">Add by email — sends an invite link if they don&apos;t have an account</p>
             <div className="flex items-center gap-2">
               <input
                 type="email"
@@ -584,8 +677,9 @@ function MembersTab({
                 onChange={(e) => setInviteRole(e.target.value)}
                 className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand"
               >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
+                {getRoleOptions(team).map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
               </select>
               <button
                 disabled={inviting || !inviteEmail.includes("@")}
@@ -769,18 +863,6 @@ function MembersTab({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleToggleEscalation(user.id)}
-                      disabled={togglingEscalation}
-                      className={`text-[10px] font-medium px-2.5 py-1 rounded-full transition ${
-                        user.is_escalation_contact
-                          ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
-                          : "bg-[#f5f0f0] text-[#a59494] hover:bg-[#a59494]/20 hover:text-[#272727]"
-                      }`}
-                      title={user.is_escalation_contact ? "Remove as escalation contact" : "Set as escalation contact"}
-                    >
-                      ⚡ {user.is_escalation_contact ? "Escalation On" : "Set Escalation"}
-                    </button>
                     <button
                       onClick={() => startEditing(user)}
                       className="text-xs font-medium text-brand hover:text-brand-dark transition"
@@ -1153,6 +1235,30 @@ function TemplatesTab({
   const [saveStatus, setSaveStatus] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const MERGE_TAGS = [
+    "first_name", "last_name", "email", "phone", "role_applied",
+    "team_name", "sender_name", "sender_email", "interview_date",
+    "interview_time", "interview_type", "zoom_link", "booking_url",
+  ];
+
+  function insertMergeTag(tag: string) {
+    const ta = bodyRef.current;
+    if (!ta) return;
+    const token = `{{${tag}}}`;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = editBody.slice(0, start);
+    const after = editBody.slice(end);
+    setEditBody(before + token + after);
+    // Restore cursor position after the inserted tag
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + token.length;
+      ta.setSelectionRange(pos, pos);
+    }, 0);
+  }
 
   function handleSelect(tmpl: EmailTemplate) {
     setSelected(tmpl);
@@ -1224,7 +1330,7 @@ function TemplatesTab({
     setShowAddModal(false);
   }
 
-  const isSystemTemplate = selected?.trigger ? SYSTEM_TRIGGERS.has(selected.trigger) : false;
+  const isSystemTemplate = selected?.is_system_template ?? (selected?.trigger ? SYSTEM_TRIGGERS.has(selected.trigger) : false);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1305,16 +1411,21 @@ function TemplatesTab({
                     System template — cannot be deleted
                   </p>
                 )}
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {selected.merge_tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-xs px-2 py-0.5 rounded bg-brand/10 text-brand font-mono"
-                    >
-                      {`{{${tag}}}`}
-                    </span>
-                  ))}
-                </div>
+                {selected.merge_tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {selected.merge_tags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => insertMergeTag(tag)}
+                        className="text-xs px-2 py-0.5 rounded bg-brand/10 text-brand font-mono hover:bg-brand/20 transition cursor-pointer"
+                        title={`Insert {{${tag}}}`}
+                      >
+                        {`{{${tag}}}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {!isSystemTemplate && (
                 <button
@@ -1341,10 +1452,27 @@ function TemplatesTab({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1">
-                Body
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-[#272727]">
+                  Body
+                </label>
+                <span className="text-[10px] text-[#a59494]">Click a merge tag above to insert at cursor</span>
+              </div>
+              {/* Merge tag toolbar */}
+              <div className="flex flex-wrap gap-1 mb-2 p-2 bg-[#f5f0f0] rounded-lg">
+                {MERGE_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => insertMergeTag(tag)}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-white border border-[#a59494]/20 text-[#272727] font-mono hover:bg-brand/10 hover:text-brand hover:border-brand/30 transition"
+                  >
+                    {`{{${tag}}}`}
+                  </button>
+                ))}
+              </div>
               <textarea
+                ref={bodyRef}
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
                 rows={12}
@@ -2455,6 +2583,257 @@ function CriteriaTab({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* ── Interested In Options Tab ─────────────────────────────────── */
+
+function InterestedInTab({
+  options,
+  onOptionsUpdated,
+  teamId,
+}: {
+  options: InterestedInOption[];
+  onOptionsUpdated: (options: InterestedInOption[]) => void;
+  teamId: string;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [error, setError] = useState("");
+
+  const sorted = [...options].sort((a, b) => a.order_index - b.order_index);
+
+  function startEditing(opt: InterestedInOption) {
+    setEditingId(opt.id);
+    setEditLabel(opt.label);
+    setError("");
+  }
+
+  async function handleSave() {
+    if (!editingId || !editLabel.trim()) return;
+    setIsSaving(true);
+    setError("");
+
+    const result = await saveSettings("update_interested_in", {
+      id: editingId,
+      label: editLabel.trim(),
+    });
+
+    if (result.error) {
+      setError(result.error);
+    } else {
+      onOptionsUpdated(
+        options.map((o) =>
+          o.id === editingId ? { ...o, label: editLabel.trim() } : o
+        )
+      );
+      setEditingId(null);
+    }
+    setIsSaving(false);
+  }
+
+  async function handleToggleActive(opt: InterestedInOption) {
+    const result = await saveSettings("update_interested_in", {
+      id: opt.id,
+      is_active: !opt.is_active,
+    });
+    if (!result.error) {
+      onOptionsUpdated(
+        options.map((o) =>
+          o.id === opt.id ? { ...o, is_active: !opt.is_active } : o
+        )
+      );
+    }
+  }
+
+  async function handleAdd() {
+    if (!newLabel.trim()) return;
+    setIsAdding(true);
+    setError("");
+
+    const result = await saveSettings("create_interested_in", {
+      team_id: teamId,
+      label: newLabel.trim(),
+    });
+
+    if (result.error) {
+      setError(result.error);
+    } else if (result.data) {
+      onOptionsUpdated([...options, result.data as InterestedInOption]);
+      setNewLabel("");
+    }
+    setIsAdding(false);
+  }
+
+  async function handleDelete(id: string) {
+    const result = await saveSettings("delete_interested_in", { id });
+    if (!result.error) {
+      onOptionsUpdated(options.filter((o) => o.id !== id));
+    }
+  }
+
+  async function handleMoveUp(index: number) {
+    if (index === 0) return;
+    const newSorted = [...sorted];
+    [newSorted[index - 1], newSorted[index]] = [newSorted[index], newSorted[index - 1]];
+    const reordered = newSorted.map((o, i) => ({ ...o, order_index: i }));
+    onOptionsUpdated(reordered);
+
+    await saveSettings("reorder_interested_in", {
+      items: reordered.map((o) => ({ id: o.id, order_index: o.order_index })),
+    });
+  }
+
+  async function handleMoveDown(index: number) {
+    if (index >= sorted.length - 1) return;
+    const newSorted = [...sorted];
+    [newSorted[index], newSorted[index + 1]] = [newSorted[index + 1], newSorted[index]];
+    const reordered = newSorted.map((o, i) => ({ ...o, order_index: i }));
+    onOptionsUpdated(reordered);
+
+    await saveSettings("reorder_interested_in", {
+      items: reordered.map((o) => ({ id: o.id, order_index: o.order_index })),
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <h3 className="text-sm font-bold text-[#272727]">
+            Interested In Options
+          </h3>
+          <p className="text-xs text-[#a59494] mt-0.5">
+            Configure the options available when selecting what a candidate is interested in.
+          </p>
+        </div>
+
+        <div className="divide-y divide-[#a59494]/10">
+          {sorted.map((opt, index) => (
+            <div key={opt.id} className="px-6 py-3 flex items-center gap-3">
+              {editingId === opt.id ? (
+                <div className="flex-1 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="px-3 py-1 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving || !editLabel.trim()}
+                    className="px-3 py-1 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
+                  >
+                    {isSaving ? "..." : "Save"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Reorder arrows */}
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                      className="text-[10px] text-[#a59494] hover:text-[#272727] disabled:opacity-20 transition leading-none"
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => handleMoveDown(index)}
+                      disabled={index >= sorted.length - 1}
+                      className="text-[10px] text-[#a59494] hover:text-[#272727] disabled:opacity-20 transition leading-none"
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
+                  </div>
+
+                  {/* Label */}
+                  <span
+                    className={`text-sm flex-1 ${
+                      opt.is_active ? "text-[#272727]" : "text-[#a59494] line-through"
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+
+                  {/* Active toggle */}
+                  <button
+                    onClick={() => handleToggleActive(opt)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition ${
+                      opt.is_active
+                        ? "bg-green-50 text-green-700 hover:bg-green-100"
+                        : "bg-[#f5f0f0] text-[#a59494] hover:bg-[#e5e0e0]"
+                    }`}
+                  >
+                    {opt.is_active ? "Active" : "Inactive"}
+                  </button>
+
+                  {/* Edit */}
+                  <button
+                    onClick={() => startEditing(opt)}
+                    className="text-xs font-medium text-brand hover:text-brand-dark transition"
+                  >
+                    Edit
+                  </button>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDelete(opt.id)}
+                    className="text-xs font-medium text-red-400 hover:text-red-600 transition"
+                    title="Delete option"
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+
+          {sorted.length === 0 && (
+            <div className="px-6 py-8 text-center text-sm text-[#a59494]">
+              No options yet. Add one below.
+            </div>
+          )}
+        </div>
+
+        {/* Add new option */}
+        <div className="px-6 py-4 border-t border-[#a59494]/10 bg-[#f5f0f0]/30">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              placeholder="New option label..."
+              className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={isAdding || !newLabel.trim()}
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+            >
+              {isAdding ? "Adding..." : "Add"}
+            </button>
+          </div>
+          {error && (
+            <p className="text-xs text-red-600 mt-2">{error}</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

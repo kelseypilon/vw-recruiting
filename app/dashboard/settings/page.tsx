@@ -11,6 +11,7 @@ import type {
   InterviewQuestion,
   OnboardingTask,
   GroupInterviewPrompt,
+  InterestedInOption,
 } from "@/lib/types";
 
 export default async function SettingsPage() {
@@ -33,6 +34,7 @@ export default async function SettingsPage() {
     profileResult,
     onboardingTasksResult,
     groupPromptsResult,
+    interestedInResult,
   ] = await Promise.all([
     supabase.from("teams").select("*").eq("id", TEAM_ID).single(),
     supabase.from("users").select("*").eq("team_id", TEAM_ID).order("name"),
@@ -76,6 +78,11 @@ export default async function SettingsPage() {
       .select("*")
       .eq("team_id", TEAM_ID)
       .order("order_index"),
+    supabase
+      .from("interested_in_options")
+      .select("*")
+      .eq("team_id", TEAM_ID)
+      .order("order_index"),
   ]);
 
   const currentUserId = profileResult.data?.id ?? "";
@@ -90,6 +97,7 @@ export default async function SettingsPage() {
       interviewQuestions={(questionsResult.data as InterviewQuestion[]) ?? []}
       onboardingTasks={(onboardingTasksResult.data as OnboardingTask[]) ?? []}
       groupInterviewPrompts={(groupPromptsResult.data as GroupInterviewPrompt[]) ?? []}
+      interestedInOptions={(interestedInResult.data as InterestedInOption[]) ?? []}
       teamId={TEAM_ID}
       currentUserId={currentUserId}
     />

@@ -87,6 +87,7 @@ function GroupInterviewFlow({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [sendEmail, setSendEmail] = useState(true);
 
   async function handleAddToSession() {
     if (!selectedSessionId) {
@@ -113,6 +114,8 @@ function GroupInterviewFlow({
         return;
       }
 
+      const selectedSession = upcomingSessions.find((s) => s.id === selectedSessionId);
+
       // Also create an interview record for tracking
       await fetch("/api/interviews", {
         method: "POST",
@@ -124,12 +127,34 @@ function GroupInterviewFlow({
             candidate_id: candidateId,
             interview_type: "Group Interview",
             status: "scheduled",
-            scheduled_at: upcomingSessions.find((s) => s.id === selectedSessionId)?.session_date || null,
+            scheduled_at: selectedSession?.session_date || null,
             notes: `Added to group interview session`,
             interviewer_ids: [currentUserId],
           },
         }),
       });
+
+      // Send invitation email if opted-in
+      if (sendEmail && selectedSession) {
+        try {
+          await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              candidate_id: candidateId,
+              team_id: teamId,
+              trigger: "group_interview_invite",
+              context: {
+                session_title: selectedSession.title,
+                interview_date: selectedSession.session_date,
+                zoom_link: selectedSession.zoom_link || teamZoomLink || "",
+              },
+            }),
+          });
+        } catch {
+          // Email failure shouldn't block the flow
+        }
+      }
 
       setLoading(false);
       onComplete();
@@ -219,6 +244,21 @@ function GroupInterviewFlow({
               );
             })}
           </div>
+        )}
+
+        {/* Send email checkbox */}
+        {upcomingSessions.length > 0 && selectedSessionId && (
+          <label className="flex items-center gap-2 mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sendEmail}
+              onChange={(e) => setSendEmail(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40"
+            />
+            <span className="text-xs text-[#272727]">
+              Send interview invitation email to candidate
+            </span>
+          </label>
         )}
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}

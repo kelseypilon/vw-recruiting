@@ -104,10 +104,10 @@ export default async function DashboardPage() {
       .select("candidate_id, completed_at, due_date, assigned_user_id, task:onboarding_tasks!inner(title)")
       .eq("task.team_id", teamId),
 
-    // 4. Stage counts for funnel
+    // 4. Stage counts for funnel (include hire_track + is_isa for filtering)
     admin
       .from("candidates")
-      .select("stage")
+      .select("stage, hire_track, is_isa")
       .eq("team_id", teamId),
 
     // 5. Upcoming interviews next 7 days (admin table)
@@ -235,8 +235,9 @@ export default async function DashboardPage() {
   const thresholdScorecardHours = teamResult.data?.threshold_scorecard_hours ?? 48;
 
   // Stage counts & ordered stages
+  const stageRows = (stageCountsResult.data ?? []) as Array<{ stage: string; hire_track: string; is_isa: boolean }>;
   const stageCounts: Record<string, number> = {};
-  for (const row of stageCountsResult.data ?? []) {
+  for (const row of stageRows) {
     stageCounts[row.stage] = (stageCounts[row.stage] ?? 0) + 1;
   }
   const orderedStages: { name: string; color: string | null }[] = (pipelineStagesResult.data ?? []).map(
@@ -578,6 +579,7 @@ export default async function DashboardPage() {
           conversionRates={conversionRates}
           activityFeed={activityFeedSlice}
           upcomingInterviews={upcomingInterviews}
+          candidateStageRows={stageRows}
         />
       ) : (
         <LeaderDashboard

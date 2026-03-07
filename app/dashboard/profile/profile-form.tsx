@@ -405,23 +405,6 @@ export default function ProfileForm({ user }: Props) {
             Preferences
           </h3>
 
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Scorecard Visibility
-            </label>
-            <select
-              value={scorecardVisibility}
-              onChange={(e) => setScorecardVisibility(e.target.value)}
-              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 bg-white"
-            >
-              <option value="team">Team — visible to all team members</option>
-              <option value="private">Private — only visible to you and admins</option>
-            </select>
-            <p className="text-xs text-[#a59494] mt-1">
-              Controls who can see your interview scorecards.
-            </p>
-          </div>
-
           <div className="space-y-3">
             <p className="text-sm font-medium text-[#272727]">
               Notification Preferences
