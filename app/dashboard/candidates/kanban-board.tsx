@@ -9,13 +9,11 @@ import {
 } from "@hello-pangea/dnd";
 import { createClient } from "@/lib/supabase/client";
 import type { PipelineStage, CandidateCard, TeamUser, GroupInterviewSession } from "@/lib/types";
+import { getInterviewStageNames, stageNameByTag, STAGE_TAGS } from "@/lib/stage-utils";
 import CandidateCardComponent from "./candidate-card";
 import AddCandidateModal from "./add-candidate-modal";
 import InterviewStageModal from "./interview-stage-modal";
 import NotAFitModal from "./not-a-fit-modal";
-
-const INTERVIEW_STAGES = ["Group Interview", "1on1 Interview"];
-const NOT_A_FIT_STAGES = ["Not a Fit", "Archived"];
 
 interface PendingInterviewMove {
   candidateId: string;
@@ -64,6 +62,11 @@ export default function KanbanBoard({
     useState<PendingInterviewMove | null>(null);
   const [pendingNotAFitMove, setPendingNotAFitMove] =
     useState<PendingNotAFitMove | null>(null);
+
+  // Dynamic stage names from ghl_tag (allows teams to rename stages)
+  const INTERVIEW_STAGES = getInterviewStageNames(stages);
+  const notAFitName = stageNameByTag(stages, STAGE_TAGS.NOT_A_FIT, "Not a Fit");
+  const NOT_A_FIT_STAGES = [notAFitName, "Archived"];
 
   // @hello-pangea/dnd requires client-only rendering to avoid SSR hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
@@ -436,6 +439,7 @@ export default function KanbanBoard({
           leaders={leaders}
           upcomingSessions={upcomingSessions}
           teamZoomLink={teamZoomLink}
+          stages={stages}
           onComplete={handleInterviewModalComplete}
           onCancel={handleInterviewModalCancel}
         />

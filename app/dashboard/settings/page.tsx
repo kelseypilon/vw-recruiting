@@ -7,6 +7,7 @@ import type {
   TeamUser,
   PipelineStage,
   EmailTemplate,
+  EmailTemplateFolder,
   ScoringCriterion,
   InterviewQuestion,
   OnboardingTask,
@@ -29,6 +30,7 @@ export default async function SettingsPage() {
     usersResult,
     stagesResult,
     templatesResult,
+    templateFoldersResult,
     criteriaResult,
     questionsResult,
     profileResult,
@@ -48,6 +50,11 @@ export default async function SettingsPage() {
       .select("*")
       .eq("team_id", TEAM_ID)
       .order("name"),
+    supabase
+      .from("email_template_folders")
+      .select("*")
+      .eq("team_id", TEAM_ID)
+      .order("order_index"),
     supabase
       .from("scoring_criteria")
       .select("*")
@@ -93,6 +100,7 @@ export default async function SettingsPage() {
       users={(usersResult.data as TeamUser[]) ?? []}
       stages={(stagesResult.data as PipelineStage[]) ?? []}
       templates={(templatesResult.data as EmailTemplate[]) ?? []}
+      templateFolders={(templateFoldersResult.data as EmailTemplateFolder[]) ?? []}
       criteria={(criteriaResult.data as ScoringCriterion[]) ?? []}
       interviewQuestions={(questionsResult.data as InterviewQuestion[]) ?? []}
       onboardingTasks={(onboardingTasksResult.data as OnboardingTask[]) ?? []}

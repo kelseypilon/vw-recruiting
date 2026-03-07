@@ -93,10 +93,9 @@ export default function PipelineStagesTab({
 
   async function handleSaveOrder() {
     setIsSaving(true);
-    const ordered_ids = stages.map((s) => s.id);
     const result = await callSettings("reorder_stages", {
       team_id: teamId,
-      ordered_ids,
+      stages: stages.map((s, i) => ({ id: s.id, order_index: i })),
     });
     if ((result as { error?: string }).error) {
       flash(`Error: ${(result as { error: string }).error}`);

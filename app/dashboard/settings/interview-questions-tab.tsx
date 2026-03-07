@@ -489,122 +489,188 @@ export default function InterviewQuestionsTab({
 
       {/* ════════════ PERSONAL SET TAB ════════════ */}
       {subTab === "personal" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#a59494]">
-              Toggle questions on/off for your personal interview set.
-              Active questions will appear on your scorecards.
-            </p>
-            {mySelections.length === 0 && (
-              <button
-                onClick={handleInitMySet}
-                disabled={isLoading}
-                className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-              >
-                {isLoading ? "Setting up..." : "Activate All Questions"}
-              </button>
-            )}
-          </div>
+        <PersonalSetSection
+          questions={questions}
+          mySelections={mySelections}
+          selectionMap={selectionMap}
+          usageCounts={usageCounts}
+          isLoading={isLoading}
+          onToggleSelection={handleToggleSelection}
+          onInitMySet={handleInitMySet}
+        />
+      )}
+    </div>
+  );
+}
 
-          {/* Questions with toggle */}
-          {CATEGORY_ORDER.map((category) => {
-            const catQuestions = questions
-              .filter((q) => q.category === category && q.is_active)
-              .sort(
-                (a, b) =>
-                  a.sort_order - b.sort_order ||
-                  a.order_index - b.order_index
-              );
-            if (catQuestions.length === 0) return null;
+/* ── Personal Set Section ────────────────────────────────────────── */
 
-            const activeCount = catQuestions.filter((q) => {
-              const sel = selectionMap.get(q.id);
-              return sel?.is_active ?? false;
-            }).length;
+function PersonalSetSection({
+  questions,
+  mySelections,
+  selectionMap,
+  usageCounts,
+  isLoading,
+  onToggleSelection,
+  onInitMySet,
+}: {
+  questions: InterviewQuestion[];
+  mySelections: InterviewerQuestionSelection[];
+  selectionMap: Map<string, InterviewerQuestionSelection>;
+  usageCounts: Record<string, { count: number; users: string[] }>;
+  isLoading: boolean;
+  onToggleSelection: (questionId: string, currentActive: boolean) => void;
+  onInitMySet: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
 
-            return (
-              <div
-                key={category}
-                className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
-              >
-                <div className="px-4 py-3 border-b border-[#a59494]/10">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-[#272727]">
-                      {category}
-                    </h4>
-                    <span className="text-xs text-[#a59494]">
-                      {activeCount}/{catQuestions.length} active
-                    </span>
-                  </div>
-                </div>
-                <div className="divide-y divide-[#a59494]/10">
-                  {catQuestions.map((q) => {
-                    const sel = selectionMap.get(q.id);
-                    const isActive = sel?.is_active ?? false;
-                    const usage = usageCounts[q.id];
+  const selectedQuestionIds = new Set(
+    mySelections.filter((s) => s.is_active).map((s) => s.question_id)
+  );
 
-                    return (
-                      <div
-                        key={q.id}
-                        className="px-4 py-3 flex items-center gap-3"
-                      >
-                        <button
-                          onClick={() =>
-                            handleToggleSelection(q.id, isActive)
-                          }
-                          disabled={isLoading}
-                          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
-                            isActive
-                              ? "bg-brand border-brand"
-                              : "border-[#a59494]/40 hover:border-brand"
-                          }`}
-                        >
-                          {isActive && (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth="3"
-                            >
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm ${
-                              isActive
-                                ? "text-[#272727]"
-                                : "text-[#a59494]"
-                            }`}
-                          >
-                            {q.question_text}
-                          </p>
-                          {q.interviewer_note && (
-                            <p className="text-xs text-[#a59494] mt-0.5 italic">
-                              {q.interviewer_note}
-                            </p>
-                          )}
-                        </div>
-                        {usage && usage.count > 0 && (
-                          <span
-                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand cursor-help shrink-0"
-                            title={usage.users.join(", ")}
-                          >
-                            {usage.count} using
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+  const hasSelectedQuestions = selectedQuestionIds.size > 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-[#a59494]">
+          {showAll
+            ? "Toggle questions on/off to customize your interview set."
+            : "Your selected questions that appear on your scorecards."}
+        </p>
+        <div className="flex items-center gap-2">
+          {hasSelectedQuestions && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+            >
+              {showAll ? "Show Selected Only" : "Edit Selection"}
+            </button>
+          )}
+          {mySelections.length === 0 && (
+            <button
+              onClick={onInitMySet}
+              disabled={isLoading}
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+            >
+              {isLoading ? "Setting up..." : "Activate All Questions"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {!hasSelectedQuestions && mySelections.length > 0 && (
+        <div className="bg-brand/5 border border-brand/20 rounded-xl p-6 text-center">
+          <p className="text-sm text-[#272727] mb-3">
+            You haven&apos;t selected any questions for your personal set yet.
+          </p>
+          <button
+            onClick={() => setShowAll(true)}
+            className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark transition"
+          >
+            Browse &amp; Select Questions
+          </button>
         </div>
       )}
+
+      {/* Questions grouped by category */}
+      {CATEGORY_ORDER.map((category) => {
+        const catQuestions = questions
+          .filter((q) => q.category === category && q.is_active)
+          .sort(
+            (a, b) =>
+              a.sort_order - b.sort_order || a.order_index - b.order_index
+          );
+
+        // In selected-only mode, filter to only selected questions
+        const displayQuestions = showAll
+          ? catQuestions
+          : catQuestions.filter((q) => selectedQuestionIds.has(q.id));
+
+        if (displayQuestions.length === 0) return null;
+
+        const activeCount = catQuestions.filter((q) =>
+          selectedQuestionIds.has(q.id)
+        ).length;
+
+        return (
+          <div
+            key={category}
+            className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
+          >
+            <div className="px-4 py-3 border-b border-[#a59494]/10">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-[#272727]">
+                  {category}
+                </h4>
+                <span className="text-xs text-[#a59494]">
+                  {activeCount}/{catQuestions.length} active
+                </span>
+              </div>
+            </div>
+            <div className="divide-y divide-[#a59494]/10">
+              {displayQuestions.map((q) => {
+                const sel = selectionMap.get(q.id);
+                const isActive = sel?.is_active ?? false;
+                const usage = usageCounts[q.id];
+
+                return (
+                  <div
+                    key={q.id}
+                    className="px-4 py-3 flex items-center gap-3"
+                  >
+                    <button
+                      onClick={() => onToggleSelection(q.id, isActive)}
+                      disabled={isLoading}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
+                        isActive
+                          ? "bg-brand border-brand"
+                          : "border-[#a59494]/40 hover:border-brand"
+                      }`}
+                    >
+                      {isActive && (
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="3"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-sm ${
+                          isActive ? "text-[#272727]" : "text-[#a59494]"
+                        }`}
+                      >
+                        {q.question_text}
+                      </p>
+                      {q.interviewer_note && (
+                        <p className="text-xs text-[#a59494] mt-0.5 italic">
+                          {q.interviewer_note}
+                        </p>
+                      )}
+                    </div>
+                    {usage && usage.count > 0 && (
+                      <span
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand cursor-help shrink-0"
+                        title={usage.users.join(", ")}
+                      >
+                        {usage.count} using
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

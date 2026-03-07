@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 import type { GroupInterviewPrompt } from "@/lib/types";
 
 /* ── Props ─────────────────────────────────────────────────────── */
@@ -129,20 +135,28 @@ export default function GroupInterviewPromptsTab({ prompts: initialPrompts, team
     }
   }
 
-  /* ── Move prompt up/down ────────────────────────────────────── */
+  /* ── Drag and drop reorder ──────────────────────────────────── */
 
-  async function movePrompt(index: number, direction: "up" | "down") {
-    const newPrompts = [...prompts];
-    const swapIdx = direction === "up" ? index - 1 : index + 1;
-    if (swapIdx < 0 || swapIdx >= newPrompts.length) return;
+  async function onDragEnd(result: DropResult) {
+    if (!result.destination) return;
+    const srcIdx = result.source.index;
+    const destIdx = result.destination.index;
+    if (srcIdx === destIdx) return;
 
-    [newPrompts[index], newPrompts[swapIdx]] = [newPrompts[swapIdx], newPrompts[index]];
-    setPrompts(newPrompts);
+    const activeList = prompts.filter((p) => p.is_active);
+    const inactiveList = prompts.filter((p) => !p.is_active);
+
+    const reordered = [...activeList];
+    const [moved] = reordered.splice(srcIdx, 1);
+    reordered.splice(destIdx, 0, moved);
+
+    // Merge active (reordered) + inactive back
+    setPrompts([...reordered, ...inactiveList]);
 
     // Persist reorder
     await callApi("reorder_prompts", {
       team_id: teamId,
-      ordered_ids: newPrompts.map((p) => p.id),
+      ordered_ids: reordered.map((p) => p.id),
     });
   }
 
@@ -178,109 +192,118 @@ export default function GroupInterviewPromptsTab({ prompts: initialPrompts, team
         </div>
       )}
 
-      {/* Active prompts */}
+      {/* Active prompts with DnD */}
       {activePrompts.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-[#272727]">Active Prompts</h4>
-          <div className="space-y-1">
-            {activePrompts.map((prompt, idx) => {
-              const globalIdx = prompts.indexOf(prompt);
-              return (
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="active-prompts">
+              {(provided) => (
                 <div
-                  key={prompt.id}
-                  className="flex items-start gap-3 bg-white border border-[#a59494]/20 rounded-lg px-4 py-3 group"
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="space-y-1"
                 >
-                  {/* Order controls */}
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <button
-                      onClick={() => movePrompt(globalIdx, "up")}
-                      disabled={idx === 0}
-                      className="text-[#a59494] hover:text-[#272727] disabled:opacity-30 transition"
-                      title="Move up"
-                    >
-                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <polyline points="18 15 12 9 6 15" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => movePrompt(globalIdx, "down")}
-                      disabled={idx === activePrompts.length - 1}
-                      className="text-[#a59494] hover:text-[#272727] disabled:opacity-30 transition"
-                      title="Move down"
-                    >
-                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Prompt text (editable) */}
-                  <div className="flex-1 min-w-0">
-                    {editingId === prompt.id ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(prompt.id);
-                            if (e.key === "Escape") { setEditingId(null); setEditText(""); }
-                          }}
-                          className="flex-1 border border-[#a59494]/30 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => saveEdit(prompt.id)}
-                          disabled={saving}
-                          className="text-sm text-brand font-medium hover:text-brand-dark"
+                  {activePrompts.map((prompt, idx) => (
+                    <Draggable key={prompt.id} draggableId={prompt.id} index={idx}>
+                      {(dragProvided, snapshot) => (
+                        <div
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          className={`flex items-start gap-3 bg-white border rounded-lg px-4 py-3 group ${
+                            snapshot.isDragging
+                              ? "border-brand shadow-lg"
+                              : "border-[#a59494]/20"
+                          }`}
                         >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => { setEditingId(null); setEditText(""); }}
-                          className="text-sm text-[#a59494] hover:text-[#272727]"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <p
-                        className="text-sm text-[#272727] cursor-pointer hover:text-brand transition"
-                        onClick={() => { setEditingId(prompt.id); setEditText(prompt.prompt_text); }}
-                        title="Click to edit"
-                      >
-                        {prompt.prompt_text}
-                      </p>
-                    )}
-                  </div>
+                          {/* Drag handle */}
+                          <div
+                            {...dragProvided.dragHandleProps}
+                            className="mt-1 cursor-grab active:cursor-grabbing text-[#a59494] hover:text-[#272727] transition"
+                            title="Drag to reorder"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="9" cy="5" r="1.5" />
+                              <circle cx="15" cy="5" r="1.5" />
+                              <circle cx="9" cy="12" r="1.5" />
+                              <circle cx="15" cy="12" r="1.5" />
+                              <circle cx="9" cy="19" r="1.5" />
+                              <circle cx="15" cy="19" r="1.5" />
+                            </svg>
+                          </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
-                    <button
-                      onClick={() => toggleActive(prompt)}
-                      className="p-1 text-[#a59494] hover:text-orange-500 transition"
-                      title="Deactivate"
-                    >
-                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                        <line x1="1" y1="1" x2="23" y2="23" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => deletePrompt(prompt.id)}
-                      className="p-1 text-[#a59494] hover:text-red-500 transition"
-                      title="Delete"
-                    >
-                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
-                    </button>
-                  </div>
+                          {/* Prompt text (editable) */}
+                          <div className="flex-1 min-w-0">
+                            {editingId === prompt.id ? (
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") saveEdit(prompt.id);
+                                    if (e.key === "Escape") { setEditingId(null); setEditText(""); }
+                                  }}
+                                  className="flex-1 border border-[#a59494]/30 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => saveEdit(prompt.id)}
+                                  disabled={saving}
+                                  className="text-sm text-brand font-medium hover:text-brand-dark"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => { setEditingId(null); setEditText(""); }}
+                                  className="text-sm text-[#a59494] hover:text-[#272727]"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <p
+                                className="text-sm text-[#272727] cursor-pointer hover:text-brand transition"
+                                onClick={() => { setEditingId(prompt.id); setEditText(prompt.prompt_text); }}
+                                title="Click to edit"
+                              >
+                                {prompt.prompt_text}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                            <button
+                              onClick={() => toggleActive(prompt)}
+                              className="p-1 text-[#a59494] hover:text-orange-500 transition"
+                              title="Deactivate"
+                            >
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => deletePrompt(prompt.id)}
+                              className="p-1 text-[#a59494] hover:text-red-500 transition"
+                              title="Delete"
+                            >
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         </div>
       )}
 

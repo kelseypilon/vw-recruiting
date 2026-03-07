@@ -121,8 +121,9 @@ export default function OnboardingTasksTab({
     if (selectedIds.size === 0) return;
     setBulkSaving(true);
     const toCopy = tasks.filter((t) => selectedIds.has(t.id));
+    const newTasks: OnboardingTask[] = [];
     for (const task of toCopy) {
-      await saveOnboarding("create_task", {
+      const result = await saveOnboarding("create_task", {
         team_id: teamId,
         title: task.title,
         stage: task.stage,
@@ -136,12 +137,15 @@ export default function OnboardingTasksTab({
         notes: task.notes,
         default_assignee_id: task.default_assignee_id,
       });
+      if (!result.error && result.data) {
+        newTasks.push(result.data as OnboardingTask);
+      }
     }
-    // Refetch would be better but for now we just clear selection
+    if (newTasks.length > 0) {
+      onTasksUpdated([...tasks, ...newTasks]);
+    }
     setSelectedIds(new Set());
     setBulkSaving(false);
-    // Trigger a refresh by signaling parent — just flash a message for now
-    window.location.reload();
   }
 
   // Filter tasks by hire_track

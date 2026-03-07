@@ -61,8 +61,23 @@ export default async function DashboardPage() {
   const userRole = profile?.role ?? "member";
   const isAdmin = userRole === "owner" || userRole === "leader"; // "owner" = admin; leaders also get elevated access
 
+  // ── Look up dynamic stage names by ghl_tag ─────────────────
+  const { data: taggedStages } = await admin
+    .from("pipeline_stages")
+    .select("name, ghl_tag")
+    .eq("team_id", teamId)
+    .eq("is_active", true)
+    .in("ghl_tag", ["not-a-fit", "group-interview", "1on1-interview"]);
+
+  const stageByTag = (tag: string, fallback: string) =>
+    taggedStages?.find((s: { ghl_tag: string }) => s.ghl_tag === tag)?.name ?? fallback;
+
+  const notAFitName = stageByTag("not-a-fit", "Not a Fit");
+  const groupInterviewName = stageByTag("group-interview", "Group Interview");
+  const oneOnOneName = stageByTag("1on1-interview", "1on1 Interview");
+
   // ── Parallel data fetch ─────────────────────────────────────
-  const excludedStages = ["Not a Fit", "Archived"];
+  const excludedStages = [notAFitName, "Archived"];
 
   const [
     activeCandidatesResult,
@@ -188,12 +203,12 @@ export default async function DashboardPage() {
       .eq("team_id", teamId)
       .eq("status", "completed"),
 
-    // 12. Stuck candidates
+    // 12. Stuck candidates (in interview stages)
     admin
       .from("candidates")
       .select("id, first_name, last_name, stage, created_at")
       .eq("team_id", teamId)
-      .in("stage", ["Group Interview", "1on1 Interview"]),
+      .in("stage", [groupInterviewName, oneOnOneName]),
 
     // 13. Recent stage moves (activity feed)
     admin

@@ -6,6 +6,7 @@ import type {
   TeamUser,
   PipelineStage,
   EmailTemplate,
+  EmailTemplateFolder,
   ScoringCriterion,
   InterviewQuestion,
   OnboardingTask,
@@ -36,6 +37,7 @@ interface Props {
   users: TeamUser[];
   stages: PipelineStage[];
   templates: EmailTemplate[];
+  templateFolders: EmailTemplateFolder[];
   criteria: ScoringCriterion[];
   interviewQuestions: InterviewQuestion[];
   onboardingTasks: OnboardingTask[];
@@ -121,6 +123,7 @@ export default function SettingsDashboard({
   users: initialUsers,
   stages: initialStages,
   templates: initialTemplates,
+  templateFolders: initialTemplateFolders,
   criteria: initialCriteria,
   interviewQuestions: initialQuestions,
   onboardingTasks: initialOnboardingTasks,
@@ -134,6 +137,7 @@ export default function SettingsDashboard({
   const [users, setUsers] = useState(initialUsers);
   const [stages, setStages] = useState(initialStages);
   const [templates, setTemplates] = useState(initialTemplates);
+  const [templateFolders, setTemplateFolders] = useState(initialTemplateFolders);
   const [criteria, setCriteria] = useState(initialCriteria);
   const [questions, setQuestions] = useState(initialQuestions);
   const [onboardingTasks, setOnboardingTasks] = useState(initialOnboardingTasks);
@@ -224,6 +228,8 @@ export default function SettingsDashboard({
         <TemplatesTab
           templates={templates}
           onTemplatesUpdated={setTemplates}
+          folders={templateFolders}
+          onFoldersUpdated={setTemplateFolders}
           teamId={teamId}
         />
       )}
@@ -248,17 +254,10 @@ export default function SettingsDashboard({
         />
       )}
       {activeTab === "group-prompts" && (
-        <>
-          <GroupInterviewGuidelinesSection
-            team={team}
-            onTeamUpdated={setTeam}
-            teamId={teamId}
-          />
-          <GroupInterviewPromptsTab
-            prompts={groupPrompts}
-            teamId={teamId}
-          />
-        </>
+        <GroupInterviewPromptsTab
+          prompts={groupPrompts}
+          teamId={teamId}
+        />
       )}
       {activeTab === "interested-in" && (
         <InterestedInTab
@@ -499,6 +498,15 @@ function getRoleOptions(team: Team | null): string[] {
   return [...DEFAULT_ROLES, ...customRoles];
 }
 
+interface PendingInvite {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
 function MembersTab({
   users,
   onUsersUpdated,
@@ -527,8 +535,76 @@ function MembersTab({
   const [inviteResult, setInviteResult] = useState<{ success: boolean; message: string } | null>(null);
   const [removeMember, setRemoveMember] = useState<TeamUser | null>(null);
   const [togglingEscalation, setTogglingEscalation] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const escalationContact = users.find((u) => u.is_escalation_contact);
+
+  // Fetch pending invites on mount
+  useEffect(() => {
+    async function fetchInvites() {
+      try {
+        const res = await fetch("/api/invites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list_invites", team_id: teamId }),
+        });
+        const json = await res.json();
+        if (json.data) {
+          // Show only pending (not accepted, not expired)
+          const pending = (json.data as PendingInvite[]).filter(
+            (inv) => !inv.accepted_at && new Date(inv.expires_at) > new Date()
+          );
+          setPendingInvites(pending);
+        }
+      } catch {
+        // silent
+      }
+    }
+    fetchInvites();
+  }, [teamId]);
+
+  async function handleResendInvite(invite: PendingInvite) {
+    setResendingId(invite.id);
+    try {
+      // Revoke old invite then create new one
+      await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revoke_invite", invite_id: invite.id }),
+      });
+      const res = await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_invite",
+          team_id: teamId,
+          email: invite.email,
+          role: invite.role,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.invite) {
+        // Update pending list — remove old, add new
+        setPendingInvites((prev) => [
+          ...prev.filter((p) => p.id !== invite.id),
+          { ...invite, id: json.invite.id, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() },
+        ]);
+      }
+    } catch {
+      // silent
+    }
+    setResendingId(null);
+  }
+
+  async function handleRevokeInvite(inviteId: string) {
+    await fetch("/api/invites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "revoke_invite", invite_id: inviteId }),
+    });
+    setPendingInvites((prev) => prev.filter((p) => p.id !== inviteId));
+  }
 
   async function handleToggleEscalation(userId: string) {
     setTogglingEscalation(true);
@@ -882,6 +958,62 @@ function MembersTab({
         </div>
       </div>
 
+      {/* Pending Invites */}
+      {pendingInvites.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm mt-4">
+          <div className="px-6 py-3 border-b border-[#a59494]/10">
+            <h4 className="text-sm font-semibold text-[#272727]">
+              Pending Invites ({pendingInvites.length})
+            </h4>
+          </div>
+          <div className="divide-y divide-[#a59494]/10">
+            {pendingInvites.map((inv) => {
+              const ageHours = (Date.now() - new Date(inv.created_at).getTime()) / (1000 * 60 * 60);
+              return (
+                <div key={inv.id} className="px-6 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#a59494]/20 flex items-center justify-center shrink-0">
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#a59494" strokeWidth="2">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                        <polyline points="22,6 12,13 2,6" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-[#272727]">{inv.email}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          Invite Pending
+                        </span>
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                          {inv.role}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {ageHours >= 24 && (
+                      <button
+                        onClick={() => handleResendInvite(inv)}
+                        disabled={resendingId === inv.id}
+                        className="text-xs font-medium text-brand hover:text-brand-dark transition disabled:opacity-50"
+                      >
+                        {resendingId === inv.id ? "Sending..." : "Resend"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRevokeInvite(inv.id)}
+                      className="text-xs font-medium text-[#a59494] hover:text-red-500 transition"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Add Member Modal */}
       {showAddModal && (
         <AddMemberModal
@@ -1086,7 +1218,8 @@ function AddMemberModal({
   onClose: () => void;
   onMemberAdded: (user: TeamUser) => void;
 }) {
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Leader");
   const [isSaving, setIsSaving] = useState(false);
@@ -1095,12 +1228,14 @@ function AddMemberModal({
   const resolvedRole = role;
 
   async function handleSave() {
-    if (!name.trim() || !email.trim()) {
-      setError("Name and email are required");
+    if (!firstName.trim() || !email.trim()) {
+      setError("First name and email are required");
       return;
     }
     setIsSaving(true);
     setError("");
+
+    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
 
     const res = await fetch("/api/settings", {
       method: "POST",
@@ -1109,7 +1244,7 @@ function AddMemberModal({
         action: "create_user",
         payload: {
           team_id: teamId,
-          name: name.trim(),
+          name: fullName,
           email: email.trim(),
           role: resolvedRole,
         },
@@ -1142,18 +1277,32 @@ function AddMemberModal({
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Full Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Brooklyn Smith"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-            />
+          {/* First + Last Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[#272727] mb-1">
+                First Name
+              </label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="Brooklyn"
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#272727] mb-1">
+                Last Name
+              </label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Smith"
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+            </div>
           </div>
 
           {/* Email */}
@@ -1199,7 +1348,7 @@ function AddMemberModal({
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving || !name.trim() || !email.trim()}
+              disabled={isSaving || !firstName.trim() || !email.trim()}
               className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Add Member"}
@@ -1220,10 +1369,14 @@ const SYSTEM_TRIGGERS = new Set(["interview_invite", "not_a_fit", "assessment_in
 function TemplatesTab({
   templates,
   onTemplatesUpdated,
+  folders,
+  onFoldersUpdated,
   teamId,
 }: {
   templates: EmailTemplate[];
   onTemplatesUpdated: (templates: EmailTemplate[]) => void;
+  folders: EmailTemplateFolder[];
+  onFoldersUpdated: (folders: EmailTemplateFolder[]) => void;
   teamId: string;
 }) {
   const [selected, setSelected] = useState<EmailTemplate | null>(
@@ -1236,6 +1389,14 @@ function TemplatesTab({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  // Folder state
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null); // null = "All Templates"
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState("");
 
   const MERGE_TAGS = [
     "first_name", "last_name", "email", "phone", "role_applied",
@@ -1252,7 +1413,6 @@ function TemplatesTab({
     const before = editBody.slice(0, start);
     const after = editBody.slice(end);
     setEditBody(before + token + after);
-    // Restore cursor position after the inserted tag
     setTimeout(() => {
       ta.focus();
       const pos = start + token.length;
@@ -1318,6 +1478,7 @@ function TemplatesTab({
       name,
       subject,
       body,
+      folder_id: activeFolderId,
     });
     if (result.error) {
       setSaveStatus(`Error: ${result.error}`);
@@ -1330,14 +1491,233 @@ function TemplatesTab({
     setShowAddModal(false);
   }
 
+  // ── Folder CRUD ──────────────────────────────────────────────
+
+  async function handleCreateFolder() {
+    if (!newFolderName.trim()) return;
+    const result = await saveSettings("create_template_folder", {
+      team_id: teamId,
+      name: newFolderName.trim(),
+    });
+    if (!result.error && result.data) {
+      onFoldersUpdated([...folders, result.data as EmailTemplateFolder]);
+    }
+    setNewFolderName("");
+    setShowNewFolder(false);
+  }
+
+  async function handleRenameFolder(folderId: string) {
+    if (!renameFolderName.trim()) return;
+    const result = await saveSettings("rename_template_folder", {
+      id: folderId,
+      name: renameFolderName.trim(),
+    });
+    if (!result.error) {
+      onFoldersUpdated(
+        folders.map((f) =>
+          f.id === folderId ? { ...f, name: renameFolderName.trim() } : f
+        )
+      );
+    }
+    setRenamingFolderId(null);
+    setRenameFolderName("");
+  }
+
+  async function handleDeleteFolder(folderId: string) {
+    const result = await saveSettings("delete_template_folder", { id: folderId });
+    if (!result.error) {
+      onFoldersUpdated(folders.filter((f) => f.id !== folderId));
+      // Templates in this folder get unassigned (DB sets folder_id to null)
+      onTemplatesUpdated(
+        templates.map((t) =>
+          t.folder_id === folderId ? { ...t, folder_id: null } : t
+        )
+      );
+      if (activeFolderId === folderId) setActiveFolderId(null);
+    }
+  }
+
+  async function handleMoveToFolder(templateId: string, folderId: string | null) {
+    const result = await saveSettings("move_template_to_folder", {
+      template_id: templateId,
+      folder_id: folderId,
+    });
+    if (!result.error) {
+      onTemplatesUpdated(
+        templates.map((t) =>
+          t.id === templateId ? { ...t, folder_id: folderId } : t
+        )
+      );
+    }
+  }
+
+  function toggleFolderCollapse(folderId: string) {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }
+
+  // Filter templates by active folder
+  const filteredTemplates =
+    activeFolderId === null
+      ? templates
+      : activeFolderId === "__unfiled__"
+        ? templates.filter((t) => !t.folder_id)
+        : templates.filter((t) => t.folder_id === activeFolderId);
+
   const isSystemTemplate = selected?.is_system_template ?? (selected?.trigger ? SYSTEM_TRIGGERS.has(selected.trigger) : false);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-1">
+      <div className="lg:col-span-1 space-y-3">
+        {/* Folder sidebar */}
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-4 py-3 border-b border-[#a59494]/10">
+            <p className="text-xs font-bold tracking-wider text-[#a59494] uppercase">Folders</p>
+          </div>
+          <div className="divide-y divide-[#a59494]/10">
+            {/* All Templates */}
+            <button
+              onClick={() => setActiveFolderId(null)}
+              className={`w-full text-left px-4 py-2.5 text-sm transition flex items-center gap-2 ${
+                activeFolderId === null ? "bg-brand/10 text-brand font-semibold" : "text-[#272727] hover:bg-[#f5f0f0]"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+              </svg>
+              All Templates
+              <span className="ml-auto text-xs text-[#a59494]">{templates.length}</span>
+            </button>
+            {/* Unfiled */}
+            <button
+              onClick={() => setActiveFolderId("__unfiled__")}
+              className={`w-full text-left px-4 py-2.5 text-sm transition flex items-center gap-2 ${
+                activeFolderId === "__unfiled__" ? "bg-brand/10 text-brand font-semibold" : "text-[#272727] hover:bg-[#f5f0f0]"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+              </svg>
+              Unfiled
+              <span className="ml-auto text-xs text-[#a59494]">{templates.filter((t) => !t.folder_id).length}</span>
+            </button>
+            {/* Custom folders */}
+            {folders.map((folder) => {
+              const count = templates.filter((t) => t.folder_id === folder.id).length;
+              const isRenaming = renamingFolderId === folder.id;
+              return (
+                <div key={folder.id} className="group">
+                  {isRenaming ? (
+                    <div className="px-4 py-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={renameFolderName}
+                        onChange={(e) => setRenameFolderName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameFolder(folder.id);
+                          if (e.key === "Escape") setRenamingFolderId(null);
+                        }}
+                        className="flex-1 px-2 py-1 rounded border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleRenameFolder(folder.id)}
+                        className="text-xs text-brand hover:text-brand-dark"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setActiveFolderId(folder.id)}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition flex items-center gap-2 ${
+                        activeFolderId === folder.id ? "bg-brand/10 text-brand font-semibold" : "text-[#272727] hover:bg-[#f5f0f0]"
+                      }`}
+                    >
+                      <svg
+                        width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                        className={`shrink-0 transition ${!collapsedFolders.has(folder.id) ? "" : ""}`}
+                      >
+                        <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                      </svg>
+                      <span className="truncate flex-1">{folder.name}</span>
+                      <span className="text-xs text-[#a59494] shrink-0">{count}</span>
+                      {/* Actions — show on hover */}
+                      <span className="hidden group-hover:flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setRenamingFolderId(folder.id); setRenameFolderName(folder.name); }}
+                          className="p-0.5 text-[#a59494] hover:text-brand"
+                          title="Rename"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                          className="p-0.5 text-[#a59494] hover:text-red-500"
+                          title="Delete folder"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* Add folder */}
+          <div className="px-4 py-2 border-t border-[#a59494]/10">
+            {showNewFolder ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateFolder();
+                    if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); }
+                  }}
+                  placeholder="Folder name"
+                  className="flex-1 px-2 py-1 rounded border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                  autoFocus
+                />
+                <button onClick={handleCreateFolder} className="text-xs font-medium text-brand hover:text-brand-dark">
+                  Add
+                </button>
+                <button onClick={() => { setShowNewFolder(false); setNewFolderName(""); }} className="text-xs text-[#a59494] hover:text-[#272727]">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowNewFolder(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#a59494] hover:text-brand transition"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New Folder
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Template list (filtered by folder) */}
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
           <div className="divide-y divide-[#a59494]/10">
-            {templates.map((tmpl) => {
+            {filteredTemplates.map((tmpl) => {
               const isSystem = tmpl.trigger ? SYSTEM_TRIGGERS.has(tmpl.trigger) : false;
               return (
                 <button
@@ -1387,9 +1767,9 @@ function TemplatesTab({
               Add Template
             </button>
           </div>
-          {templates.length === 0 && (
+          {filteredTemplates.length === 0 && (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-[#a59494]">No templates found</p>
+              <p className="text-sm text-[#a59494]">No templates in this folder</p>
             </div>
           )}
         </div>
@@ -1398,7 +1778,7 @@ function TemplatesTab({
         {selected ? (
           <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6 space-y-4">
             <div className="flex items-start justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="text-lg font-bold text-[#272727]">
                   {selected.name}
                 </h3>
@@ -1411,6 +1791,20 @@ function TemplatesTab({
                     System template — cannot be deleted
                   </p>
                 )}
+                {/* Folder assignment dropdown */}
+                <div className="flex items-center gap-2 mt-2">
+                  <label className="text-xs text-[#a59494]">Folder:</label>
+                  <select
+                    value={selected.folder_id ?? ""}
+                    onChange={(e) => handleMoveToFolder(selected.id, e.target.value || null)}
+                    className="text-xs px-2 py-1 rounded border border-[#a59494]/30 text-[#272727] bg-white focus:outline-none focus:ring-1 focus:ring-brand"
+                  >
+                    <option value="">Unfiled</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
                 {selected.merge_tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {selected.merge_tags.map((tag) => (
@@ -2279,131 +2673,6 @@ function RolesPermissionsTab({
 
 /* ── Group Interview Guidelines Section ───────────────────────── */
 
-function GroupInterviewGuidelinesSection({
-  team,
-  onTeamUpdated,
-  teamId,
-}: {
-  team: Team | null;
-  onTeamUpdated: (team: Team) => void;
-  teamId: string;
-}) {
-  const settings = (team?.settings ?? {}) as Record<string, unknown>;
-  const saved = (settings.group_interview_guidelines as string[]) ?? [];
-  const [guidelines, setGuidelines] = useState<string[]>(saved);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("");
-
-  function updateGuideline(index: number, value: string) {
-    setGuidelines((prev) => prev.map((g, i) => (i === index ? value : g)));
-  }
-
-  function addGuideline() {
-    setGuidelines((prev) => [...prev, ""]);
-  }
-
-  function removeGuideline(index: number) {
-    setGuidelines((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleSave() {
-    setIsSaving(true);
-    setSaveStatus("");
-    const filtered = guidelines.filter((g) => g.trim());
-    const result = await saveSettings("update_group_guidelines", {
-      team_id: teamId,
-      guidelines: filtered,
-    });
-    if (result.error) {
-      setSaveStatus(`Error: ${result.error}`);
-    } else {
-      setGuidelines(filtered);
-      setSaveStatus("Saved!");
-      if (team) {
-        const currentSettings = (team.settings ?? {}) as Record<string, unknown>;
-        onTeamUpdated({
-          ...team,
-          settings: { ...currentSettings, group_interview_guidelines: filtered },
-        });
-      }
-      setTimeout(() => setSaveStatus(""), 2000);
-    }
-    setIsSaving(false);
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm mb-6">
-      <div className="px-6 py-4 border-b border-[#a59494]/10">
-        <h3 className="text-sm font-semibold text-[#272727]">
-          Group Interview Guidelines
-        </h3>
-        <p className="text-xs text-[#a59494] mt-0.5">
-          These guidelines will be shown to interviewers on the group interview
-          session page
-        </p>
-      </div>
-      <div className="p-6 space-y-3">
-        {guidelines.map((g, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <span className="text-xs text-[#a59494] mt-2.5 w-5 shrink-0 text-right">
-              {i + 1}.
-            </span>
-            <textarea
-              value={g}
-              onChange={(e) => updateGuideline(i, e.target.value)}
-              rows={2}
-              className="flex-1 border border-[#a59494]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none"
-              placeholder="Enter a guideline..."
-            />
-            <button
-              onClick={() => removeGuideline(i)}
-              className="mt-2 text-[#a59494] hover:text-red-500 transition"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={addGuideline}
-          className="text-xs text-brand hover:underline font-medium"
-        >
-          + Add Guideline
-        </button>
-      </div>
-      <div className="px-6 pb-4 flex items-center justify-end gap-3">
-        {saveStatus && (
-          <span
-            className={`text-sm ${
-              saveStatus.startsWith("Error")
-                ? "text-red-600"
-                : "text-green-600"
-            }`}
-          >
-            {saveStatus}
-          </span>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-        >
-          {isSaving ? "Saving..." : "Save Guidelines"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ── Criteria Tab (Editable) ───────────────────────────────────── */
 
 function CriteriaTab({
@@ -2415,7 +2684,6 @@ function CriteriaTab({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editWeight, setEditWeight] = useState(0);
-  const [editThreshold, setEditThreshold] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const CATEGORIES = [
@@ -2437,7 +2705,6 @@ function CriteriaTab({
   function startEditing(c: ScoringCriterion) {
     setEditingId(c.id);
     setEditWeight(c.weight_percent);
-    setEditThreshold(c.min_threshold);
   }
 
   async function handleSave() {
@@ -2447,14 +2714,13 @@ function CriteriaTab({
     const result = await saveSettings("update_criterion", {
       id: editingId,
       weight_percent: editWeight,
-      min_threshold: editThreshold,
     });
 
     if (!result.error) {
       onCriteriaUpdated(
         criteria.map((c) =>
           c.id === editingId
-            ? { ...c, weight_percent: editWeight, min_threshold: editThreshold }
+            ? { ...c, weight_percent: editWeight }
             : c
         )
       );
@@ -2519,23 +2785,6 @@ function CriteriaTab({
                             className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
                           />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-[#a59494]">Min Threshold</label>
-                          <input
-                            type="number"
-                            value={editThreshold ?? ""}
-                            onChange={(e) =>
-                              setEditThreshold(
-                                e.target.value === "" ? null : Number(e.target.value)
-                              )
-                            }
-                            min={0}
-                            max={10}
-                            step={0.5}
-                            placeholder="None"
-                            className="w-20 px-2 py-1 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-                          />
-                        </div>
                         <div className="flex gap-2 ml-auto">
                           <button
                             onClick={() => setEditingId(null)}
@@ -2564,11 +2813,6 @@ function CriteriaTab({
                       <span className="text-xs text-brand font-medium">
                         {c.weight_percent}%
                       </span>
-                      {c.min_threshold !== null && (
-                        <span className="text-[10px] text-[#a59494]">
-                          min: {c.min_threshold}
-                        </span>
-                      )}
                       <button
                         onClick={() => startEditing(c)}
                         className="text-xs font-medium text-brand hover:text-brand-dark transition"

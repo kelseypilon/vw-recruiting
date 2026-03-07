@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { TeamUser, GroupInterviewSession } from "@/lib/types";
+import type { PipelineStage, TeamUser, GroupInterviewSession } from "@/lib/types";
+import { isGroupInterviewStage } from "@/lib/stage-utils";
 import DateTimePicker from "@/components/date-time-picker";
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
   leaders: TeamUser[];
   upcomingSessions: GroupInterviewSession[];
   teamZoomLink: string | null;
+  stages: PipelineStage[];
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -27,10 +29,11 @@ export default function InterviewStageModal({
   leaders,
   upcomingSessions,
   teamZoomLink,
+  stages,
   onComplete,
   onCancel,
 }: Props) {
-  const isGroup = newStage === "Group Interview";
+  const isGroup = isGroupInterviewStage(stages, newStage);
 
   if (isGroup) {
     return (

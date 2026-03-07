@@ -355,16 +355,18 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.name || !payload?.subject) {
         return NextResponse.json({ error: "team_id, name, and subject are required" }, { status: 400 });
       }
-      const { data, error } = await supabase
-        .from("email_templates")
-        .insert({
+      const insertData: Record<string, unknown> = {
           team_id: payload.team_id,
           name: payload.name,
           subject: payload.subject,
           body: payload.body ?? "",
           merge_tags: payload.merge_tags ?? [],
           is_active: true,
-        })
+        };
+      if (payload.folder_id) insertData.folder_id = payload.folder_id;
+      const { data, error } = await supabase
+        .from("email_templates")
+        .insert(insertData)
         .select("*")
         .single();
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -389,6 +391,85 @@ export async function POST(req: NextRequest) {
         .from("email_templates")
         .delete()
         .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Template Folder CRUD ────────────────────────────────────────
+
+    if (action === "list_template_folders") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("email_template_folders")
+        .select("*")
+        .eq("team_id", payload.team_id)
+        .order("order_index");
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "create_template_folder") {
+      if (!payload?.team_id || !payload?.name) {
+        return NextResponse.json({ error: "team_id and name are required" }, { status: 400 });
+      }
+      // Get max order_index
+      const { data: existing } = await supabase
+        .from("email_template_folders")
+        .select("order_index")
+        .eq("team_id", payload.team_id)
+        .order("order_index", { ascending: false })
+        .limit(1);
+      const nextOrder = (existing?.[0]?.order_index ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("email_template_folders")
+        .insert({
+          team_id: payload.team_id,
+          name: payload.name,
+          order_index: nextOrder,
+        })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "rename_template_folder") {
+      if (!payload?.id || !payload?.name) {
+        return NextResponse.json({ error: "id and name are required" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("email_template_folders")
+        .update({ name: payload.name })
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "delete_template_folder") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "id is required" }, { status: 400 });
+      }
+      // Templates in this folder will have folder_id set to null (ON DELETE SET NULL)
+      const { error } = await supabase
+        .from("email_template_folders")
+        .delete()
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "move_template_to_folder") {
+      if (!payload?.template_id) {
+        return NextResponse.json({ error: "template_id is required" }, { status: 400 });
+      }
+      // folder_id can be null (to unfile)
+      const { error } = await supabase
+        .from("email_templates")
+        .update({ folder_id: payload.folder_id ?? null })
+        .eq("id", payload.template_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }

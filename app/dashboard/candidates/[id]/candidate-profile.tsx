@@ -21,6 +21,7 @@ import type {
   CandidateGroupSession,
   GroupInterviewNote,
 } from "@/lib/types";
+import { getInterviewStageNames, stageNameByTag, STAGE_TAGS } from "@/lib/stage-utils";
 import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
 import EmailPreviewModal from "@/app/dashboard/interviews/email-preview-modal";
 import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-modal";
@@ -196,8 +197,8 @@ export default function CandidateProfile({
               ]);
 
               // Auto-create interview when moving to interview stages
-              const interviewStages = ["Group Interview", "1on1 Interview"];
-              if (interviewStages.includes(newStage)) {
+              const interviewStageNames = getInterviewStageNames(stages);
+              if (interviewStageNames.includes(newStage)) {
                 const { data: newInterview } = await supabase
                   .from("interviews")
                   .insert({

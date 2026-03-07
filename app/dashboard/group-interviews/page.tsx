@@ -14,12 +14,26 @@ export default async function GroupInterviewsPage() {
     data: { user: authUser },
   } = await authClient.auth.getUser();
 
+  // Look up dynamic stage names by ghl_tag
+  const { data: taggedStages } = await supabase
+    .from("pipeline_stages")
+    .select("name, ghl_tag")
+    .eq("team_id", TEAM_ID)
+    .eq("is_active", true)
+    .in("ghl_tag", ["group-interview", "1on1-interview"]);
+
+  const stageByTag = (tag: string, fallback: string) =>
+    taggedStages?.find((s: { ghl_tag: string }) => s.ghl_tag === tag)?.name ?? fallback;
+
+  const groupInterviewName = stageByTag("group-interview", "Group Interview");
+  const oneOnOneName = stageByTag("1on1-interview", "1on1 Interview");
+
   const [candidatesResult, usersResult, profileResult, teamResult] = await Promise.all([
     supabase
       .from("candidates")
       .select("id, first_name, last_name, email, role_applied, stage")
       .eq("team_id", TEAM_ID)
-      .in("stage", ["Group Interview", "1on1 Interview", "Under Review"]),
+      .in("stage", [groupInterviewName, oneOnOneName, "Under Review"]),
     supabase
       .from("users")
       .select("id, team_id, name, email, role, from_email")
