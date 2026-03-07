@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST() {
+  // Block in production — seed is only available in development
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
+
   const supabase = createAdminClient();
   const TEAM_ID = "9bdd061b-8f89-4d08-bf19-bed29d129210";
 

@@ -65,6 +65,10 @@ export interface TeamUser {
     email_reminders: boolean;
     digest: boolean;
   };
+  google_email: string | null;
+  google_access_token: string | null;
+  google_refresh_token: string | null;
+  google_token_expiry: string | null;
 }
 
 export interface PipelineStage {

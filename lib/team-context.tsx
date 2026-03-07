@@ -41,7 +41,7 @@ export function TeamProvider({
     (id: string) => {
       setTeamId(id);
       // Store preference in cookie for server components
-      document.cookie = `vw_team_id=${id};path=/;max-age=${60 * 60 * 24 * 365}`;
+      document.cookie = `vw_team_id=${id};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Strict;Secure`;
       // Reload to pick up new team in server components
       window.location.reload();
     },

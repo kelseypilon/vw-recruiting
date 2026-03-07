@@ -79,7 +79,7 @@ export default function CandidateProfile({
   const [emailTemplateHint, setEmailTemplateHint] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews" | "emails">("profile");
 
   // Handle ?sendEmail=true from kanban Not a Fit redirect
   const searchParams = useSearchParams();
@@ -98,6 +98,7 @@ export default function CandidateProfile({
     { key: "profile" as const, label: "Profile" },
     { key: "interviews" as const, label: "Interviews" },
     { key: "onboarding" as const, label: "Onboarding" },
+    { key: "emails" as const, label: "Emails" },
   ];
 
   return (
@@ -325,6 +326,10 @@ export default function CandidateProfile({
           emailTemplates={emailTemplates}
           leaders={leaders}
         />
+      )}
+
+      {activeTab === "emails" && (
+        <EmailsTab candidateId={candidate.id} />
       )}
 
       {/* Email Modal */}
@@ -2863,6 +2868,161 @@ function ScorecardSubTab({
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Emails Tab ───────────────────────────────────────────────── */
+
+interface CandidateEmail {
+  id: string;
+  direction: "inbound" | "outbound";
+  subject: string | null;
+  body_snippet: string | null;
+  from_address: string | null;
+  to_address: string | null;
+  sent_at: string;
+  gmail_thread_id: string | null;
+}
+
+function EmailsTab({ candidateId }: { candidateId: string }) {
+  const [emails, setEmails] = useState<CandidateEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadEmails();
+  }, [candidateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadEmails() {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("candidate_emails")
+        .select("id, direction, subject, body_snippet, from_address, to_address, sent_at, gmail_thread_id")
+        .eq("candidate_id", candidateId)
+        .order("sent_at", { ascending: false });
+      setEmails((data ?? []) as CandidateEmail[]);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/gmail/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: candidateId }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setSyncResult(`Error: ${data.error}`);
+      } else {
+        setSyncResult(`Synced ${data.synced} new message${data.synced === 1 ? "" : "s"}`);
+        if (data.synced > 0) loadEmails();
+      }
+      setTimeout(() => setSyncResult(null), 4000);
+    } catch {
+      setSyncResult("Error: Failed to sync");
+      setTimeout(() => setSyncResult(null), 4000);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-12 text-[#a59494] text-sm">
+        Loading emails...
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/20 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-[#272727]">Email History</h3>
+        <div className="flex items-center gap-3">
+          {syncResult && (
+            <span className={`text-xs font-medium ${syncResult.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+              {syncResult}
+            </span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-brand border border-brand/30 rounded-lg hover:bg-brand/5 transition disabled:opacity-50"
+          >
+            <svg className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+            </svg>
+            {syncing ? "Syncing..." : "Sync Replies"}
+          </button>
+        </div>
+      </div>
+
+      {emails.length === 0 ? (
+        <div className="text-center py-8 text-[#a59494] text-sm">
+          No emails recorded yet. Send an email to this candidate to start tracking.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {emails.map((email) => (
+            <div
+              key={email.id}
+              className={`p-4 rounded-lg border ${
+                email.direction === "inbound"
+                  ? "border-green-200 bg-green-50/50"
+                  : "border-[#a59494]/15 bg-[#f5f0f0]/30"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                        email.direction === "inbound"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-brand/10 text-brand"
+                      }`}
+                    >
+                      {email.direction === "inbound" ? "Received" : "Sent"}
+                    </span>
+                    <span className="text-xs text-[#a59494] truncate">
+                      {email.direction === "inbound"
+                        ? `From: ${email.from_address || "Unknown"}`
+                        : `To: ${email.to_address || "Unknown"}`}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-[#272727] truncate">
+                    {email.subject || "(No subject)"}
+                  </p>
+                  {email.body_snippet && (
+                    <p className="text-xs text-[#a59494] mt-1 line-clamp-2">
+                      {email.body_snippet}
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs text-[#a59494] whitespace-nowrap flex-shrink-0">
+                  {new Date(email.sent_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

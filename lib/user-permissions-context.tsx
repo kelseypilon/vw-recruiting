@@ -83,15 +83,14 @@ export function UserPermissionsProvider({
 export function usePermissions(): UserPermissionsContextValue {
   const ctx = useContext(UserPermissionsContext);
   if (!ctx) {
-    // Fallback for components outside the provider — grant all by default
-    // This prevents crashes during SSR/dev when context may not be available
+    // Safe fallback — deny all permissions when outside provider
     return {
       userId: "",
-      userRole: "Team Lead",
+      userRole: "",
       userName: "",
       userEmail: "",
       rolePermissions: {},
-      can: () => true,
+      can: () => false,
     };
   }
   return ctx;

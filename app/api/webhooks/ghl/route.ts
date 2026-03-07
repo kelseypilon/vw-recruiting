@@ -1,5 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createHmac } from "crypto";
+
+const GHL_WEBHOOK_SECRET = process.env.GHL_WEBHOOK_SECRET ?? "";
+
+/**
+ * Verify HMAC-SHA256 signature from an inbound webhook request.
+ * If GHL_WEBHOOK_SECRET is configured, the X-GHL-Signature header
+ * must match HMAC(secret, rawBody).
+ */
+function verifyGhlSignature(rawBody: string, signature: string | null): boolean {
+  if (!GHL_WEBHOOK_SECRET) return true; // No secret configured — skip check
+  if (!signature) return false;
+
+  const expected = createHmac("sha256", GHL_WEBHOOK_SECRET)
+    .update(rawBody)
+    .digest("hex");
+
+  // Constant-time comparison
+  if (expected.length !== signature.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
 
 /**
  * POST /api/webhooks/ghl
@@ -7,14 +32,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Fire-and-forget GHL (GoHighLevel) webhook on stage changes.
  * Body: { team_id, candidate_id, from_stage, to_stage }
  *
- * 1. Looks up the team's GHL integration config
- * 2. If GHL is enabled and has an API key + location_id, fires webhook
- * 3. Logs the attempt to the webhook_log table
- * 4. Returns immediately — does not block caller
+ * 1. Verifies webhook signature if GHL_WEBHOOK_SECRET is set
+ * 2. Looks up the team's GHL integration config
+ * 3. If GHL is enabled and has an API key + location_id, fires webhook
+ * 4. Logs the attempt to the webhook_log table
+ * 5. Returns immediately — does not block caller
  */
 export async function POST(req: NextRequest) {
   try {
-    const { team_id, candidate_id, from_stage, to_stage } = await req.json();
+    const rawBody = await req.text();
+    const signature = req.headers.get("x-ghl-signature");
+
+    // Verify signature if secret is configured
+    if (GHL_WEBHOOK_SECRET && !verifyGhlSignature(rawBody, signature)) {
+      return NextResponse.json(
+        { error: "Invalid webhook signature" },
+        { status: 401 }
+      );
+    }
+
+    const { team_id, candidate_id, from_stage, to_stage } = JSON.parse(rawBody);
 
     if (!team_id || !candidate_id) {
       return NextResponse.json({ skipped: true, reason: "missing fields" });

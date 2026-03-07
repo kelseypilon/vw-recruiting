@@ -72,7 +72,7 @@ function LoginForm() {
       <div className="w-full max-w-md px-8 py-10 bg-white rounded-2xl shadow-lg">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          {branding.logoUrl ? (
+          {branding.logoUrl && branding.logoUrl.startsWith("https://") ? (
             <img
               src={branding.logoUrl}
               alt={branding.name}

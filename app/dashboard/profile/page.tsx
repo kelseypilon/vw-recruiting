@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getTeamId } from "@/lib/get-team-id";
@@ -38,5 +39,9 @@ export default async function ProfilePage() {
     );
   }
 
-  return <ProfileForm user={profile as TeamUser} />;
+  return (
+    <Suspense>
+      <ProfileForm user={profile as TeamUser} />
+    </Suspense>
+  );
 }

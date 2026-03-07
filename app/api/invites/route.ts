@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAuth } from "@/lib/api-auth";
 import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY
@@ -67,6 +68,16 @@ export async function POST(req: NextRequest) {
           primary_color: team?.brand_primary_color ?? "#1c759e",
         },
       });
+    }
+
+    // ── Protected actions (require auth) ─────────────────────────
+    // create_invite, list_invites, revoke_invite all require authenticated user
+
+    if (["create_invite", "list_invites", "revoke_invite"].includes(action)) {
+      const auth = await verifyAuth();
+      if (!auth) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
 
     // ── Create Invite ───────────────────────────────────────────
