@@ -43,7 +43,7 @@ export default async function DashboardRootLayout({
   // Use admin client for DB reads — bypasses RLS so the user profile lookup works
   const admin = createAdminClient();
 
-  const [teamsResult, teamResult, profileResult] = await Promise.all([
+  const [teamsResult, teamResult, profileResult, superAdminResult] = await Promise.all([
     admin.from("teams").select("id, name").order("name"),
     admin
       .from("teams")
@@ -58,6 +58,12 @@ export default async function DashboardRootLayout({
       .eq("team_id", teamId)
       .eq("email", user.email!)
       .single(),
+    admin
+      .from("users")
+      .select("is_super_admin")
+      .eq("email", user.email!)
+      .eq("is_super_admin", true)
+      .maybeSingle(),
   ]);
 
   const teams = teamsResult.data ?? [];
@@ -65,6 +71,7 @@ export default async function DashboardRootLayout({
   const teamSettings =
     (teamData?.settings as Record<string, unknown>) ?? null;
   const profile = profileResult.data;
+  const isSuperAdmin = !!superAdminResult.data;
 
   const branding = resolveTeamBranding(teamData);
 
@@ -78,7 +85,7 @@ export default async function DashboardRootLayout({
         teamSettings={teamSettings}
       >
         <BrandStyleInjector />
-        <DashboardLayout email={user.email ?? ""}>{children}</DashboardLayout>
+        <DashboardLayout email={user.email ?? ""} isSuperAdmin={isSuperAdmin}>{children}</DashboardLayout>
       </UserPermissionsProvider>
     </TeamProvider>
   );

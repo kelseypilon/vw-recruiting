@@ -10,11 +10,13 @@ import type {
   InterviewQuestion,
   OnboardingTask,
   GroupInterviewPrompt,
+  TeamIntegrations,
 } from "@/lib/types";
 import InterviewQuestionsTab from "./interview-questions-tab";
 import OnboardingTasksTab from "./onboarding-tasks-tab";
 import GroupInterviewPromptsTab from "./group-interview-prompts-tab";
 import PipelineStagesTab from "./pipeline-stages-tab";
+import IntegrationsTab from "./integrations-tab";
 import { usePermissions } from "@/lib/user-permissions-context";
 import {
   PERMISSION_KEYS,
@@ -53,6 +55,7 @@ const TABS: { id: string; label: string; permission?: PermissionKey }[] = [
   { id: "questions", label: "Interview Questions" },
   { id: "onboarding-tasks", label: "Onboarding Tasks", permission: "manage_onboarding" },
   { id: "group-prompts", label: "Group Interview Prompts", permission: "manage_interviews" },
+  { id: "integrations", label: "Integrations", permission: "manage_settings" },
 ];
 
 type TabId = string;
@@ -193,6 +196,12 @@ export default function SettingsDashboard({
             teamId={teamId}
           />
         </>
+      )}
+      {activeTab === "integrations" && (
+        <IntegrationsTab
+          integrations={(team?.integrations ?? {}) as TeamIntegrations}
+          teamId={teamId}
+        />
       )}
     </div>
   );
@@ -439,6 +448,11 @@ function MembersTab({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showInviteInput, setShowInviteInput] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ success: boolean; message: string } | null>(null);
   const [removeMember, setRemoveMember] = useState<TeamUser | null>(null);
   const [togglingEscalation, setTogglingEscalation] = useState(false);
 
@@ -530,17 +544,89 @@ function MembersTab({
               {users.length} member{users.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Add Member
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowInviteInput(!showInviteInput); setInviteResult(null); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand text-brand hover:bg-brand/5 text-xs font-semibold transition"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
+              Invite
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Member
+            </button>
+          </div>
         </div>
+
+        {/* Invite Input Row */}
+        {showInviteInput && (
+          <div className="px-6 py-3 border-b border-[#a59494]/10 bg-brand/5">
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@team.com"
+                className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+              >
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                disabled={inviting || !inviteEmail.includes("@")}
+                onClick={async () => {
+                  setInviting(true);
+                  setInviteResult(null);
+                  try {
+                    const res = await fetch("/api/invites", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "create_invite",
+                        team_id: teamId,
+                        email: inviteEmail,
+                        role: inviteRole,
+                      }),
+                    });
+                    const json = await res.json();
+                    if (json.success) {
+                      setInviteResult({ success: true, message: "Invite sent!" });
+                      setInviteEmail("");
+                    } else {
+                      setInviteResult({ success: false, message: json.error });
+                    }
+                  } catch {
+                    setInviteResult({ success: false, message: "Failed to send invite" });
+                  }
+                  setInviting(false);
+                }}
+                className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-dark transition disabled:opacity-50 whitespace-nowrap"
+              >
+                {inviting ? "Sending..." : "Send Invite"}
+              </button>
+            </div>
+            {inviteResult && (
+              <p className={`mt-1.5 text-xs ${inviteResult.success ? "text-green-600" : "text-red-600"}`}>
+                {inviteResult.message}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="divide-y divide-[#a59494]/10">
           {users.map((user) => (

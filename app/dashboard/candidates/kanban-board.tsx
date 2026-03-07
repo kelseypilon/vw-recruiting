@@ -41,6 +41,7 @@ interface Props {
   upcomingSessions: GroupInterviewSession[];
   teamZoomLink: string | null;
   thresholdStuckDays?: number;
+  businessUnits?: string[];
 }
 
 export default function KanbanBoard({
@@ -52,10 +53,12 @@ export default function KanbanBoard({
   upcomingSessions,
   teamZoomLink,
   thresholdStuckDays = 7,
+  businessUnits = [],
 }: Props) {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("");
+  const [filterTrack, setFilterTrack] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [pendingInterviewMove, setPendingInterviewMove] =
     useState<PendingInterviewMove | null>(null);
@@ -75,7 +78,8 @@ export default function KanbanBoard({
       (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (c.phone && c.phone.includes(searchQuery));
     const matchesStage = !filterStage || c.stage === filterStage;
-    return matchesSearch && matchesStage;
+    const matchesTrack = !filterTrack || c.hire_track === filterTrack;
+    return matchesSearch && matchesStage && matchesTrack;
   });
 
   const grouped = stages.reduce(
@@ -114,6 +118,19 @@ export default function KanbanBoard({
       from_stage: fromStage,
       to_stage: toStage,
     });
+
+    // Fire GHL webhook (fire-and-forget)
+    fetch("/api/webhooks/ghl", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        team_id: teamId,
+        candidate_id: candidateId,
+        from_stage: fromStage,
+        to_stage: toStage,
+      }),
+    }).catch(() => {/* fire-and-forget */});
+
     return true;
   }
 
@@ -266,6 +283,15 @@ export default function KanbanBoard({
             />
           </div>
           <select
+            value={filterTrack}
+            onChange={(e) => setFilterTrack(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
+          >
+            <option value="">All Tracks</option>
+            <option value="agent">Agent</option>
+            <option value="employee">Employee</option>
+          </select>
+          <select
             value={filterStage}
             onChange={(e) => setFilterStage(e.target.value)}
             className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
@@ -393,6 +419,7 @@ export default function KanbanBoard({
       {showAddModal && (
         <AddCandidateModal
           teamId={teamId}
+          businessUnits={businessUnits}
           onClose={() => setShowAddModal(false)}
           onAdded={handleCandidateAdded}
         />

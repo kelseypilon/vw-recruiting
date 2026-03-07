@@ -11,7 +11,7 @@ const NAV_ITEMS: {
   href: string;
   icon: React.ComponentType<{ active: boolean }>;
   permission?: PermissionKey;
-  emailGate?: string;
+  superAdminOnly?: boolean;
 }[] = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
   { label: "Candidates", href: "/dashboard/candidates", icon: CandidatesIcon, permission: "view_candidates" },
@@ -21,23 +21,25 @@ const NAV_ITEMS: {
   { label: "Settings", href: "/dashboard/settings", icon: SettingsIcon, permission: "manage_settings" },
   { label: "Profile", href: "/dashboard/profile", icon: ProfileIcon },
   { label: "Help", href: "/dashboard/help", icon: HelpIcon },
-  { label: "Super Admin", href: "/dashboard/super-admin", icon: SuperAdminIcon, emailGate: "info@ajhazzi.com" },
+  { label: "Super Admin", href: "/dashboard/super-admin", icon: SuperAdminIcon, superAdminOnly: true },
 ];
 
 export default function DashboardLayout({
   email,
+  isSuperAdmin,
   children,
 }: {
   email: string;
+  isSuperAdmin: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const { teamId, teamName, teams, switchTeam, branding } = useTeam();
   const { can } = usePermissions();
 
-  // Filter nav items based on user permissions and email gates
+  // Filter nav items based on user permissions and super admin flag
   const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (item.emailGate && email !== item.emailGate) return false;
+    if (item.superAdminOnly && !isSuperAdmin) return false;
     if (item.permission && !can(item.permission)) return false;
     return true;
   });

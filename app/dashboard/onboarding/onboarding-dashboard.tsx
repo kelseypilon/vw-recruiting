@@ -48,6 +48,12 @@ export default function OnboardingDashboard({
   );
   const [isSendingReminders, setIsSendingReminders] = useState(false);
   const [reminderMessage, setReminderMessage] = useState("");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+  const [automationTask, setAutomationTask] = useState<OnboardingTask | null>(null);
+  const [isRunningAutomation, setIsRunningAutomation] = useState(false);
+  const [automationResult, setAutomationResult] = useState<{ success: boolean; message: string } | null>(null);
   const { can } = usePermissions();
 
   const candidate = candidates.find((c) => c.id === selectedCandidate);
@@ -105,6 +111,38 @@ export default function OnboardingDashboard({
       setInitError("Network error — please try again");
     }
     setIsInitializing(false);
+  }
+
+  // Reset onboarding — deletes all progress, allowing re-initialization with different track
+  async function handleResetOnboarding() {
+    if (resetInput !== "RESET" || !selectedCandidate || isResetting) return;
+    setIsResetting(true);
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset",
+          candidate_id: selectedCandidate,
+        }),
+      });
+      const result = await res.json();
+      if (!result.error) {
+        // Remove all progress for this candidate
+        setProgress((prev) => prev.filter((p) => p.candidate_id !== selectedCandidate));
+        // Clear hire_type/hire_track locally
+        setCandidates((prev) =>
+          prev.map((c) =>
+            c.id === selectedCandidate ? { ...c, hire_type: null, hire_track: "agent" } : c
+          )
+        );
+      }
+    } catch {
+      // ignore
+    }
+    setIsResetting(false);
+    setShowResetConfirm(false);
+    setResetInput("");
   }
 
   // Toggle task completion
@@ -185,6 +223,63 @@ export default function OnboardingDashboard({
     setIsSendingReminders(false);
     // Clear message after 5 seconds
     setTimeout(() => setReminderMessage(""), 5000);
+  }
+
+  // Run automation — calls API, then marks task complete on success
+  async function handleRunAutomation() {
+    if (!automationTask || !candidate || isRunningAutomation) return;
+    setIsRunningAutomation(true);
+    setAutomationResult(null);
+
+    try {
+      const entry = progressMap.get(automationTask.id);
+      const res = await fetch("/api/onboarding/automate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: automationTask.id,
+          candidate_id: candidate.id,
+          team_id: teamId,
+          automation_key: automationTask.automation_key,
+          entry_id: entry?.id,
+        }),
+      });
+      const result = await res.json();
+
+      if (result.error) {
+        setAutomationResult({ success: false, message: result.error });
+      } else {
+        setAutomationResult({
+          success: true,
+          message: result.message ?? "Automation completed successfully.",
+        });
+        // Auto-mark task complete
+        if (entry) {
+          const now = new Date().toISOString();
+          setProgress((prev) =>
+            prev.map((p) =>
+              p.id === entry.id ? { ...p, completed_at: now } : p
+            )
+          );
+          // Also persist the toggle
+          await fetch("/api/onboarding", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "toggle",
+              entry_id: entry.id,
+              completed_at: now,
+            }),
+          });
+        }
+      }
+    } catch {
+      setAutomationResult({
+        success: false,
+        message: "Network error — please try again.",
+      });
+    }
+    setIsRunningAutomation(false);
   }
 
   // Filter tasks to only those that have a progress entry (matched to hire type)
@@ -399,13 +494,24 @@ export default function OnboardingDashboard({
                         {candidate.role_applied ?? "Agent"} · Onboarding
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-brand">
-                        {Math.round(progressPercent)}%
-                      </p>
-                      <p className="text-xs text-[#a59494]">
-                        {completedCount} of {totalTasks} tasks
-                      </p>
+                    <div className="flex items-center gap-4">
+                      {can("manage_onboarding") && candidateProgress.length > 0 && (
+                        <button
+                          onClick={() => { setShowResetConfirm(true); setResetInput(""); }}
+                          className="px-3 py-1.5 rounded-lg border border-red-300 text-xs font-medium text-red-500 hover:bg-red-50 transition"
+                          title="Reset onboarding and choose a different hire track"
+                        >
+                          Reset
+                        </button>
+                      )}
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-brand">
+                          {Math.round(progressPercent)}%
+                        </p>
+                        <p className="text-xs text-[#a59494]">
+                          {completedCount} of {totalTasks} tasks
+                        </p>
+                      </div>
                     </div>
                   </div>
                   {/* Progress bar */}
@@ -431,8 +537,19 @@ export default function OnboardingDashboard({
 
                   {candidateProgress.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-sm text-[#a59494] mb-4">
-                        Select hire type to initialize onboarding
+                      <div className="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary, #1B6CA8)" strokeWidth="2">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="8.5" cy="7" r="4" />
+                          <line x1="20" y1="8" x2="20" y2="14" />
+                          <line x1="23" y1="11" x2="17" y2="11" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-[#272727] mb-1">
+                        Select hire track to begin onboarding
+                      </p>
+                      <p className="text-xs text-[#a59494] mb-5">
+                        This determines which tasks appear for {candidate.first_name}
                       </p>
                       <div className="flex items-center justify-center gap-3">
                         <button
@@ -462,6 +579,10 @@ export default function OnboardingDashboard({
                       candidate={candidate}
                       onToggle={handleToggleTask}
                       onEmailTask={(task) => setEmailModalTask(task)}
+                      onRunAutomation={(task) => {
+                        setAutomationTask(task);
+                        setAutomationResult(null);
+                      }}
                     />
                   )}
                 </div>
@@ -482,6 +603,163 @@ export default function OnboardingDashboard({
           onSent={() => handleEmailSent(emailModalTask.id)}
           onClose={() => setEmailModalTask(null)}
         />
+      )}
+
+      {/* Automation Confirmation Modal */}
+      {automationTask && candidate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-[#a59494]/10">
+              <div className="flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <h3 className="text-lg font-bold text-[#272727]">Run Automation</h3>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              {automationResult ? (
+                <>
+                  <div
+                    className={`p-4 rounded-lg border ${
+                      automationResult.success
+                        ? "bg-green-50 border-green-200"
+                        : "bg-red-50 border-red-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {automationResult.success ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" className="shrink-0 mt-0.5">
+                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                          <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" className="shrink-0 mt-0.5">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="15" y1="9" x2="9" y2="15" />
+                          <line x1="9" y1="9" x2="15" y2="15" />
+                        </svg>
+                      )}
+                      <div>
+                        <p className={`text-sm font-medium ${automationResult.success ? "text-green-800" : "text-red-800"}`}>
+                          {automationResult.success ? "Success" : "Failed"}
+                        </p>
+                        <p className={`text-xs mt-1 ${automationResult.success ? "text-green-700" : "text-red-700"}`}>
+                          {automationResult.message}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => { setAutomationTask(null); setAutomationResult(null); }}
+                      className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <p className="text-sm text-amber-800 font-medium">
+                      {automationTask.title}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      This will run the <span className="font-mono font-semibold">{automationTask.automation_key ?? "automation"}</span> integration
+                      for {candidate.first_name} {candidate.last_name}.
+                    </p>
+                  </div>
+                  <p className="text-xs text-[#a59494]">
+                    The task will be automatically marked as complete if the automation succeeds.
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => { setAutomationTask(null); setAutomationResult(null); }}
+                      disabled={isRunningAutomation}
+                      className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleRunAutomation}
+                      disabled={isRunningAutomation}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition disabled:opacity-50"
+                    >
+                      {isRunningAutomation ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Running...
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                          </svg>
+                          Run Automation
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetConfirm && candidate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-[#a59494]/10">
+              <h3 className="text-lg font-bold text-[#272727]">Reset Onboarding</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-sm text-red-700 font-medium">
+                  This will permanently delete all onboarding progress for{" "}
+                  {candidate.first_name} {candidate.last_name}.
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  {completedCount} completed task{completedCount !== 1 ? "s" : ""} and{" "}
+                  {totalTasks - completedCount} pending task{totalTasks - completedCount !== 1 ? "s" : ""} will be removed.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#272727] mb-1">
+                  Type <span className="font-mono font-bold text-red-600">RESET</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={resetInput}
+                  onChange={(e) => setResetInput(e.target.value)}
+                  placeholder="Type RESET"
+                  className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent transition"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowResetConfirm(false); setResetInput(""); }}
+                  className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetOnboarding}
+                  disabled={resetInput !== "RESET" || isResetting}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {isResetting ? "Resetting..." : "Reset Onboarding"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

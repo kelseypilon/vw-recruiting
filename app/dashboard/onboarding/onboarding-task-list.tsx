@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type {
   OnboardingTask,
   CandidateOnboarding,
@@ -57,6 +57,14 @@ function LinkIcon() {
   );
 }
 
+function AutomatedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-500">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
+}
+
 /* ── Due-date helpers ─────────────────────────────────────────── */
 
 function getDueDateStatus(
@@ -107,6 +115,7 @@ interface Props {
   candidate: Candidate;
   onToggle: (taskId: string) => void;
   onEmailTask: (task: OnboardingTask) => void;
+  onRunAutomation?: (task: OnboardingTask) => void;
 }
 
 /* ── Component ─────────────────────────────────────────────────── */
@@ -117,6 +126,7 @@ export default function OnboardingTaskList({
   candidate,
   onToggle,
   onEmailTask,
+  onRunAutomation,
 }: Props) {
   const [collapsedStages, setCollapsedStages] = useState<Set<string>>(
     new Set()
@@ -171,16 +181,10 @@ export default function OnboardingTaskList({
     });
   }
 
-  function handleTaskAction(task: OnboardingTask) {
-    if (task.action_type === "email") {
-      onEmailTask(task);
-    } else if (task.action_type === "external_link" && task.action_url) {
-      window.open(task.action_url, "_blank", "noopener");
-      onToggle(task.id);
-    } else {
-      onToggle(task.id);
-    }
-  }
+  // Checkbox click = ALWAYS manual toggle only. Never triggers automation.
+  const handleCheckboxClick = useCallback((taskId: string) => {
+    onToggle(taskId);
+  }, [onToggle]);
 
   return (
     <div className="space-y-3">
@@ -260,9 +264,9 @@ export default function OnboardingTaskList({
                           : "hover:bg-[#f5f0f0]/30"
                       }`}
                     >
-                      {/* Checkbox */}
+                      {/* Checkbox — ALWAYS manual toggle only */}
                       <button
-                        onClick={() => handleTaskAction(task)}
+                        onClick={() => handleCheckboxClick(task.id)}
                         disabled={!entry}
                         className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${
                           isCompleted
@@ -288,8 +292,10 @@ export default function OnboardingTaskList({
                       <div className="shrink-0" title={task.action_type}>
                         {task.action_type === "email" ? (
                           <EmailIcon />
-                        ) : task.action_type === "external_link" ? (
+                        ) : task.action_type === "link" || task.action_type === "external_link" ? (
                           <LinkIcon />
+                        ) : task.action_type === "automated" ? (
+                          <AutomatedIcon />
                         ) : (
                           <ManualIcon />
                         )}
@@ -334,8 +340,8 @@ export default function OnboardingTaskList({
                         <DueDateBadge status={dueDateStatus} dueDate={entry.due_date} />
                       )}
 
-                      {/* External link indicator */}
-                      {task.action_type === "external_link" &&
+                      {/* Link action button */}
+                      {(task.action_type === "link" || task.action_type === "external_link") &&
                         task.action_url &&
                         !isCompleted && (
                           <a
@@ -351,7 +357,7 @@ export default function OnboardingTaskList({
                           </a>
                         )}
 
-                      {/* Email indicator */}
+                      {/* Email action button */}
                       {task.action_type === "email" && !isCompleted && (
                         <button
                           onClick={(e) => {
@@ -361,6 +367,22 @@ export default function OnboardingTaskList({
                           className="text-[10px] text-brand hover:underline shrink-0"
                         >
                           Send
+                        </button>
+                      )}
+
+                      {/* ⚡ Run button — ONLY way to trigger automation */}
+                      {task.action_type === "automated" && !isCompleted && onRunAutomation && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRunAutomation(task);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 transition shrink-0"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                          </svg>
+                          Run
                         </button>
                       )}
 

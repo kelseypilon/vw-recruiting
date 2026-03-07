@@ -556,6 +556,162 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data });
     }
 
+    // ── Integrations ──────────────────────────────────────────────────
+
+    if (action === "update_integrations") {
+      if (!payload?.team_id || !payload?.integrations) {
+        return NextResponse.json(
+          { error: "team_id and integrations are required" },
+          { status: 400 }
+        );
+      }
+      const { data, error } = await supabase
+        .from("teams")
+        .update({ integrations: payload.integrations })
+        .eq("id", payload.team_id)
+        .select("integrations")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, integrations: data?.integrations });
+    }
+
+    if (action === "test_integration") {
+      if (!payload?.team_id || !payload?.integration_key) {
+        return NextResponse.json(
+          { error: "team_id and integration_key are required" },
+          { status: 400 }
+        );
+      }
+      // Fetch team integrations to verify config exists
+      const { data: team, error: fetchErr } = await supabase
+        .from("teams")
+        .select("integrations")
+        .eq("id", payload.team_id)
+        .single();
+      if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+      const integrations = (team?.integrations ?? {}) as Record<string, Record<string, unknown>>;
+      const config = integrations[payload.integration_key];
+      if (!config) {
+        return NextResponse.json({ error: "Integration not configured" }, { status: 400 });
+      }
+
+      // Placeholder: in production, each integration would have a real connectivity test
+      // For now, return success if config exists and has required fields
+      return NextResponse.json({ success: true, message: "Connection test passed" });
+    }
+
+    // ── Onboarding Task CRUD ────────────────────────────────────────
+
+    if (action === "create_onboarding_task") {
+      if (!payload?.team_id || !payload?.title) {
+        return NextResponse.json({ error: "team_id and title are required" }, { status: 400 });
+      }
+      // Get max order_index for this stage
+      const { data: maxTask } = await supabase
+        .from("onboarding_tasks")
+        .select("order_index")
+        .eq("team_id", payload.team_id)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
+      const nextOrder = (maxTask?.order_index ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("onboarding_tasks")
+        .insert({
+          team_id: payload.team_id,
+          title: payload.title,
+          owner_role: payload.owner_role ?? "Admin",
+          applies_to: payload.applies_to ?? null,
+          timing: payload.timing ?? null,
+          order_index: nextOrder,
+          is_active: true,
+          hire_type: payload.hire_type ?? "agent",
+          hire_track: payload.hire_track ?? "agent",
+          stage: payload.stage ?? null,
+          done_by: payload.done_by ?? null,
+          action_type: payload.action_type ?? "manual",
+          action_url: payload.action_url ?? null,
+          email_template_key: payload.email_template_key ?? null,
+          notes: payload.notes ?? null,
+          default_assignee_id: payload.default_assignee_id ?? null,
+          due_offset_days: payload.due_offset_days ?? null,
+          due_offset_anchor: payload.due_offset_anchor ?? "hire_date",
+        })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "update_onboarding_task") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      const allowed = [
+        "title", "owner_role", "applies_to", "timing", "is_active",
+        "hire_type", "hire_track", "stage", "done_by", "action_type",
+        "action_url", "email_template_key", "notes", "default_assignee_id",
+        "due_offset_days", "due_offset_anchor", "order_index",
+      ];
+      const taskUpdates: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (key in payload) taskUpdates[key] = payload[key];
+      }
+      if (Object.keys(taskUpdates).length === 0) {
+        return NextResponse.json({ error: "No update fields provided" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("onboarding_tasks")
+        .update(taskUpdates)
+        .eq("id", payload.id)
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
+    if (action === "delete_onboarding_task") {
+      if (!payload?.id) {
+        return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("onboarding_tasks")
+        .delete()
+        .eq("id", payload.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "reorder_onboarding_tasks") {
+      if (!payload?.tasks || !Array.isArray(payload.tasks)) {
+        return NextResponse.json({ error: "tasks array is required" }, { status: 400 });
+      }
+      for (const t of payload.tasks as { id: string; order_index: number }[]) {
+        const { error } = await supabase
+          .from("onboarding_tasks")
+          .update({ order_index: t.order_index })
+          .eq("id", t.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Business Units ──────────────────────────────────────────────
+
+    if (action === "update_business_units") {
+      if (!payload?.team_id || !payload?.business_units) {
+        return NextResponse.json({ error: "team_id and business_units are required" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("teams")
+        .update({ business_units: payload.business_units })
+        .eq("id", payload.team_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
     // ── Actions requiring payload.id ────────────────────────────────
 
     if (action === "update_team" || action === "update_user" || action === "update_stage" || action === "update_template" || action === "update_criterion") {

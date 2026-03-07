@@ -17,7 +17,19 @@ export interface Team {
   threshold_stuck_days: number;
   threshold_scorecard_hours: number;
   threshold_escalation_hours: number;
+  plan: "free" | "starter" | "pro" | "enterprise";
+  business_units: string[];
+  integrations: TeamIntegrations;
   created_at: string;
+}
+
+export interface TeamIntegrations {
+  google_workspace?: { domain?: string; admin_email?: string; enabled?: boolean };
+  teachable?: { api_key?: string; school_url?: string; enabled?: boolean };
+  slack?: { webhook_url?: string; channel?: string; enabled?: boolean };
+  follow_up_boss?: { api_key?: string; enabled?: boolean };
+  docusign?: { api_key?: string; account_id?: string; enabled?: boolean };
+  ghl?: { api_key?: string; location_id?: string; enabled?: boolean };
 }
 
 export interface TeamBranding {
@@ -48,6 +60,7 @@ export interface TeamUser {
   photo_url: string | null;
   is_active: boolean;
   is_escalation_contact: boolean;
+  is_super_admin: boolean;
   notification_preferences: {
     email_reminders: boolean;
     digest: boolean;
@@ -62,6 +75,7 @@ export interface PipelineStage {
   ghl_tag: string | null;
   color: string | null;
   is_active: boolean;
+  hire_track: "agent" | "employee" | "all";
 }
 
 export interface Candidate {
@@ -96,6 +110,8 @@ export interface Candidate {
   resume_url: string | null;
   app_submitted_at: string | null;
   hire_type: string | null;
+  hire_track: string;
+  business_unit: string | null;
   interview_score: number | null;
   start_date: string | null;
   kanban_hold: boolean;
@@ -174,6 +190,7 @@ export interface OnboardingTask {
   order_index: number;
   is_active: boolean;
   hire_type: string;
+  hire_track: string;
   stage: string | null;
   done_by: string | null;
   action_type: string;
@@ -183,6 +200,7 @@ export interface OnboardingTask {
   default_assignee_id: string | null;
   due_offset_days: number | null;
   due_offset_anchor: string;
+  automation_key: string | null;
   default_assignee?: { name: string } | null;
 }
 
@@ -340,4 +358,20 @@ export interface NeedsAttentionItem {
   daysWaiting: number;
   interviewerName?: string;
   href: string;
+}
+
+/* ── Invite System ──────────────────────────────────────────── */
+
+export interface InviteToken {
+  id: string;
+  team_id: string | null;
+  email: string;
+  role: string;
+  token: string;
+  invited_by: string | null;
+  accepted_at: string | null;
+  expires_at: string;
+  created_at: string;
+  team?: { name: string } | null;
+  inviter?: { name: string } | null;
 }

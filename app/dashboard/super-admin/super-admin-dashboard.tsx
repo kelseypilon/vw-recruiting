@@ -289,6 +289,10 @@ function EditBrandingModal({
   const [secondary, setSecondary] = useState(team.brand_secondary_color);
   const [powered, setPowered] = useState(team.brand_show_powered_by);
   const [slug, setSlug] = useState(team.slug || "");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("admin");
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ success: boolean; message: string } | null>(null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -405,6 +409,65 @@ function EditBrandingModal({
               Show &quot;Powered by Vantage West&quot; footer
             </span>
           </label>
+        </div>
+
+        {/* Invite Section */}
+        <div className="mt-6 pt-4 border-t border-[#a59494]/20">
+          <h3 className="text-sm font-bold text-[#272727] mb-2">Invite Team Member</h3>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="admin@team.com"
+              className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              <option value="admin">Admin</option>
+              <option value="member">Member</option>
+            </select>
+            <button
+              disabled={inviting || !inviteEmail}
+              onClick={async () => {
+                setInviting(true);
+                setInviteResult(null);
+                try {
+                  const res = await fetch("/api/invites", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      action: "create_invite",
+                      team_id: team.id,
+                      email: inviteEmail,
+                      role: inviteRole,
+                    }),
+                  });
+                  const json = await res.json();
+                  if (json.success) {
+                    setInviteResult({ success: true, message: `Invite sent! Setup URL: ${json.setup_url}` });
+                    setInviteEmail("");
+                  } else {
+                    setInviteResult({ success: false, message: json.error });
+                  }
+                } catch {
+                  setInviteResult({ success: false, message: "Failed to send invite" });
+                }
+                setInviting(false);
+              }}
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-50 whitespace-nowrap"
+            >
+              {inviting ? "Sending..." : "Send Invite"}
+            </button>
+          </div>
+          {inviteResult && (
+            <p className={`mt-2 text-xs ${inviteResult.success ? "text-green-600" : "text-red-600"}`}>
+              {inviteResult.message}
+            </p>
+          )}
         </div>
 
         {/* Actions */}

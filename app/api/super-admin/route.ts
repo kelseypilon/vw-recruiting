@@ -2,16 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const SUPER_ADMIN_EMAIL = "info@ajhazzi.com";
-
 async function verifySuper(req: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
-    return null;
-  }
+  if (!user) return null;
+
+  // Check is_super_admin column
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("users")
+    .select("is_super_admin")
+    .eq("email", user.email!)
+    .eq("is_super_admin", true)
+    .maybeSingle();
+
+  if (!profile) return null;
   return user;
 }
 

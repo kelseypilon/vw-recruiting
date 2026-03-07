@@ -61,10 +61,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ data });
       }
 
-      // Set hire_type on the candidate
+      // Set hire_type and hire_track on the candidate
       const { error: updateError } = await supabase
         .from("candidates")
-        .update({ hire_type })
+        .update({ hire_type, hire_track: hire_type })
         .eq("id", candidate_id);
 
       if (updateError) {
@@ -74,14 +74,20 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Fetch matching tasks (hire_type matches or 'both') — include assignment + scheduling columns
+      // Fetch matching tasks (hire_track matches or 'both') — include assignment + scheduling columns
+      // Use hire_track with fallback to hire_type for backward compat
       const { data: tasks, error: tasksError } = await supabase
         .from("onboarding_tasks")
-        .select("id, default_assignee_id, due_offset_days, due_offset_anchor")
+        .select("id, default_assignee_id, due_offset_days, due_offset_anchor, hire_track, hire_type")
         .eq("team_id", team_id)
         .eq("is_active", true)
-        .in("hire_type", [hire_type, "both"])
         .order("order_index");
+
+      // Filter by hire_track (or hire_type fallback)
+      const filteredTasks = (tasks ?? []).filter((t) => {
+        const track = (t as Record<string, unknown>).hire_track ?? (t as Record<string, unknown>).hire_type ?? "both";
+        return track === hire_type || track === "both";
+      });
 
       if (tasksError) {
         return NextResponse.json(
@@ -90,7 +96,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (!tasks || tasks.length === 0) {
+      if (filteredTasks.length === 0) {
         return NextResponse.json(
           { error: "No onboarding tasks found for this hire type" },
           { status: 400 }
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest) {
         : null;
 
       // Build entries with assigned_user_id and calculated due_date
-      const entries = tasks.map((task) => {
+      const entries = filteredTasks.map((task) => {
         let due_date: string | null = null;
 
         if (task.due_offset_days != null) {
@@ -233,7 +239,7 @@ export async function POST(req: NextRequest) {
     // ── Task CRUD ────────────────────────────────────────────────────
 
     if (body.action === "create_task") {
-      const { team_id, title, stage, hire_type, action_type, done_by, due_offset_days, due_offset_anchor, action_url, notes, default_assignee_id } = body;
+      const { team_id, title, stage, hire_type, hire_track, action_type, done_by, due_offset_days, due_offset_anchor, action_url, notes, default_assignee_id, automation_key } = body;
       if (!team_id || !title) {
         return NextResponse.json({ error: "team_id and title are required" }, { status: 400 });
       }
@@ -255,6 +261,7 @@ export async function POST(req: NextRequest) {
           title,
           stage: stage ?? null,
           hire_type: hire_type ?? "both",
+          hire_track: hire_track ?? hire_type ?? "both",
           action_type: action_type ?? "manual",
           done_by: done_by ?? null,
           owner_role: done_by ?? "Team Lead",
@@ -263,6 +270,7 @@ export async function POST(req: NextRequest) {
           action_url: action_url ?? null,
           notes: notes ?? null,
           default_assignee_id: default_assignee_id ?? null,
+          automation_key: automation_key ?? null,
           order_index: nextOrder,
           is_active: true,
         })
@@ -278,8 +286,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "task_id is required" }, { status: 400 });
       }
       const allowed = [
-        "title", "stage", "hire_type", "action_type", "done_by",
-        "due_offset_days", "due_offset_anchor", "action_url", "notes",
+        "title", "stage", "hire_type", "hire_track", "action_type", "done_by",
+        "due_offset_days", "due_offset_anchor", "action_url", "notes", "automation_key",
         "default_assignee_id", "is_active",
       ];
       const updates: Record<string, unknown> = {};
@@ -317,6 +325,27 @@ export async function POST(req: NextRequest) {
         .delete()
         .eq("id", task_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === "reset") {
+      const { candidate_id } = body;
+      if (!candidate_id) {
+        return NextResponse.json({ error: "candidate_id is required" }, { status: 400 });
+      }
+      // Delete all candidate_onboarding entries for this candidate
+      const { error: deleteErr } = await supabase
+        .from("candidate_onboarding")
+        .delete()
+        .eq("candidate_id", candidate_id);
+      if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+
+      // Clear hire_type on the candidate
+      await supabase
+        .from("candidates")
+        .update({ hire_type: null })
+        .eq("id", candidate_id);
+
       return NextResponse.json({ success: true });
     }
 

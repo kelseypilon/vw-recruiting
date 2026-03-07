@@ -6,12 +6,17 @@ import type { CandidateCard } from "@/lib/types";
 
 interface Props {
   teamId: string;
+  businessUnits: string[];
   onClose: () => void;
   onAdded: (candidate: CandidateCard) => void;
 }
 
-export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
+export default function AddCandidateModal({ teamId, businessUnits, onClose, onAdded }: Props) {
   const ROLE_OPTIONS = ["Agent", "Employee", "Other"];
+  const HIRE_TRACK_OPTIONS = [
+    { value: "agent", label: "Agent" },
+    { value: "employee", label: "Employee" },
+  ];
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -19,6 +24,8 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
     phone: "",
     role_applied: [] as string[],
     is_licensed: false,
+    business_unit: businessUnits[0] ?? "",
+    hire_track: "agent",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,6 +50,8 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
         phone: formData.phone || null,
         role_applied: formData.role_applied.length > 0 ? JSON.stringify(formData.role_applied) : null,
         is_licensed: formData.is_licensed,
+        business_unit: formData.business_unit || null,
+        hire_track: formData.hire_track,
         stage: "New Lead",
       })
       .select()
@@ -159,6 +168,45 @@ export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
                   <span className="text-sm text-[#272727]">{role}</span>
                 </label>
               ))}
+            </div>
+          </div>
+
+          {/* Business Unit + Hire Track */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[#272727]">
+                Business Unit
+              </label>
+              <select
+                value={formData.business_unit}
+                onChange={(e) => updateField("business_unit", e.target.value)}
+                className={inputClass}
+              >
+                {businessUnits.map((bu) => (
+                  <option key={bu} value={bu}>{bu}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[#272727]">
+                Hire Track
+              </label>
+              <div className="flex rounded-lg border border-[#a59494]/40 overflow-hidden">
+                {HIRE_TRACK_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateField("hire_track", opt.value)}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition ${
+                      formData.hire_track === opt.value
+                        ? "bg-brand text-white"
+                        : "bg-white text-[#272727] hover:bg-[#f5f0f0]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

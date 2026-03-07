@@ -37,6 +37,7 @@ interface Props {
   onTasksUpdated: (tasks: OnboardingTask[]) => void;
   users: TeamUser[];
   teamId: string;
+  businessUnits?: string[];
 }
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -60,15 +61,25 @@ export default function OnboardingTasksTab({
   onTasksUpdated,
   users,
   teamId,
+  businessUnits,
 }: Props) {
   const [showBulkReassign, setShowBulkReassign] = useState(false);
   const [editingTask, setEditingTask] = useState<OnboardingTask | null>(null);
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
+  const [filterTrack, setFilterTrack] = useState<"all" | "agent" | "employee">("all");
+
+  // Filter tasks by hire_track
+  const filteredTasks = filterTrack === "all"
+    ? tasks
+    : tasks.filter((t) => {
+        const track = t.hire_track ?? t.hire_type;
+        return track === filterTrack || track === "both" || track === "all";
+      });
 
   // Group tasks by stage
   const tasksByStage = new Map<string, OnboardingTask[]>();
-  for (const task of tasks) {
+  for (const task of filteredTasks) {
     const stage = task.stage ?? "uncategorized";
     if (!tasksByStage.has(stage)) tasksByStage.set(stage, []);
     tasksByStage.get(stage)!.push(task);
@@ -92,7 +103,8 @@ export default function OnboardingTasksTab({
       team_id: teamId,
       title,
       stage: stageKey === "uncategorized" ? null : stageKey,
-      hire_type: "both",
+      hire_type: filterTrack === "all" ? "both" : filterTrack,
+      hire_track: filterTrack === "all" ? "both" : filterTrack,
       action_type: "manual",
     });
     if (!result.error && result.data) {
@@ -109,6 +121,7 @@ export default function OnboardingTasksTab({
       title: updatedTask.title,
       stage: updatedTask.stage,
       hire_type: updatedTask.hire_type,
+      hire_track: updatedTask.hire_track,
       action_type: updatedTask.action_type,
       done_by: updatedTask.done_by,
       due_offset_days: updatedTask.due_offset_days,
@@ -116,6 +129,7 @@ export default function OnboardingTasksTab({
       action_url: updatedTask.action_url,
       notes: updatedTask.notes,
       default_assignee_id: updatedTask.default_assignee_id,
+      automation_key: updatedTask.automation_key,
     });
     if (!result.error && result.data) {
       onTasksUpdated(tasks.map((t) => (t.id === result.data!.id ? result.data! : t)));
@@ -135,10 +149,19 @@ export default function OnboardingTasksTab({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-3">
           <p className="text-xs text-[#a59494]">
-            {tasks.length} onboarding tasks configured
+            {filteredTasks.length} of {tasks.length} tasks
           </p>
+          <select
+            value={filterTrack}
+            onChange={(e) => setFilterTrack(e.target.value as "all" | "agent" | "employee")}
+            className="px-2 py-1 rounded-lg border border-[#a59494]/40 text-xs text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+          >
+            <option value="all">All Tracks</option>
+            <option value="agent">Agent</option>
+            <option value="employee">Employee</option>
+          </select>
         </div>
         <button
           onClick={() => setShowBulkReassign(true)}
@@ -224,9 +247,9 @@ export default function OnboardingTasksTab({
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
-                          {task.hire_type === "both"
+                          {(task.hire_track ?? task.hire_type) === "both"
                             ? "All"
-                            : task.hire_type === "agent"
+                            : (task.hire_track ?? task.hire_type) === "agent"
                             ? "Agent"
                             : "Employee"}
                         </span>
@@ -392,6 +415,7 @@ function EditTaskModal({
     title: task.title,
     stage: task.stage ?? "stage_1_hiring",
     hire_type: task.hire_type ?? "both",
+    hire_track: task.hire_track ?? task.hire_type ?? "both",
     action_type: task.action_type ?? "manual",
     done_by: task.done_by ?? "",
     due_offset_days: task.due_offset_days,
@@ -399,6 +423,7 @@ function EditTaskModal({
     action_url: task.action_url ?? "",
     notes: task.notes ?? "",
     default_assignee_id: task.default_assignee_id ?? "",
+    automation_key: task.automation_key ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -414,7 +439,8 @@ function EditTaskModal({
       ...task,
       title: form.title,
       stage: form.stage,
-      hire_type: form.hire_type,
+      hire_type: form.hire_track,
+      hire_track: form.hire_track,
       action_type: form.action_type,
       done_by: form.done_by || null,
       due_offset_days: form.due_offset_days,
@@ -422,6 +448,7 @@ function EditTaskModal({
       action_url: form.action_url || null,
       notes: form.notes || null,
       default_assignee_id: form.default_assignee_id || null,
+      automation_key: form.automation_key || null,
     });
     setSaving(false);
   }
@@ -472,10 +499,10 @@ function EditTaskModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1">Hire Type</label>
+              <label className="block text-sm font-medium text-[#272727] mb-1">Hire Track</label>
               <select
-                value={form.hire_type}
-                onChange={(e) => update("hire_type", e.target.value)}
+                value={form.hire_track}
+                onChange={(e) => update("hire_track", e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
               >
                 <option value="both">Both (Agent + Employee)</option>
@@ -579,6 +606,24 @@ function EditTaskModal({
                   </a>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Automation Key — only shown when action_type is automated */}
+          {form.action_type === "automated" && (
+            <div>
+              <label className="block text-sm font-medium text-[#272727] mb-1">Automation Integration</label>
+              <select
+                value={form.automation_key}
+                onChange={(e) => update("automation_key", e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
+              >
+                <option value="">Select integration...</option>
+                <option value="google_workspace">Google Workspace — Create account</option>
+                <option value="teachable">Teachable — Enrol in course</option>
+                <option value="slack">Slack — Send notification</option>
+                <option value="follow_up_boss">Follow Up Boss — Create contact</option>
+              </select>
             </div>
           )}
 

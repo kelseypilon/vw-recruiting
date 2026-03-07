@@ -41,7 +41,7 @@ export default async function CandidatesPage() {
       .order("session_date", { ascending: true }),
     adminSupabase
       .from("teams")
-      .select("group_interview_zoom_link")
+      .select("group_interview_zoom_link, business_units")
       .eq("id", teamId)
       .single(),
   ]);
@@ -52,6 +52,7 @@ export default async function CandidatesPage() {
   const leaders: TeamUser[] = (usersResult.data ?? []) as TeamUser[];
   const upcomingSessions: GroupInterviewSession[] = (sessionsResult.data ?? []) as GroupInterviewSession[];
   const teamZoomLink: string | null = teamResult.data?.group_interview_zoom_link ?? null;
+  const businessUnits: string[] = (teamResult.data?.business_units as string[] | null) ?? ["Residential", "Commercial"];
 
   const now = new Date();
   const candidateCards: CandidateCard[] = candidates.map((c) => ({
@@ -74,6 +75,7 @@ export default async function CandidatesPage() {
       leaders={leaders}
       upcomingSessions={upcomingSessions}
       teamZoomLink={teamZoomLink}
+      businessUnits={businessUnits}
     />
   );
 }
