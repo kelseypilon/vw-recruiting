@@ -554,7 +554,7 @@ export default function ScorecardModal({
           <div>
             <span className="text-xs text-[#a59494]">Overall</span>
             <p className="text-xl font-bold text-brand">
-              {overallScore !== null ? `${overallScore}/5` : "—"}
+              {overallScore !== null ? `${overallScore}/10` : "—"}
             </p>
           </div>
           <div>
@@ -639,11 +639,11 @@ export default function ScorecardModal({
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
-                                  width: `${(catScore / 5) * 100}%`,
+                                  width: `${(catScore / 10) * 100}%`,
                                   backgroundColor:
-                                    catScore >= 4
+                                    catScore >= 8
                                       ? "#10B981"
-                                      : catScore >= 3
+                                      : catScore >= 6
                                         ? "#F59E0B"
                                         : "#EF4444",
                                 }}

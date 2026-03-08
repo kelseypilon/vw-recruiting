@@ -99,6 +99,7 @@ export default function OnboardingEmailModal({
           from_email:
             selectedSender?.from_email ?? selectedSender?.email ?? undefined,
           cc: ccEmail || undefined,
+          candidate_id: candidate.id,
         }),
       });
 

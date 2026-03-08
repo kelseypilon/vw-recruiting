@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import type { OnboardingTask, TeamUser } from "@/lib/types";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 
 /* ── Stage labels ────────────────────────────────────────────── */
 
@@ -54,6 +60,18 @@ async function saveOnboarding(
   if (!res.ok) {
     return { error: `Request failed (${res.status})` };
   }
+  return res.json();
+}
+
+async function callSettings(
+  action: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const res = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, payload }),
+  });
   return res.json();
 }
 
@@ -159,12 +177,16 @@ export default function OnboardingTasksTab({
         return track === filterTrack || track === "both" || track === "all";
       });
 
-  // Group tasks by stage
+  // Group tasks by stage, sorted by order_index
   const tasksByStage = new Map<string, OnboardingTask[]>();
   for (const task of filteredTasks) {
     const stage = task.stage ?? "uncategorized";
     if (!tasksByStage.has(stage)) tasksByStage.set(stage, []);
     tasksByStage.get(stage)!.push(task);
+  }
+  // Sort each stage's tasks by order_index
+  for (const [, stageTasks] of tasksByStage) {
+    stageTasks.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
   }
   const stageKeys = STAGE_ORDER.filter((s) => tasksByStage.has(s) || true);
   if (tasksByStage.has("uncategorized")) {
@@ -225,6 +247,46 @@ export default function OnboardingTasksTab({
       onTasksUpdated(tasks.filter((t) => t.id !== taskId));
     }
     setEditingTask(null);
+  }
+
+  /* ── Drag & drop reorder within a stage ────────── */
+
+  async function handleDragEnd(result: DropResult) {
+    if (!result.destination) return;
+    const { source, destination } = result;
+    // Only allow reorder within the same stage droppable
+    if (source.droppableId !== destination.droppableId) return;
+    if (source.index === destination.index) return;
+
+    const stageKey = source.droppableId;
+    const stageTasks = [...(tasksByStage.get(stageKey) ?? [])];
+
+    // Reorder within the stage group
+    const [moved] = stageTasks.splice(source.index, 1);
+    stageTasks.splice(destination.index, 0, moved);
+
+    // Assign new order_index values for this stage's tasks
+    const reorderedWithIndex = stageTasks.map((t, i) => ({
+      ...t,
+      order_index: i,
+    }));
+
+    // Build a full updated tasks list (replace the reordered stage tasks)
+    const reorderedIds = new Set(reorderedWithIndex.map((t) => t.id));
+    const updatedTasks = tasks.map((t) => {
+      if (reorderedIds.has(t.id)) {
+        return reorderedWithIndex.find((rt) => rt.id === t.id)!;
+      }
+      return t;
+    });
+
+    // Optimistic update
+    onTasksUpdated(updatedTasks);
+
+    // Persist to API
+    await callSettings("reorder_onboarding_tasks", {
+      tasks: reorderedWithIndex.map((t, i) => ({ id: t.id, order_index: i })),
+    });
   }
 
   return (
@@ -308,160 +370,189 @@ export default function OnboardingTasksTab({
       )}
 
       {/* Tasks grouped by stage — accordion */}
-      {stageKeys.map((stageKey) => {
-        const stageTasks = tasksByStage.get(stageKey) ?? [];
-        const stageLabel = STAGE_LABELS[stageKey] ?? "Other Tasks";
-        const isExpanded = expandedStages.has(stageKey);
+      <DragDropContext onDragEnd={handleDragEnd}>
+        {stageKeys.map((stageKey) => {
+          const stageTasks = tasksByStage.get(stageKey) ?? [];
+          const stageLabel = STAGE_LABELS[stageKey] ?? "Other Tasks";
+          const isExpanded = expandedStages.has(stageKey);
 
-        return (
-          <div
-            key={stageKey}
-            className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
-          >
+          return (
             <div
-              className="w-full px-5 py-3 border-b border-[#a59494]/10 bg-[#f5f0f0]/50 flex items-center justify-between hover:bg-[#f5f0f0] transition rounded-t-xl"
+              key={stageKey}
+              className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
             >
-              <div className="flex items-center gap-2">
-                {showBulkReassign === false && (
-                  <input
-                    type="checkbox"
-                    checked={stageTasks.length > 0 && stageTasks.every((t) => selectedIds.has(t.id))}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      selectAllInStage(stageKey);
-                    }}
-                    className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40 cursor-pointer shrink-0"
-                  />
-                )}
-                <button
-                  onClick={() => toggleStage(stageKey)}
-                  className="flex items-center gap-2"
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className={`text-[#a59494] transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                  <h4 className="text-sm font-semibold text-[#272727]">
-                    {stageLabel}
-                  </h4>
-                  <span className="text-xs text-[#a59494]">
-                    ({stageTasks.length})
-                  </span>
-                </button>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setAddingToStage(stageKey);
-                  setExpandedStages((prev) => new Set([...prev, stageKey]));
-                }}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#a59494] hover:text-brand hover:bg-white transition"
-                title="Add task to this stage"
+              <div
+                className="w-full px-5 py-3 border-b border-[#a59494]/10 bg-[#f5f0f0]/50 flex items-center justify-between hover:bg-[#f5f0f0] transition rounded-t-xl"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add
-              </button>
-            </div>
-
-            {isExpanded && (
-              <div className="divide-y divide-[#a59494]/5">
-                {stageTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="w-full text-left px-5 py-3 flex items-center gap-4 hover:bg-[#f5f0f0]/50 transition"
-                  >
-                    {/* Checkbox */}
+                <div className="flex items-center gap-2">
+                  {showBulkReassign === false && (
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(task.id)}
-                      onChange={() => toggleSelected(task.id)}
+                      checked={stageTasks.length > 0 && stageTasks.every((t) => selectedIds.has(t.id))}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        selectAllInStage(stageKey);
+                      }}
                       className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40 cursor-pointer shrink-0"
                     />
-
-                    {/* Clickable row area */}
-                    <button
-                      onClick={() => setEditingTask(task)}
-                      className="flex-1 flex items-center gap-4 text-left min-w-0"
+                  )}
+                  <button
+                    onClick={() => toggleStage(stageKey)}
+                    className="flex items-center gap-2"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className={`text-[#a59494] transition-transform ${isExpanded ? "rotate-90" : ""}`}
                     >
-                      {/* Drag handle placeholder */}
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#a59494]/40 shrink-0">
-                        <circle cx="9" cy="6" r="1.5" fill="currentColor" />
-                        <circle cx="15" cy="6" r="1.5" fill="currentColor" />
-                        <circle cx="9" cy="12" r="1.5" fill="currentColor" />
-                        <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-                        <circle cx="9" cy="18" r="1.5" fill="currentColor" />
-                        <circle cx="15" cy="18" r="1.5" fill="currentColor" />
-                      </svg>
-
-                      {/* Task info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#272727] truncate">
-                          {task.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
-                            {(task.hire_track ?? task.hire_type) === "both"
-                              ? "All"
-                              : (task.hire_track ?? task.hire_type) === "agent"
-                              ? "Agent"
-                              : "Employee"}
-                          </span>
-                          {task.action_type && (
-                            <span className="text-[10px] text-[#a59494]" title={task.action_type}>
-                              {ACTION_TYPE_ICONS[task.action_type] ?? task.action_type}
-                            </span>
-                          )}
-                          {task.done_by && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f5f0f0] text-[#a59494] font-medium">
-                              {task.done_by}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Assignee */}
-                      <span className="text-xs text-[#a59494] w-28 text-right truncate">
-                        {task.default_assignee?.name ?? "Unassigned"}
-                      </span>
-
-                      {/* Due offset */}
-                      <span className="text-xs text-[#a59494] w-24 text-right">
-                        {task.due_offset_days != null
-                          ? `${task.due_offset_days}d after ${task.due_offset_anchor === "hire_date" ? "hire" : "start"}`
-                          : "—"}
-                      </span>
-                    </button>
-                  </div>
-                ))}
-
-                {stageTasks.length === 0 && !addingToStage && (
-                  <div className="px-5 py-6 text-center">
-                    <p className="text-xs text-[#a59494]">No tasks in this stage</p>
-                  </div>
-                )}
-
-                {/* Inline Add Task */}
-                {addingToStage === stageKey && (
-                  <InlineAddTask
-                    onAdd={(title) => handleAddTask(stageKey, title)}
-                    onCancel={() => setAddingToStage(null)}
-                  />
-                )}
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                    <h4 className="text-sm font-semibold text-[#272727]">
+                      {stageLabel}
+                    </h4>
+                    <span className="text-xs text-[#a59494]">
+                      ({stageTasks.length})
+                    </span>
+                  </button>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAddingToStage(stageKey);
+                    setExpandedStages((prev) => new Set([...prev, stageKey]));
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#a59494] hover:text-brand hover:bg-white transition"
+                  title="Add task to this stage"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Add
+                </button>
               </div>
-            )}
-          </div>
-        );
-      })}
+
+              {isExpanded && (
+                <Droppable droppableId={stageKey}>
+                  {(droppableProvided) => (
+                    <div
+                      ref={droppableProvided.innerRef}
+                      {...droppableProvided.droppableProps}
+                      className="divide-y divide-[#a59494]/5"
+                    >
+                      {stageTasks.map((task, index) => (
+                        <Draggable
+                          key={task.id}
+                          draggableId={task.id}
+                          index={index}
+                        >
+                          {(draggableProvided, snapshot) => (
+                            <div
+                              ref={draggableProvided.innerRef}
+                              {...draggableProvided.draggableProps}
+                              className={`w-full text-left px-5 py-3 flex items-center gap-4 transition ${
+                                snapshot.isDragging
+                                  ? "bg-brand/5 shadow-lg rounded-lg"
+                                  : "hover:bg-[#f5f0f0]/50"
+                              }`}
+                            >
+                              {/* Checkbox */}
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(task.id)}
+                                onChange={() => toggleSelected(task.id)}
+                                className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40 cursor-pointer shrink-0"
+                              />
+
+                              {/* Drag handle */}
+                              <div
+                                {...draggableProvided.dragHandleProps}
+                                className="cursor-grab active:cursor-grabbing text-[#a59494]/40 hover:text-[#a59494] transition shrink-0"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                  <circle cx="9" cy="6" r="1.5" fill="currentColor" />
+                                  <circle cx="15" cy="6" r="1.5" fill="currentColor" />
+                                  <circle cx="9" cy="12" r="1.5" fill="currentColor" />
+                                  <circle cx="15" cy="12" r="1.5" fill="currentColor" />
+                                  <circle cx="9" cy="18" r="1.5" fill="currentColor" />
+                                  <circle cx="15" cy="18" r="1.5" fill="currentColor" />
+                                </svg>
+                              </div>
+
+                              {/* Clickable row area — opens edit modal */}
+                              <button
+                                onClick={() => setEditingTask(task)}
+                                className="flex-1 flex items-center gap-4 text-left min-w-0"
+                              >
+                                {/* Task info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-[#272727] truncate">
+                                    {task.title}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/5 text-brand font-medium">
+                                      {(task.hire_track ?? task.hire_type) === "both"
+                                        ? "All"
+                                        : (task.hire_track ?? task.hire_type) === "agent"
+                                        ? "Agent"
+                                        : "Employee"}
+                                    </span>
+                                    {task.action_type && (
+                                      <span className="text-[10px] text-[#a59494]" title={task.action_type}>
+                                        {ACTION_TYPE_ICONS[task.action_type] ?? task.action_type}
+                                      </span>
+                                    )}
+                                    {task.done_by && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f5f0f0] text-[#a59494] font-medium">
+                                        {task.done_by}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Assignee */}
+                                <span className="text-xs text-[#a59494] w-28 text-right truncate">
+                                  {task.default_assignee?.name ?? "Unassigned"}
+                                </span>
+
+                                {/* Due offset */}
+                                <span className="text-xs text-[#a59494] w-24 text-right">
+                                  {task.due_offset_days != null
+                                    ? `${task.due_offset_days}d after ${task.due_offset_anchor === "hire_date" ? "hire" : "start"}`
+                                    : "---"}
+                                </span>
+                              </button>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {droppableProvided.placeholder}
+
+                      {stageTasks.length === 0 && !addingToStage && (
+                        <div className="px-5 py-6 text-center">
+                          <p className="text-xs text-[#a59494]">No tasks in this stage</p>
+                        </div>
+                      )}
+
+                      {/* Inline Add Task */}
+                      {addingToStage === stageKey && (
+                        <InlineAddTask
+                          onAdd={(title) => handleAddTask(stageKey, title)}
+                          onCancel={() => setAddingToStage(null)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </Droppable>
+              )}
+            </div>
+          );
+        })}
+      </DragDropContext>
 
       {tasks.length === 0 && (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-12 text-center">

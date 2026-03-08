@@ -18,6 +18,8 @@ import { verifyAuth } from "@/lib/api-auth";
  *   update_prompt    { prompt_id, prompt_text?, order_index?, is_active? }
  *   delete_prompt    { prompt_id }
  *   reorder_prompts  { team_id, ordered_ids[] }
+ *   save_score       { session_id, candidate_id, prompt_id, evaluator_user_id, score }
+ *   get_scores       { session_id }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -473,6 +475,52 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ success: true });
+    }
+
+    /* ── save_score ──────────────────────────────────────────────── */
+    if (action === "save_score") {
+      const { session_id, candidate_id, prompt_id, evaluator_user_id, score } = payload ?? {};
+      if (!session_id || !candidate_id || !prompt_id || !evaluator_user_id || !score) {
+        return NextResponse.json(
+          { error: "session_id, candidate_id, prompt_id, evaluator_user_id, and score are required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_scores")
+        .upsert(
+          { session_id, candidate_id, prompt_id, evaluator_user_id, score, updated_at: new Date().toISOString() },
+          { onConflict: "session_id,candidate_id,prompt_id,evaluator_user_id" }
+        )
+        .select()
+        .single();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data });
+    }
+
+    /* ── get_scores ─────────────────────────────────────────────── */
+    if (action === "get_scores") {
+      const { session_id } = payload ?? {};
+      if (!session_id) {
+        return NextResponse.json(
+          { error: "session_id is required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_scores")
+        .select("*, evaluator:users!group_interview_scores_evaluator_user_id_fkey(name)")
+        .eq("session_id", session_id);
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data: data ?? [] });
     }
 
     return NextResponse.json(

@@ -226,7 +226,9 @@ export default function AssessmentsPage({
             </div>
             <div>
               <h1 className="text-white font-bold text-lg tracking-tight">Vantage West Realty</h1>
-              <p className="text-white/50 text-xs">Candidate Assessment</p>
+              <p className="text-white/50 text-xs">
+                {candidate ? `Hi ${candidate.first_name}! Complete your assessment below.` : "Candidate Assessment"}
+              </p>
             </div>
           </div>
           <div className="text-white/50 text-sm">

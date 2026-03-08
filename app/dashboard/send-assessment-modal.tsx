@@ -13,7 +13,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ url: string; copied: boolean } | null>(null);
+  const [result, setResult] = useState<{ url: string; copied: boolean; candidateId: string } | null>(null);
   const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -42,7 +42,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
 
       const candidateId = data.candidate_id;
       const assessmentUrl = `${window.location.origin}/apply/${candidateId}/assessments?team=${teamId}`;
-      setResult({ url: assessmentUrl, copied: false });
+      setResult({ url: assessmentUrl, copied: false, candidateId });
     } catch {
       setError("Network error — please try again.");
     } finally {
@@ -53,7 +53,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
   function handleCopy() {
     if (!result) return;
     navigator.clipboard.writeText(result.url).then(() => {
-      setResult({ ...result, copied: true });
+      setResult((r) => r ? { ...r, copied: true } : null);
       setTimeout(() => setResult((r) => (r ? { ...r, copied: false } : null)), 2000);
     });
   }
@@ -70,7 +70,8 @@ export default function SendAssessmentModal({ onClose }: Props) {
         body: JSON.stringify({
           to: email.trim(),
           subject: "Complete Your Assessment",
-          body: `Hi ${firstName},\n\nPlease complete your assessment using the link below:\n\n${result.url}\n\nThank you!`,
+          body: `Hi ${firstName},<br><br>Please complete your assessment using the link below:<br><br><a href="${result.url}">${result.url}</a><br><br>Thank you!`,
+          candidate_id: result.candidateId,
         }),
       });
 

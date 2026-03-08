@@ -157,9 +157,27 @@ export default async function CandidateProfilePage({ params }: Props) {
   const interviews: Interview[] = (interviewsResult.data ?? []) as Interview[];
   const scorecards: InterviewScorecard[] =
     (scorecardsResult.data ?? []) as InterviewScorecard[];
-  const interviewQuestions: InterviewQuestion[] =
+  const allQuestions: InterviewQuestion[] =
     (questionsResult.data ?? []) as InterviewQuestion[];
   const currentUserId: string = profileResult.data?.id ?? "";
+
+  // Load user's personal question set (fall back to all questions if none)
+  let interviewQuestions = allQuestions;
+  if (currentUserId) {
+    const { data: selections } = await supabase
+      .from("interviewer_question_selections")
+      .select("*, question:interview_questions(*)")
+      .eq("user_id", currentUserId)
+      .eq("team_id", TEAM_ID)
+      .eq("is_active", true)
+      .order("sort_order");
+
+    if (selections && selections.length > 0) {
+      interviewQuestions = selections
+        .map((s: { question: InterviewQuestion | null }) => s.question)
+        .filter(Boolean) as InterviewQuestion[];
+    }
+  }
   const groupSessions: CandidateGroupSession[] =
     (groupSessionsResult.data ?? []) as unknown as CandidateGroupSession[];
   const groupNotes: GroupInterviewNote[] =

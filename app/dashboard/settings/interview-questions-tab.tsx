@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 import type {
   InterviewQuestion,
   InterviewerQuestionSelection,
@@ -236,6 +242,41 @@ export default function InterviewQuestionsTab({
     setFormNote(q.interviewer_note ?? "");
   }
 
+  /* ── Drag and drop reorder (within a category) ───────────────── */
+  async function onDragEnd(result: DropResult) {
+    if (!result.destination) return;
+    const { droppableId } = result.source;
+    const srcIdx = result.source.index;
+    const destIdx = result.destination.index;
+    if (srcIdx === destIdx) return;
+
+    // droppableId is the category name
+    const category = droppableId;
+    const catQuestions = questions
+      .filter((q) => q.category === category && (showArchived ? true : q.is_active))
+      .sort((a, b) => a.sort_order - b.sort_order || a.order_index - b.order_index);
+
+    const reordered = [...catQuestions];
+    const [moved] = reordered.splice(srcIdx, 1);
+    reordered.splice(destIdx, 0, moved);
+
+    // Build the update items with new sort_order values
+    const items = reordered.map((q, idx) => ({
+      id: q.id,
+      sort_order: idx,
+    }));
+
+    // Optimistic update: apply new sort_order to local state
+    const sortMap = new Map(items.map((item) => [item.id, item.sort_order]));
+    const updatedQuestions = questions.map((q) =>
+      sortMap.has(q.id) ? { ...q, sort_order: sortMap.get(q.id)! } : q
+    );
+    onQuestionsUpdated(updatedQuestions);
+
+    // Persist to server
+    await callApi("/api/interview-questions", "reorder", { items });
+  }
+
   // Build selection lookup
   const selectionMap = new Map<string, InterviewerQuestionSelection>();
   mySelections.forEach((s) => selectionMap.set(s.question_id, s));
@@ -354,127 +395,170 @@ export default function InterviewQuestionsTab({
             </div>
           )}
 
-          {/* Questions grouped by category */}
-          {[...grouped.entries()].map(([category, catQuestions]) => (
-            <div
-              key={category}
-              className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
-            >
-              <div className="px-4 py-3 border-b border-[#a59494]/10">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-[#272727]">
-                    {category}
-                  </h4>
-                  <span className="text-xs text-[#a59494]">
-                    {catQuestions.length} question
-                    {catQuestions.length !== 1 ? "s" : ""}
-                  </span>
+          {/* Questions grouped by category (with drag-and-drop reorder) */}
+          <DragDropContext onDragEnd={onDragEnd}>
+            {[...grouped.entries()].map(([category, catQuestions]) => (
+              <div
+                key={category}
+                className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm"
+              >
+                <div className="px-4 py-3 border-b border-[#a59494]/10">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-[#272727]">
+                      {category}
+                    </h4>
+                    <span className="text-xs text-[#a59494]">
+                      {catQuestions.length} question
+                      {catQuestions.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="divide-y divide-[#a59494]/10">
-                {catQuestions.map((q) => {
-                  const usage = usageCounts[q.id];
-
-                  if (editingId === q.id) {
-                    return (
-                      <div key={q.id} className="p-4 bg-[#f5f0f0]/50 space-y-3">
-                        <textarea
-                          value={formText}
-                          onChange={(e) => setFormText(e.target.value)}
-                          rows={2}
-                          className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none"
-                        />
-                        <div className="flex gap-3">
-                          <select
-                            value={formCategory}
-                            onChange={(e) =>
-                              setFormCategory(e.target.value)
-                            }
-                            className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white"
-                          >
-                            {CATEGORY_ORDER.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            value={formNote}
-                            onChange={(e) => setFormNote(e.target.value)}
-                            placeholder="Interviewer note..."
-                            className="flex-1 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494]"
-                          />
-                        </div>
-                        <div className="flex gap-2 justify-end">
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleSaveEdit}
-                            disabled={isSaving || !formText.trim()}
-                            className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
-                          >
-                            {isSaving ? "..." : "Save"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return (
+                <Droppable droppableId={category}>
+                  {(provided) => (
                     <div
-                      key={q.id}
-                      className={`px-4 py-3 flex items-start gap-3 ${
-                        !q.is_active ? "opacity-50" : ""
-                      }`}
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className="divide-y divide-[#a59494]/10"
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#272727]">
-                          {q.question_text}
-                        </p>
-                        {q.interviewer_note && (
-                          <p className="text-xs text-[#a59494] mt-1 italic">
-                            Tip: {q.interviewer_note}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {usage && usage.count > 0 && (
-                          <span
-                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand cursor-help"
-                            title={usage.users.join(", ")}
-                          >
-                            Used by {usage.count}
-                          </span>
-                        )}
-                        {!q.is_active && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#a59494]/10 text-[#a59494]">
-                            Archived
-                          </span>
-                        )}
-                        <button
-                          onClick={() => startEdit(q)}
-                          className="text-xs font-medium text-brand hover:text-brand-dark transition"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleToggleArchive(q)}
-                          className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
-                        >
-                          {q.is_active ? "Archive" : "Restore"}
-                        </button>
-                      </div>
+                      {catQuestions.map((q, idx) => {
+                        const usage = usageCounts[q.id];
+
+                        if (editingId === q.id) {
+                          return (
+                            <Draggable key={q.id} draggableId={q.id} index={idx} isDragDisabled>
+                              {(dragProvided) => (
+                                <div
+                                  ref={dragProvided.innerRef}
+                                  {...dragProvided.draggableProps}
+                                  className="p-4 bg-[#f5f0f0]/50 space-y-3"
+                                >
+                                  <textarea
+                                    value={formText}
+                                    onChange={(e) => setFormText(e.target.value)}
+                                    rows={2}
+                                    className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none"
+                                  />
+                                  <div className="flex gap-3">
+                                    <select
+                                      value={formCategory}
+                                      onChange={(e) =>
+                                        setFormCategory(e.target.value)
+                                      }
+                                      className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] bg-white"
+                                    >
+                                      {CATEGORY_ORDER.map((cat) => (
+                                        <option key={cat} value={cat}>
+                                          {cat}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="text"
+                                      value={formNote}
+                                      onChange={(e) => setFormNote(e.target.value)}
+                                      placeholder="Interviewer note..."
+                                      className="flex-1 px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494]"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2 justify-end">
+                                    <button
+                                      onClick={() => setEditingId(null)}
+                                      className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      disabled={isSaving || !formText.trim()}
+                                      className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
+                                    >
+                                      {isSaving ? "..." : "Save"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </Draggable>
+                          );
+                        }
+
+                        return (
+                          <Draggable key={q.id} draggableId={q.id} index={idx}>
+                            {(dragProvided, snapshot) => (
+                              <div
+                                ref={dragProvided.innerRef}
+                                {...dragProvided.draggableProps}
+                                className={`px-4 py-3 flex items-start gap-3 group ${
+                                  !q.is_active ? "opacity-50" : ""
+                                } ${
+                                  snapshot.isDragging
+                                    ? "bg-brand/5 border border-brand/30 rounded-lg shadow-lg"
+                                    : ""
+                                }`}
+                              >
+                                {/* Drag handle */}
+                                <div
+                                  {...dragProvided.dragHandleProps}
+                                  className="mt-0.5 cursor-grab active:cursor-grabbing text-[#a59494] hover:text-[#272727] transition shrink-0"
+                                  title="Drag to reorder"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="9" cy="5" r="1.5" />
+                                    <circle cx="15" cy="5" r="1.5" />
+                                    <circle cx="9" cy="12" r="1.5" />
+                                    <circle cx="15" cy="12" r="1.5" />
+                                    <circle cx="9" cy="19" r="1.5" />
+                                    <circle cx="15" cy="19" r="1.5" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-[#272727]">
+                                    {q.question_text}
+                                  </p>
+                                  {q.interviewer_note && (
+                                    <p className="text-xs text-[#a59494] mt-1 italic">
+                                      Tip: {q.interviewer_note}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {usage && usage.count > 0 && (
+                                    <span
+                                      className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand cursor-help"
+                                      title={usage.users.join(", ")}
+                                    >
+                                      Used by {usage.count}
+                                    </span>
+                                  )}
+                                  {!q.is_active && (
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#a59494]/10 text-[#a59494]">
+                                      Archived
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => startEdit(q)}
+                                    className="text-xs font-medium text-brand hover:text-brand-dark transition"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleArchive(q)}
+                                    className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
+                                  >
+                                    {q.is_active ? "Archive" : "Restore"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                      {provided.placeholder}
                     </div>
-                  );
-                })}
+                  )}
+                </Droppable>
               </div>
-            </div>
-          ))}
+            ))}
+          </DragDropContext>
 
           {grouped.size === 0 && (
             <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-8 text-center">

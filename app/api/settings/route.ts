@@ -877,7 +877,7 @@ export async function POST(req: NextRequest) {
 
     // Whitelist allowed fields per action to prevent arbitrary field injection
     const allowedFields: Record<string, string[]> = {
-      update_team: ["name", "admin_email", "admin_cc", "group_interview_zoom_link", "group_interview_date", "plan"],
+      update_team: ["name", "admin_email", "admin_cc", "group_interview_zoom_link", "group_interview_date", "plan", "slug"],
       update_user: ["name", "role", "from_email", "google_booking_url", "virtual_booking_url", "inperson_booking_url", "virtual_meeting_link", "title"],
       update_stage: ["name", "color", "is_active", "order_index", "ghl_tag"],
       update_template: ["name", "subject", "body", "merge_tags", "is_active", "trigger", "folder_id"],

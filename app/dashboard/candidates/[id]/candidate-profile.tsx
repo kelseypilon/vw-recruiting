@@ -150,6 +150,25 @@ export default function CandidateProfile({
                     })()}
                   </span>
                 )}
+                <button
+                  onClick={async () => {
+                    const newVal = !candidate.is_isa;
+                    setCandidate((prev) => ({ ...prev, is_isa: newVal }));
+                    const supabase = (await import("@/lib/supabase/client")).createClient();
+                    await supabase
+                      .from("candidates")
+                      .update({ is_isa: newVal })
+                      .eq("id", candidate.id);
+                  }}
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition cursor-pointer ${
+                    candidate.is_isa
+                      ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                      : "bg-[#f5f0f0] text-[#a59494] hover:bg-[#e8e0e0]"
+                  }`}
+                  title={candidate.is_isa ? "Remove ISA status" : "Mark as ISA"}
+                >
+                  {candidate.is_isa ? "ISA" : "+ ISA"}
+                </button>
               </div>
             </div>
           </div>
@@ -1890,6 +1909,7 @@ function SendEmailModal({
           body,
           from_email: selectedSender?.from_email ?? selectedSender?.email ?? undefined,
           cc: ccEmail || undefined,
+          candidate_id: candidate.id,
         }),
       });
 

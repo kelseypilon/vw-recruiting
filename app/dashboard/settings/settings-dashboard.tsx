@@ -295,6 +295,12 @@ function TeamTab({
   const [adminCc, setAdminCc] = useState(team?.admin_cc ?? true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [slug, setSlug] = useState(team?.slug ?? "");
+  const [isEditingSlug, setIsEditingSlug] = useState(false);
+  const [slugDraft, setSlugDraft] = useState(team?.slug ?? "");
+  const [slugError, setSlugError] = useState("");
+  const [isSavingSlug, setIsSavingSlug] = useState(false);
+  const [slugSaveStatus, setSlugSaveStatus] = useState("");
   const [thresholdStuckDays, setThresholdStuckDays] = useState(team?.threshold_stuck_days ?? 7);
   const [thresholdScorecardHours, setThresholdScorecardHours] = useState(team?.threshold_scorecard_hours ?? 24);
   const [thresholdEscalationHours, setThresholdEscalationHours] = useState(team?.threshold_escalation_hours ?? 48);
@@ -350,6 +356,42 @@ function TeamTab({
     setIsSavingThresholds(false);
   }
 
+  function validateSlug(value: string): string {
+    if (value.length < 3) return "Slug must be at least 3 characters";
+    if (!/^[a-z0-9-]+$/.test(value))
+      return "Only lowercase letters, numbers, and hyphens allowed";
+    if (value.startsWith("-") || value.endsWith("-"))
+      return "Slug cannot start or end with a hyphen";
+    return "";
+  }
+
+  async function handleSaveSlug() {
+    const error = validateSlug(slugDraft);
+    if (error) {
+      setSlugError(error);
+      return;
+    }
+    if (!team) return;
+    setIsSavingSlug(true);
+    setSlugSaveStatus("");
+
+    const result = await saveSettings("update_team", {
+      id: team.id,
+      slug: slugDraft,
+    });
+
+    if (result.error) {
+      setSlugSaveStatus(`Error: ${result.error}`);
+    } else if (result.data) {
+      setSlug(slugDraft);
+      onTeamUpdated(result.data as Team);
+      setIsEditingSlug(false);
+      setSlugSaveStatus("Saved!");
+      setTimeout(() => setSlugSaveStatus(""), 2000);
+    }
+    setIsSavingSlug(false);
+  }
+
   if (!team) return <p className="text-[#a59494]">No team found</p>;
 
   return (
@@ -368,6 +410,76 @@ function TeamTab({
               onChange={(e) => setTeamName(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Team Slug
+            </label>
+            <p className="text-xs text-[#a59494] mb-1">
+              Used in URLs for your team (e.g. /apply/<strong>{slug || "your-team"}</strong>)
+            </p>
+            {isEditingSlug ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={slugDraft}
+                  onChange={(e) => {
+                    const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+                    setSlugDraft(v);
+                    setSlugError(v ? validateSlug(v) : "");
+                  }}
+                  placeholder="your-team-slug"
+                  className={`w-full px-3 py-2 rounded-lg border text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition ${
+                    slugError ? "border-red-400" : "border-[#a59494]/40"
+                  }`}
+                />
+                {slugError && (
+                  <p className="text-xs text-red-600">{slugError}</p>
+                )}
+                {slugSaveStatus && (
+                  <p className={`text-xs ${slugSaveStatus.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+                    {slugSaveStatus}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveSlug}
+                    disabled={isSavingSlug || !!slugError}
+                    className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition disabled:opacity-50"
+                  >
+                    {isSavingSlug ? "Saving..." : "Save Slug"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingSlug(false);
+                      setSlugDraft(slug);
+                      setSlugError("");
+                      setSlugSaveStatus("");
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] hover:bg-[#a59494]/5 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-2 rounded-lg border border-[#a59494]/20 bg-[#a59494]/5 text-sm text-[#272727] font-mono flex-1">
+                  {slug || <span className="text-[#a59494] italic">Not set</span>}
+                </span>
+                <button
+                  onClick={() => {
+                    setSlugDraft(slug);
+                    setIsEditingSlug(true);
+                    setSlugError("");
+                    setSlugSaveStatus("");
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#a59494]/5 transition"
+                >
+                  Edit
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-[#272727] mb-1">

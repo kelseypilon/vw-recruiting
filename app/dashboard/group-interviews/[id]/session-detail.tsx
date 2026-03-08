@@ -69,6 +69,76 @@ export default function SessionDetail({
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [quickViewCandidate, setQuickViewCandidate] = useState<SessionCandidate | null>(null);
   const [sessionGuideExpanded, setSessionGuideExpanded] = useState(false);
+  const [editingZoom, setEditingZoom] = useState(false);
+  const [zoomDraft, setZoomDraft] = useState(session.zoom_link ?? "");
+
+  async function saveZoomLink() {
+    const trimmed = zoomDraft.trim() || null;
+    setEditingZoom(false);
+    setSession((prev) => ({ ...prev, zoom_link: trimmed }));
+    try {
+      await fetch("/api/group-interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_session",
+          payload: { session_id: session.id, zoom_link: trimmed },
+        }),
+      });
+    } catch {
+      console.error("Failed to save zoom link");
+    }
+  }
+
+  // Per-prompt scoring state
+  // Key: `${candidateId}__${promptId}` → score (1-5)
+  const [promptScores, setPromptScores] = useState<Record<string, number>>({});
+
+  // Load scores on mount
+  useEffect(() => {
+    if (!session.id || prompts.length === 0) return;
+    fetch("/api/group-interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_scores", payload: { session_id: session.id } }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) {
+          const map: Record<string, number> = {};
+          for (const s of json.data) {
+            if (s.evaluator_user_id === currentUserId) {
+              map[`${s.candidate_id}__${s.prompt_id}`] = s.score;
+            }
+          }
+          setPromptScores(map);
+        }
+      })
+      .catch(() => {});
+  }, [session.id, prompts.length, currentUserId]);
+
+  async function savePromptScore(candidateId: string, promptId: string, score: number) {
+    const key = `${candidateId}__${promptId}`;
+    setPromptScores((prev) => ({ ...prev, [key]: score }));
+    try {
+      await fetch("/api/group-interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_score",
+          payload: {
+            session_id: session.id,
+            candidate_id: candidateId,
+            prompt_id: promptId,
+            evaluator_user_id: currentUserId,
+            score,
+          },
+        }),
+      });
+    } catch {
+      console.error("Failed to save prompt score");
+    }
+  }
 
   const isCompleted = session.status === "completed";
 
@@ -480,15 +550,52 @@ export default function SessionDetail({
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
               </select>
-              {session.zoom_link && (
-                <a
-                  href={session.zoom_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
-                >
-                  Join Zoom
-                </a>
+              {editingZoom ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={zoomDraft}
+                    onChange={(e) => setZoomDraft(e.target.value)}
+                    placeholder="https://zoom.us/j/..."
+                    className="px-2 py-1.5 rounded-lg border border-[#a59494]/30 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-brand/40"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveZoomLink();
+                      if (e.key === "Escape") { setEditingZoom(false); setZoomDraft(session.zoom_link ?? ""); }
+                    }}
+                  />
+                  <button
+                    onClick={saveZoomLink}
+                    className="px-2 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark transition"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setEditingZoom(false); setZoomDraft(session.zoom_link ?? ""); }}
+                    className="px-2 py-1.5 rounded-lg text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {session.zoom_link ? (
+                    <a
+                      href={session.zoom_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
+                    >
+                      Join Zoom
+                    </a>
+                  ) : null}
+                  <button
+                    onClick={() => setEditingZoom(true)}
+                    className="px-2 py-1 rounded-lg text-xs font-medium text-[#a59494] hover:text-brand hover:bg-brand/5 transition"
+                  >
+                    {session.zoom_link ? "Edit Link" : "+ Zoom Link"}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -931,6 +1038,64 @@ export default function SessionDetail({
                           )}
                       </div>
                     </div>
+
+                    {/* Per-Prompt Scoring */}
+                    {prompts.length > 0 && selectedCandidate && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
+                          Prompt Scores (1-5)
+                        </label>
+                        <div className="space-y-2">
+                          {prompts.filter((p) => p.is_active !== false).map((prompt) => {
+                            const key = `${selectedCandidate.id}__${prompt.id}`;
+                            const currentScore = promptScores[key] ?? 0;
+                            return (
+                              <div
+                                key={prompt.id}
+                                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f0f0]/50"
+                              >
+                                <p className="text-xs text-[#272727] flex-1 line-clamp-2">
+                                  {prompt.prompt_text}
+                                </p>
+                                <div className="flex gap-1 shrink-0">
+                                  {[1, 2, 3, 4, 5].map((val) => (
+                                    <button
+                                      key={val}
+                                      type="button"
+                                      disabled={isCompleted}
+                                      onClick={() => savePromptScore(selectedCandidate.id, prompt.id, val)}
+                                      className={`w-7 h-7 rounded-full text-xs font-bold transition ${
+                                        val <= currentScore
+                                          ? "bg-brand text-white"
+                                          : "bg-white border border-[#a59494]/30 text-[#a59494] hover:border-brand hover:text-brand"
+                                      } ${isCompleted ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                                    >
+                                      {val}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {Object.keys(promptScores).filter((k) => k.startsWith(selectedCandidate.id)).length > 0 && (
+                          <div className="mt-2 text-right">
+                            <span className="text-xs text-[#a59494]">
+                              Avg:{" "}
+                              <span className="font-bold text-brand">
+                                {(
+                                  Object.entries(promptScores)
+                                    .filter(([k]) => k.startsWith(selectedCandidate.id))
+                                    .reduce((sum, [, v]) => sum + v, 0) /
+                                  Object.entries(promptScores).filter(([k]) => k.startsWith(selectedCandidate.id)).length
+                                ).toFixed(1)}
+                                /5
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Other evaluators' notes */}
                     {otherNotes.length > 0 && (

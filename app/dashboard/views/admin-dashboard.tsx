@@ -216,22 +216,18 @@ export default function AdminDashboard({
 
       {/* ── 3-column layout ───────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* LEFT — Needs Attention */}
+        {/* LEFT — Needs Attention (hidden when empty) */}
+        {needsAttention.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-[#a59494]/10 p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-base">🔔</span>
             <h3 className="text-sm font-semibold text-velvet">Needs Attention</h3>
-            {needsAttention.length > 0 && (
-              <span className="text-xs font-medium text-white bg-red-500 px-2 py-0.5 rounded-full">
-                {needsAttention.length}
-              </span>
-            )}
+            <span className="text-xs font-medium text-white bg-red-500 px-2 py-0.5 rounded-full">
+              {needsAttention.length}
+            </span>
           </div>
 
-          {needsAttention.length === 0 ? (
-            <p className="text-sm text-grey text-center py-8">No items need attention</p>
-          ) : (
-            <div className="space-y-1.5">
+          <div className="space-y-1.5">
               {needsAttention.slice(0, 8).map((item) => (
                 <Link
                   key={item.id}
@@ -274,8 +270,8 @@ export default function AdminDashboard({
                 </Link>
               )}
             </div>
-          )}
         </div>
+        )}
 
         {/* MIDDLE — Pipeline Funnel */}
         <div className="bg-white rounded-xl shadow-sm border border-[#a59494]/10 p-5">

@@ -88,6 +88,7 @@ export default function EmailPreviewModal({ data, onClose, onSent }: Props) {
         subject: editSubject,
         body: editBody,
         from_email: data.fromEmail || undefined,
+        candidate_id: data.candidateId,
       };
       if (data.cc) payload.cc = data.cc;
       if (data.icsData) {
