@@ -885,6 +885,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── List Email Templates ──────────────────────────────────────────
+
+    if (action === "list_email_templates") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("email_templates")
+        .select("*")
+        .eq("team_id", payload.team_id)
+        .order("name");
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ templates: data ?? [] });
+    }
+
     // ── Actions requiring payload.id ────────────────────────────────
 
     if (action === "update_team" || action === "update_user" || action === "update_stage" || action === "update_template" || action === "update_criterion") {

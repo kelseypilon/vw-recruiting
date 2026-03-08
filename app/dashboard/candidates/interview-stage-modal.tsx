@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import type { PipelineStage, TeamUser, GroupInterviewSession } from "@/lib/types";
+import type { PipelineStage, TeamUser, GroupInterviewSession, EmailTemplate } from "@/lib/types";
 import { isGroupInterviewStage } from "@/lib/stage-utils";
-import DateTimePicker from "@/components/date-time-picker";
 
 interface Props {
   candidateName: string;
   candidateId: string;
+  candidateEmail: string | null;
   newStage: string;
   teamId: string;
   currentUserId: string;
@@ -23,6 +23,7 @@ interface Props {
 export default function InterviewStageModal({
   candidateName,
   candidateId,
+  candidateEmail,
   newStage,
   teamId,
   currentUserId,
@@ -54,6 +55,7 @@ export default function InterviewStageModal({
     <OneOnOneFlow
       candidateName={candidateName}
       candidateId={candidateId}
+      candidateEmail={candidateEmail}
       newStage={newStage}
       teamId={teamId}
       currentUserId={currentUserId}
@@ -64,7 +66,7 @@ export default function InterviewStageModal({
   );
 }
 
-/* ── Group Interview Flow ─────────────────────────────────────── */
+/* ── Group Interview Flow (unchanged) ─────────────────────────── */
 
 function GroupInterviewFlow({
   candidateName,
@@ -101,7 +103,6 @@ function GroupInterviewFlow({
     setError("");
 
     try {
-      // Add candidate to group interview session
       const addRes = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,7 +120,6 @@ function GroupInterviewFlow({
 
       const selectedSession = upcomingSessions.find((s) => s.id === selectedSessionId);
 
-      // Also create an interview record for tracking
       await fetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,13 +131,12 @@ function GroupInterviewFlow({
             interview_type: "Group Interview",
             status: "scheduled",
             scheduled_at: selectedSession?.session_date || null,
-            notes: `Added to group interview session`,
+            notes: "Added to group interview session",
             interviewer_ids: [currentUserId],
           },
         }),
       });
 
-      // Send invitation email if opted-in
       if (sendEmail && selectedSession) {
         try {
           await fetch("/api/send-email", {
@@ -165,10 +164,6 @@ function GroupInterviewFlow({
       setError("Failed to add candidate to session");
       setLoading(false);
     }
-  }
-
-  function handleSkip() {
-    onComplete();
   }
 
   return (
@@ -205,7 +200,7 @@ function GroupInterviewFlow({
                   className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border transition text-left ${
                     isSelected
                       ? "border-brand bg-brand/5 ring-1 ring-brand/30"
-                      : "border-[#a59494]/20 hover:border-brand/40 hover:bg-[#f5f0f0]/50"
+                      : "border-[#a59494]/20 hover:border-brand/40 hover:bg-gray-50"
                   }`}
                 >
                   <div
@@ -249,7 +244,6 @@ function GroupInterviewFlow({
           </div>
         )}
 
-        {/* Send email checkbox */}
         {upcomingSessions.length > 0 && selectedSessionId && (
           <label className="flex items-center gap-2 mb-3 cursor-pointer">
             <input
@@ -268,7 +262,7 @@ function GroupInterviewFlow({
 
         <div className="flex justify-between items-center pt-2">
           <button
-            onClick={handleSkip}
+            onClick={onComplete}
             className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
           >
             Skip for now
@@ -276,7 +270,7 @@ function GroupInterviewFlow({
           <div className="flex gap-2">
             <button
               onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
+              className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-gray-50 transition"
             >
               Cancel
             </button>
@@ -296,11 +290,14 @@ function GroupInterviewFlow({
   );
 }
 
-/* ── 1:1 Interview Flow ───────────────────────────────────────── */
+/* ── 1:1 Interview Flow — 2-step modal ────────────────────────── */
+
+type Step = "choose" | "send-link" | "confirmed";
 
 function OneOnOneFlow({
   candidateName,
   candidateId,
+  candidateEmail,
   newStage,
   teamId,
   currentUserId,
@@ -310,6 +307,7 @@ function OneOnOneFlow({
 }: {
   candidateName: string;
   candidateId: string;
+  candidateEmail: string | null;
   newStage: string;
   teamId: string;
   currentUserId: string;
@@ -317,143 +315,555 @@ function OneOnOneFlow({
   onComplete: () => void;
   onCancel: () => void;
 }) {
-  const [interviewerId, setInterviewerId] = useState(currentUserId);
-  const [scheduledAt, setScheduledAt] = useState("");
+  const [step, setStep] = useState<Step>("choose");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+
+  // Shared fields
+  const [interviewerId, setInterviewerId] = useState(currentUserId);
+
+  // Step 2B fields
+  const [interviewDate, setInterviewDate] = useState("");
+  const [interviewTime, setInterviewTime] = useState("");
+  const [location, setLocation] = useState("");
+
+  // Template state
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
 
   const selectedInterviewer = leaders.find((l) => l.id === interviewerId);
-  const bookingUrl = selectedInterviewer?.google_booking_url;
+  const firstName = candidateName.split(" ")[0] || candidateName;
 
-  async function handleCreate() {
+  // Fetch email templates on mount
+  useEffect(() => {
+    async function fetchTemplates() {
+      try {
+        const res = await fetch(`/api/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "list_email_templates",
+            payload: { team_id: teamId },
+          }),
+        });
+        const data = await res.json();
+        if (data.templates) {
+          setTemplates(data.templates);
+        }
+      } catch {
+        // Templates unavailable — user can still proceed
+      } finally {
+        setTemplatesLoaded(true);
+      }
+    }
+    fetchTemplates();
+  }, [teamId]);
+
+  // Auto-select appropriate template when step changes
+  useEffect(() => {
+    if (!templatesLoaded || templates.length === 0) return;
+    if (step === "send-link") {
+      const inviteTemplate = templates.find(
+        (t) => t.is_active && (t.trigger === "interview_scheduled" || t.name.toLowerCase().includes("interview invitation"))
+      );
+      if (inviteTemplate) setSelectedTemplateId(inviteTemplate.id);
+    } else if (step === "confirmed") {
+      // Use the same interview template for confirmation (can be customized later)
+      const confirmTemplate = templates.find(
+        (t) => t.is_active && (t.trigger === "interview_confirmation" || t.trigger === "interview_scheduled" || t.name.toLowerCase().includes("interview"))
+      );
+      if (confirmTemplate) setSelectedTemplateId(confirmTemplate.id);
+    }
+  }, [step, templatesLoaded, templates]);
+
+  // Resolve merge tags in template body
+  const resolveTemplate = useCallback(
+    (template: EmailTemplate | undefined) => {
+      if (!template) return { subject: "", body: "" };
+      const bookingUrl = selectedInterviewer?.google_booking_url || selectedInterviewer?.virtual_booking_url || "";
+      const dateStr = interviewDate
+        ? new Date(interviewDate + (interviewTime ? `T${interviewTime}` : "")).toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+            ...(interviewTime ? { hour: "numeric", minute: "2-digit" } : {}),
+          })
+        : "TBD";
+
+      const replacements: Record<string, string> = {
+        "{{first_name}}": firstName,
+        "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
+        "{{candidate_name}}": candidateName,
+        "{{team_name}}": "Vantage West Realty",
+        "{{interview_type}}": "1:1 Interview",
+        "{{interview_date}}": dateStr,
+        "{{leader_name}}": selectedInterviewer?.name || "",
+        "{{booking_link}}": bookingUrl,
+        "{{location}}": location,
+        "{{sender_name}}": selectedInterviewer?.name || "",
+      };
+
+      let subject = template.subject;
+      let body = template.body;
+      for (const [tag, value] of Object.entries(replacements)) {
+        subject = subject.replaceAll(tag, value);
+        body = body.replaceAll(tag, value);
+      }
+      return { subject, body };
+    },
+    [firstName, candidateName, selectedInterviewer, interviewDate, interviewTime, location]
+  );
+
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+  const resolved = resolveTemplate(selectedTemplate);
+
+  // ── Create interview record ──────────────────────────────────
+  async function createInterviewRecord(scheduledAtISO: string | null) {
+    const res = await fetch("/api/interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_interview",
+        payload: {
+          team_id: teamId,
+          candidate_id: candidateId,
+          interview_type: "1on1 Interview",
+          status: "scheduled",
+          scheduled_at: scheduledAtISO,
+          notes: `Created when moved to ${newStage}`,
+          interviewer_ids: interviewerId ? [interviewerId] : [],
+          location: location || null,
+        },
+      }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    return json;
+  }
+
+  // ── Send email ──────────────────────────────────────────────
+  async function sendEmail(subject: string, body: string) {
+    if (!candidateEmail) return;
+    await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: candidateEmail,
+        subject,
+        body: body.replace(/\n/g, "<br>"),
+        candidate_id: candidateId,
+      }),
+    });
+  }
+
+  // ── Option C: Skip for Now ──────────────────────────────────
+  async function handleSkip() {
+    setLoading(true);
+    setError("");
+    try {
+      await createInterviewRecord(null);
+      onComplete();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create interview");
+      setLoading(false);
+    }
+  }
+
+  // ── Option A: Send Scheduling Link ──────────────────────────
+  async function handleSendLink() {
     if (!interviewerId) {
       setError("Please select an interviewer");
+      return;
+    }
+    if (!candidateEmail) {
+      setError("No email address on file for this candidate");
       return;
     }
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("/api/interviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_interview",
-          payload: {
-            team_id: teamId,
-            candidate_id: candidateId,
-            interview_type: "1on1 Interview",
-            status: "scheduled",
-            scheduled_at: scheduledAt || null,
-            notes: `Created when moved to ${newStage}`,
-            interviewer_ids: [interviewerId],
-          },
-        }),
-      });
-      const json = await res.json();
+      await createInterviewRecord(null);
 
-      if (json.error) {
-        setError(json.error);
-        setLoading(false);
-        return;
-      }
+      const subject = resolved.subject || `Your Interview with Vantage West Realty`;
+      const body = resolved.body || `Hi ${firstName},\n\nYou've been selected for a 1:1 interview with ${selectedInterviewer?.name || "our team"}.\n\nPlease use the link below to book a time that works for you:\n${selectedInterviewer?.google_booking_url || selectedInterviewer?.virtual_booking_url || "(booking link)"}\n\nLooking forward to connecting!\n\nVantage West Realty`;
+      await sendEmail(subject, body);
 
-      setLoading(false);
-      onComplete();
-    } catch {
-      setError("Failed to create interview");
+      setToast(`Scheduling link sent to ${candidateEmail}`);
+      setTimeout(() => onComplete(), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send scheduling link");
       setLoading(false);
     }
   }
 
-  function handleSkip() {
-    onComplete();
+  // ── Option B: Schedule & Send ───────────────────────────────
+  async function handleScheduleAndSend() {
+    if (!interviewerId) {
+      setError("Please select an interviewer");
+      return;
+    }
+    if (!interviewDate) {
+      setError("Please select a date");
+      return;
+    }
+    if (!candidateEmail) {
+      setError("No email address on file for this candidate");
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    try {
+      const scheduledAtISO = interviewTime
+        ? new Date(`${interviewDate}T${interviewTime}`).toISOString()
+        : new Date(`${interviewDate}T09:00`).toISOString();
+
+      await createInterviewRecord(scheduledAtISO);
+
+      const subject = resolved.subject || `Interview Confirmation — Vantage West Realty`;
+      const body = resolved.body || `Hi ${firstName},\n\nYour interview has been confirmed!\n\nDate: ${interviewDate}\nTime: ${interviewTime || "TBD"}\n${location ? `Location: ${location}\n` : ""}\nLooking forward to meeting you!\n\nVantage West Realty`;
+      await sendEmail(subject, body);
+
+      setToast("Interview scheduled and confirmation sent");
+      setTimeout(() => onComplete(), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to schedule interview");
+      setLoading(false);
+    }
   }
+
+  // ── Toast overlay ───────────────────────────────────────────
+  if (toast) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex items-center gap-3">
+          <span className="text-green-500 text-xl">&#10003;</span>
+          <span className="text-sm font-medium text-[#272727]">{toast}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const selectClasses =
+    "w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white";
+  const inputClasses = selectClasses;
+  const labelClasses = "block text-sm font-medium text-[#272727] mb-1";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-base font-bold text-[#272727] mb-1">
-          Schedule 1:1 Interview
-        </h3>
-        <p className="text-xs text-[#a59494] mb-5">
-          Set up a 1:1 interview for {candidateName}.
-        </p>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        {/* ─── STEP 1: Choose ──────────────────────────────── */}
+        {step === "choose" && (
+          <>
+            <h3 className="text-base font-bold text-[#272727] mb-1">
+              Schedule 1:1 Interview
+            </h3>
+            <p className="text-xs text-[#a59494] mb-5">
+              How would you like to schedule this interview for{" "}
+              <span className="font-medium text-[#272727]">{candidateName}</span>?
+            </p>
 
-        <div className="space-y-4">
-          {/* Interviewer */}
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Interviewer
-            </label>
-            <select
-              value={interviewerId}
-              onChange={(e) => setInterviewerId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
-            >
-              <option value="">Select an interviewer...</option>
-              {leaders.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}{l.role ? ` — ${l.role}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Date & Time */}
-          <div>
-            <label className="block text-sm font-medium text-[#272727] mb-1">
-              Date & Time <span className="text-xs font-normal text-[#a59494]">(optional)</span>
-            </label>
-            <DateTimePicker
-              value={scheduledAt}
-              onChange={setScheduledAt}
-            />
-          </div>
-
-          {/* Booking URL */}
-          {bookingUrl && (
-            <div className="rounded-lg bg-brand/5 border border-brand/10 px-4 py-3">
-              <p className="text-xs font-medium text-[#272727] mb-1">
-                Or send the booking link to the candidate:
-              </p>
-              <a
-                href={bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-brand hover:underline break-all"
+            <div className="space-y-3">
+              {/* Option A — Send Scheduling Link */}
+              <button
+                type="button"
+                onClick={() => setStep("send-link")}
+                className="w-full flex items-start gap-4 px-4 py-4 rounded-xl border border-[#a59494]/20 hover:border-brand/40 hover:bg-brand/5 transition text-left group"
               >
-                {bookingUrl}
-              </a>
+                <span className="text-2xl mt-0.5">&#128197;</span>
+                <div>
+                  <p className="text-sm font-semibold text-[#272727] group-hover:text-brand transition">
+                    Send Scheduling Link
+                  </p>
+                  <p className="text-xs text-[#a59494] mt-0.5">
+                    Send the candidate a link to book a time that works for them
+                  </p>
+                </div>
+              </button>
+
+              {/* Option B — Time Already Confirmed */}
+              <button
+                type="button"
+                onClick={() => setStep("confirmed")}
+                className="w-full flex items-start gap-4 px-4 py-4 rounded-xl border border-[#a59494]/20 hover:border-brand/40 hover:bg-brand/5 transition text-left group"
+              >
+                <span className="text-2xl mt-0.5">&#9993;&#65039;</span>
+                <div>
+                  <p className="text-sm font-semibold text-[#272727] group-hover:text-brand transition">
+                    Time Already Confirmed
+                  </p>
+                  <p className="text-xs text-[#a59494] mt-0.5">
+                    You&apos;ve agreed on a time &mdash; send a calendar invite and confirmation email
+                  </p>
+                </div>
+              </button>
+
+              {/* Option C — Skip for Now */}
+              <button
+                type="button"
+                onClick={handleSkip}
+                disabled={loading}
+                className="w-full flex items-start gap-4 px-4 py-4 rounded-xl border border-[#a59494]/20 hover:border-[#a59494]/40 hover:bg-gray-50 transition text-left group"
+              >
+                <span className="text-2xl mt-0.5">&#9193;</span>
+                <div>
+                  <p className="text-sm font-semibold text-[#272727] group-hover:text-[#272727] transition">
+                    Skip for Now
+                  </p>
+                  <p className="text-xs text-[#a59494] mt-0.5">
+                    Create the interview record without sending anything
+                  </p>
+                </div>
+              </button>
             </div>
-          )}
-        </div>
 
-        {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 
-        <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#a59494]/10">
-          <button
-            onClick={handleSkip}
-            className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
-          >
-            Skip for now
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={loading || !interviewerId}
-              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-            >
-              {loading ? "Creating..." : "Create Interview"}
-            </button>
-          </div>
-        </div>
+            <div className="flex justify-end mt-5 pt-3 border-t border-[#a59494]/10">
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ─── STEP 2A: Send Scheduling Link ──────────────── */}
+        {step === "send-link" && (
+          <>
+            <h3 className="text-base font-bold text-[#272727] mb-1">
+              Send Scheduling Link
+            </h3>
+            <p className="text-xs text-[#a59494] mb-5">
+              Send {candidateName} a link to book their interview.
+            </p>
+
+            <div className="space-y-4">
+              {/* Interviewer */}
+              <div>
+                <label className={labelClasses}>Interviewer</label>
+                <select
+                  value={interviewerId}
+                  onChange={(e) => setInterviewerId(e.target.value)}
+                  className={selectClasses}
+                >
+                  <option value="">Select an interviewer...</option>
+                  {leaders.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}{l.role ? ` — ${l.role}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Booking URL info */}
+              {selectedInterviewer?.google_booking_url && (
+                <div className="rounded-lg bg-brand/5 border border-brand/10 px-4 py-2.5">
+                  <p className="text-xs text-[#a59494]">
+                    Booking link:{" "}
+                    <span className="text-brand break-all">
+                      {selectedInterviewer.google_booking_url}
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {/* Email template */}
+              {templates.length > 0 && (
+                <div>
+                  <label className={labelClasses}>Email Template</label>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    className={selectClasses}
+                  >
+                    <option value="">Select a template...</option>
+                    {templates
+                      .filter((t) => t.is_active)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Email preview */}
+              {resolved.body && (
+                <div>
+                  <label className={labelClasses}>Email Preview</label>
+                  <div className="rounded-lg border border-[#a59494]/20 p-3 bg-gray-50 max-h-40 overflow-y-auto">
+                    <p className="text-xs font-medium text-[#272727] mb-1">
+                      Subject: {resolved.subject}
+                    </p>
+                    <div className="text-xs text-[#a59494] whitespace-pre-wrap leading-relaxed">
+                      {resolved.body}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!candidateEmail && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                  This candidate has no email address on file. Add one before sending.
+                </p>
+              )}
+            </div>
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#a59494]/10">
+              <button
+                onClick={() => { setStep("choose"); setError(""); }}
+                className="text-sm text-[#a59494] hover:text-[#272727] transition"
+              >
+                &larr; Back
+              </button>
+              <button
+                onClick={handleSendLink}
+                disabled={loading || !interviewerId || !candidateEmail}
+                className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {loading ? "Sending..." : "Send Link"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ─── STEP 2B: Time Already Confirmed ───────────── */}
+        {step === "confirmed" && (
+          <>
+            <h3 className="text-base font-bold text-[#272727] mb-1">
+              Confirm Interview Details
+            </h3>
+            <p className="text-xs text-[#a59494] mb-5">
+              Enter the confirmed details and send {candidateName} a confirmation email.
+            </p>
+
+            <div className="space-y-4">
+              {/* Date */}
+              <div>
+                <label className={labelClasses}>Date</label>
+                <input
+                  type="date"
+                  value={interviewDate}
+                  onChange={(e) => setInterviewDate(e.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              {/* Time */}
+              <div>
+                <label className={labelClasses}>Time</label>
+                <input
+                  type="time"
+                  value={interviewTime}
+                  onChange={(e) => setInterviewTime(e.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              {/* Interviewer */}
+              <div>
+                <label className={labelClasses}>Interviewer</label>
+                <select
+                  value={interviewerId}
+                  onChange={(e) => setInterviewerId(e.target.value)}
+                  className={selectClasses}
+                >
+                  <option value="">Select an interviewer...</option>
+                  {leaders.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}{l.role ? ` — ${l.role}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Location / Link */}
+              <div>
+                <label className={labelClasses}>
+                  Location / Link{" "}
+                  <span className="text-xs font-normal text-[#a59494]">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Zoom link, office address, etc."
+                  className={inputClasses}
+                />
+              </div>
+
+              {/* Email template */}
+              {templates.length > 0 && (
+                <div>
+                  <label className={labelClasses}>Email Template</label>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    className={selectClasses}
+                  >
+                    <option value="">Select a template...</option>
+                    {templates
+                      .filter((t) => t.is_active)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Email preview */}
+              {resolved.body && (
+                <div>
+                  <label className={labelClasses}>Email Preview</label>
+                  <div className="rounded-lg border border-[#a59494]/20 p-3 bg-gray-50 max-h-40 overflow-y-auto">
+                    <p className="text-xs font-medium text-[#272727] mb-1">
+                      Subject: {resolved.subject}
+                    </p>
+                    <div className="text-xs text-[#a59494] whitespace-pre-wrap leading-relaxed">
+                      {resolved.body}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!candidateEmail && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                  This candidate has no email address on file. Add one before sending.
+                </p>
+              )}
+            </div>
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#a59494]/10">
+              <button
+                onClick={() => { setStep("choose"); setError(""); }}
+                className="text-sm text-[#a59494] hover:text-[#272727] transition"
+              >
+                &larr; Back
+              </button>
+              <button
+                onClick={handleScheduleAndSend}
+                disabled={loading || !interviewerId || !interviewDate || !candidateEmail}
+                className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {loading ? "Scheduling..." : "Schedule & Send"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

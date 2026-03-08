@@ -18,6 +18,7 @@ import NotAFitModal from "./not-a-fit-modal";
 interface PendingInterviewMove {
   candidateId: string;
   candidateName: string;
+  candidateEmail: string | null;
   fromStage: string;
   toStage: string;
 }
@@ -163,6 +164,7 @@ export default function KanbanBoard({
       setPendingInterviewMove({
         candidateId,
         candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        candidateEmail: candidate.email,
         fromStage,
         toStage: newStage,
       });
@@ -206,6 +208,7 @@ export default function KanbanBoard({
       setPendingInterviewMove({
         candidateId,
         candidateName: `${candidate.first_name} ${candidate.last_name}`,
+        candidateEmail: candidate.email,
         fromStage: source.droppableId,
         toStage: newStage,
       });
@@ -433,6 +436,7 @@ export default function KanbanBoard({
         <InterviewStageModal
           candidateName={pendingInterviewMove.candidateName}
           candidateId={pendingInterviewMove.candidateId}
+          candidateEmail={pendingInterviewMove.candidateEmail}
           newStage={pendingInterviewMove.toStage}
           teamId={teamId}
           currentUserId={currentUserId}
