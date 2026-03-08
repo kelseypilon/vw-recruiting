@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTeam } from "@/lib/team-context";
 import { usePermissions } from "@/lib/user-permissions-context";
 import type { PermissionKey } from "@/lib/permissions";
+import SendAssessmentModal from "./send-assessment-modal";
 
 const NAV_ITEMS: {
   label: string;
@@ -36,6 +38,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { teamId, teamName, teams, switchTeam, branding } = useTeam();
   const { can } = usePermissions();
+  const [showAssessmentModal, setShowAssessmentModal] = useState(false);
 
   // Filter nav items based on user permissions and super admin flag
   const visibleNavItems = NAV_ITEMS.filter((item) => {
@@ -84,6 +87,15 @@ export default function DashboardLayout({
           )}
         </div>
         <div className="flex items-center gap-4">
+          {can("edit_candidates") && (
+            <button
+              onClick={() => setShowAssessmentModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold transition flex items-center gap-1.5"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              Send Assessment
+            </button>
+          )}
           <span className="text-sm text-[#a59494]">{email}</span>
           <form action="/auth/signout" method="POST">
             <button
@@ -133,6 +145,11 @@ export default function DashboardLayout({
         {/* Main content */}
         <main className="flex-1 p-8 overflow-auto">{children}</main>
       </div>
+
+      {/* Send Assessment Modal */}
+      {showAssessmentModal && (
+        <SendAssessmentModal onClose={() => setShowAssessmentModal(false)} />
+      )}
     </div>
   );
 }

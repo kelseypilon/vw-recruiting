@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculateCompositeScore } from "@/lib/scoring";
 
 /**
  * POST /api/assessments/aq
@@ -91,6 +92,14 @@ export async function POST(req: NextRequest) {
     const score_e = Number(r.q16) + Number(r.q17) + Number(r.q18) + Number(r.q19) + Number(r.q20);
     const total_score = (score_c + score_o + score_r + score_e) * 2;
 
+    // Derive normalized score (0-100) and tier
+    const aq_normalized = Math.round((total_score / 200) * 100);
+    let aq_tier: string;
+    if (aq_normalized >= 80) aq_tier = "Very High";
+    else if (aq_normalized >= 60) aq_tier = "High";
+    else if (aq_normalized >= 40) aq_tier = "Moderate";
+    else aq_tier = "Low";
+
     // Insert submission
     const { error: insertErr } = await supabase.from("aq_submissions").insert({
       candidate_id,
@@ -111,11 +120,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update candidate record
+    // Update candidate record with scores + normalized + tier
     const { error: updateErr } = await supabase
       .from("candidates")
       .update({
         aq_total: total_score,
+        aq_raw: total_score,
+        aq_normalized,
+        aq_tier,
         aq_score_c: score_c,
         aq_score_o: score_o,
         aq_score_r: score_r,
@@ -127,9 +139,12 @@ export async function POST(req: NextRequest) {
       console.error("Candidate AQ update error:", updateErr);
     }
 
+    // Recalculate composite score now that AQ data is available
+    await calculateCompositeScore(candidate_id);
+
     return NextResponse.json({
       success: true,
-      scores: { score_c, score_o, score_r, score_e, total_score },
+      scores: { score_c, score_o, score_r, score_e, total_score, aq_normalized, aq_tier },
     });
   } catch (err) {
     console.error("AQ API error:", err);

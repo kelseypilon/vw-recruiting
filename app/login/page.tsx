@@ -25,6 +25,8 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [branding, setBranding] = useState<TeamBranding>(DEFAULT_BRANDING);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -67,6 +69,30 @@ function LoginForm() {
     router.refresh();
   }
 
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    const supabase = createClient();
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
+
+    if (resetError) {
+      setError(resetError.message);
+      setLoading(false);
+      return;
+    }
+
+    setResetSent(true);
+    setLoading(false);
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f5f0f0]">
       <div className="w-full max-w-md px-8 py-10 bg-white rounded-2xl shadow-lg">
@@ -101,57 +127,134 @@ function LoginForm() {
           </div>
         )}
 
-        {/* Login form */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="email" className="text-sm font-semibold text-[#272727]">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
-              style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
-            />
-          </div>
+        {/* Login / Forgot Password form */}
+        {forgotMode ? (
+          resetSent ? (
+            <div className="text-center py-4">
+              <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+              </div>
+              <p className="text-sm text-[#272727] font-medium mb-1">Reset link sent!</p>
+              <p className="text-xs text-[#a59494] mb-4">Check your email for a password reset link.</p>
+              <button
+                onClick={() => { setForgotMode(false); setResetSent(false); setError(""); }}
+                className="text-sm font-medium transition"
+                style={{ color: branding.primaryColor }}
+              >
+                Back to Sign In
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="flex flex-col gap-5">
+              <p className="text-sm text-[#a59494] -mt-1">
+                Enter your email and we&apos;ll send you a reset link.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="email" className="text-sm font-semibold text-[#272727]">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
+                  style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
+                />
+              </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-semibold text-[#272727]">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
-              style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
-            />
-          </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 w-full py-2.5 px-4 rounded-lg text-white font-semibold text-sm tracking-wide transition disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: branding.primaryColor }}
+                onMouseEnter={(e) =>
+                  !loading && (e.currentTarget.style.backgroundColor = branding.primaryDark)
+                }
+                onMouseLeave={(e) =>
+                  !loading && (e.currentTarget.style.backgroundColor = branding.primaryColor)
+                }
+              >
+                {loading ? "Sending…" : "Send Reset Link"}
+              </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 w-full py-2.5 px-4 rounded-lg text-white font-semibold text-sm tracking-wide transition disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ backgroundColor: branding.primaryColor }}
-            onMouseEnter={(e) =>
-              !loading && (e.currentTarget.style.backgroundColor = branding.primaryDark)
-            }
-            onMouseLeave={(e) =>
-              !loading && (e.currentTarget.style.backgroundColor = branding.primaryColor)
-            }
-          >
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-        </form>
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setError(""); }}
+                className="text-sm font-medium text-center transition"
+                style={{ color: branding.primaryColor }}
+              >
+                Back to Sign In
+              </button>
+            </form>
+          )
+        ) : (
+          <>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="email" className="text-sm font-semibold text-[#272727]">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
+                  style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-sm font-semibold text-[#272727]">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setForgotMode(true); setError(""); }}
+                    className="text-xs font-medium transition"
+                    style={{ color: branding.primaryColor }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 rounded-lg border border-[#a59494]/40 text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:border-transparent transition text-sm"
+                  style={{ "--tw-ring-color": branding.primaryColor } as React.CSSProperties}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 w-full py-2.5 px-4 rounded-lg text-white font-semibold text-sm tracking-wide transition disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: branding.primaryColor }}
+                onMouseEnter={(e) =>
+                  !loading && (e.currentTarget.style.backgroundColor = branding.primaryDark)
+                }
+                onMouseLeave={(e) =>
+                  !loading && (e.currentTarget.style.backgroundColor = branding.primaryColor)
+                }
+              >
+                {loading ? "Signing in…" : "Sign In"}
+              </button>
+            </form>
+          </>
+        )}
 
         <p className="mt-6 text-center text-xs text-[#a59494]">
           {getBrandingFooter(branding)}

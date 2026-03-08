@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyAuth } from "@/lib/api-auth";
+import { calculateCompositeScore } from "@/lib/scoring";
 
 /**
  * POST /api/interview-scorecards
@@ -115,6 +116,9 @@ export async function POST(req: NextRequest) {
             .from("candidates")
             .update({ interview_score: rounded })
             .eq("id", sc.candidate_id);
+
+          // Recalculate composite score now that interview data updated
+          await calculateCompositeScore(sc.candidate_id);
         }
       }
 

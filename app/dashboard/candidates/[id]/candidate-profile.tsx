@@ -160,6 +160,7 @@ export default function CandidateProfile({
           candidate={candidate}
           stages={stages}
           isMoving={isMoving}
+          teamId={teamId}
           onSendEmail={() => setShowEmailModal(true)}
           onScheduleInterview={() => setShowScheduleModal(true)}
           onMoveStage={async (newStage) => {
@@ -1301,14 +1302,22 @@ function DISCCard({ candidate }: { candidate: Candidate }) {
 
 function AQCard({ candidate }: { candidate: Candidate }) {
   const tierColors: Record<string, { bg: string; text: string }> = {
-    Elite: { bg: "bg-green-100", text: "text-green-800" },
-    Strong: { bg: "bg-blue-100", text: "text-blue-800" },
-    Developing: { bg: "bg-amber-100", text: "text-amber-800" },
+    "Very High": { bg: "bg-green-100", text: "text-green-800" },
+    High: { bg: "bg-blue-100", text: "text-blue-800" },
+    Moderate: { bg: "bg-amber-100", text: "text-amber-800" },
+    Low: { bg: "bg-red-100", text: "text-red-700" },
   };
 
   const tier = candidate.aq_tier ?? "Unknown";
   const colors = tierColors[tier] ?? { bg: "bg-gray-100", text: "text-gray-600" };
   const hasScore = candidate.aq_normalized !== null;
+
+  const coreScores = [
+    { label: "C", value: candidate.aq_score_c, color: "bg-blue-500" },
+    { label: "O", value: candidate.aq_score_o, color: "bg-green-500" },
+    { label: "R", value: candidate.aq_score_r, color: "bg-amber-500" },
+    { label: "E", value: candidate.aq_score_e, color: "bg-purple-500" },
+  ];
 
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
@@ -1350,11 +1359,25 @@ function AQCard({ candidate }: { candidate: Candidate }) {
               </span>
             </div>
           </div>
-          {candidate.aq_raw !== null && (
-            <p className="text-xs text-[#a59494]">
-              Raw: {candidate.aq_raw}
+          {candidate.aq_total !== null && (
+            <p className="text-xs text-[#a59494] mb-3">
+              Total: {candidate.aq_total} / 200
             </p>
           )}
+
+          {/* CORE Subscores */}
+          <div className="grid grid-cols-4 gap-2 mt-2">
+            {coreScores.map((s) => (
+              <div key={s.label} className="text-center">
+                <div className={`w-6 h-6 rounded-full ${s.color} text-white text-[10px] font-bold flex items-center justify-center mx-auto mb-1`}>
+                  {s.label}
+                </div>
+                <span className="text-xs font-semibold text-[#272727]">
+                  {s.value ?? "--"}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <p className="text-sm text-[#a59494] text-center py-4">No AQ score yet</p>
@@ -1650,6 +1673,7 @@ function ActionButtons({
   onMoveStage,
   onSendEmail,
   onScheduleInterview,
+  teamId,
 }: {
   candidate: Candidate;
   stages: PipelineStage[];
@@ -1657,16 +1681,45 @@ function ActionButtons({
   onMoveStage: (newStage: string) => void;
   onSendEmail?: () => void;
   onScheduleInterview?: () => void;
+  teamId: string;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const moveMenuRef = useRef<HTMLDivElement>(null);
   const { can } = usePermissions();
   const canSendEmails = can("send_emails");
   const canManageInterviews = can("manage_interviews");
   const canEditCandidates = can("edit_candidates");
 
+  function handleCopyAssessmentLink() {
+    const url = `${window.location.origin}/apply/${candidate.id}/assessments?team=${teamId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }
+
   return (
     <div className="flex items-center gap-2 shrink-0">
+      {/* Copy Assessment Link */}
+      <button
+        onClick={handleCopyAssessmentLink}
+        className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+        title="Copy assessment link for this candidate"
+      >
+        {linkCopied ? (
+          <span className="flex items-center gap-1.5 text-green-600">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+            Copied!
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+            Assessment Link
+          </span>
+        )}
+      </button>
+
       {/* Move Stage dropdown — requires edit_candidates permission */}
       {canEditCandidates && (
       <div

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculateCompositeScore } from "@/lib/scoring";
 
 const PROFILE_LABELS: Record<string, string> = {
   D: "Dominant",
@@ -34,16 +35,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate all 28 responses present and valid (D, I, S, or C)
+    // Validate all 28 MOST responses present and valid (D, I, S, or C)
     const validLetters = new Set(["D", "I", "S", "C"]);
+    const hasLeast = responses.g1_least !== undefined;
     for (let i = 1; i <= 28; i++) {
       const key = `g${i}`;
       const val = responses[key];
       if (!val || !validLetters.has(val)) {
         return NextResponse.json(
-          { error: `Missing or invalid answer for group ${i}: must be D, I, S, or C` },
+          { error: `Missing or invalid MOST answer for group ${i}: must be D, I, S, or C` },
           { status: 400 }
         );
+      }
+      // Validate LEAST if present (required when any LEAST answer exists)
+      const leastVal = responses[`${key}_least`];
+      if (hasLeast) {
+        if (!leastVal || !validLetters.has(leastVal)) {
+          return NextResponse.json(
+            { error: `Missing or invalid LEAST answer for group ${i}: must be D, I, S, or C` },
+            { status: 400 }
+          );
+        }
+        if (leastVal === val) {
+          return NextResponse.json(
+            { error: `Group ${i}: MOST and LEAST cannot be the same word` },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -78,18 +96,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Calculate scores — count how many times each letter was selected as "most"
+    // Calculate scores: MOST adds +1, LEAST subtracts 1
     let score_d = 0;
     let score_i = 0;
     let score_s = 0;
     let score_c = 0;
 
     for (let i = 1; i <= 28; i++) {
-      const letter = responses[`g${i}`];
-      if (letter === "D") score_d++;
-      else if (letter === "I") score_i++;
-      else if (letter === "S") score_s++;
-      else if (letter === "C") score_c++;
+      // MOST: +1
+      const mostLetter = responses[`g${i}`];
+      if (mostLetter === "D") score_d++;
+      else if (mostLetter === "I") score_i++;
+      else if (mostLetter === "S") score_s++;
+      else if (mostLetter === "C") score_c++;
+
+      // LEAST: -1 (if provided)
+      const leastLetter = responses[`g${i}_least`];
+      if (leastLetter === "D") score_d--;
+      else if (leastLetter === "I") score_i--;
+      else if (leastLetter === "S") score_s--;
+      else if (leastLetter === "C") score_c--;
     }
 
     // Determine primary and secondary profiles
@@ -145,6 +171,9 @@ export async function POST(req: NextRequest) {
     if (updateErr) {
       console.error("Candidate DISC update error:", updateErr);
     }
+
+    // Recalculate composite score now that DISC data is available
+    await calculateCompositeScore(candidate_id);
 
     return NextResponse.json({
       success: true,

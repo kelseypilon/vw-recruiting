@@ -13,9 +13,9 @@ export const config = {
      * - _next/image (image optimization)
      * - favicon.ico (favicon)
      * - api/ routes (handled by route handlers directly)
-     * - login, apply, auth/, setup/ (public routes — no auth check needed)
+     * - login, apply, auth/, setup/, update-password (public routes — no auth check needed)
      * - public assets (svg, png, jpg, etc.)
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/|login|apply|auth/|setup/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/|login|apply|auth/|setup/|update-password|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

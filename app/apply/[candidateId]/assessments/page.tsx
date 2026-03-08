@@ -587,7 +587,8 @@ function DISCForm({
   alreadyDone: boolean;
   onComplete: () => void;
 }) {
-  const [responses, setResponses] = useState<Record<string, string>>({});
+  const [mostResponses, setMostResponses] = useState<Record<string, string>>({});
+  const [leastResponses, setLeastResponses] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -603,15 +604,49 @@ function DISCForm({
     );
   }
 
-  const answeredCount = Object.keys(responses).length;
+  const mostCount = Object.keys(mostResponses).length;
+  const leastCount = Object.keys(leastResponses).length;
+  const totalAnswered = Math.min(mostCount, leastCount);
+
+  function handleMostSelect(groupKey: string, letter: string) {
+    setMostResponses((p) => ({ ...p, [groupKey]: letter }));
+    // If same word selected for both MOST and LEAST, clear LEAST
+    if (leastResponses[groupKey] === letter) {
+      setLeastResponses((p) => {
+        const next = { ...p };
+        delete next[groupKey];
+        return next;
+      });
+    }
+  }
+
+  function handleLeastSelect(groupKey: string, letter: string) {
+    setLeastResponses((p) => ({ ...p, [groupKey]: letter }));
+    // If same word selected for both MOST and LEAST, clear MOST
+    if (mostResponses[groupKey] === letter) {
+      setMostResponses((p) => {
+        const next = { ...p };
+        delete next[groupKey];
+        return next;
+      });
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
 
-    if (answeredCount < 28) {
-      setErr(`Please answer all 28 word groups. You've completed ${answeredCount}/28.`);
+    if (mostCount < 28 || leastCount < 28) {
+      setErr(`Please select MOST and LEAST for all 28 groups. Completed: ${totalAnswered}/28.`);
       return;
+    }
+
+    // Build combined responses: { g1_most: "D", g1_least: "S", ... }
+    const responses: Record<string, string> = {};
+    for (let i = 1; i <= 28; i++) {
+      const key = `g${i}`;
+      responses[key] = mostResponses[key]; // backward compatible "most" key
+      responses[`${key}_least`] = leastResponses[key];
     }
 
     setSaving(true);
@@ -638,46 +673,72 @@ function DISCForm({
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">DISC Assessment</h2>
       <p className="text-sm text-[#a59494] mb-2">
-        For each group of 4 words, select the one that is <strong>MOST</strong> like you.
+        For each group of 4 words, select the one that is <strong>MOST</strong> like you and the one that is <strong>LEAST</strong> like you.
       </p>
-      <p className="text-xs text-[#a59494] mb-6">{answeredCount}/28 answered</p>
+      <div className="flex gap-4 items-center text-xs text-[#a59494] mb-6">
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-[#1B6CA8]" /> MOST like me
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-[#C0392B]" /> LEAST like me
+        </span>
+        <span className="ml-auto">{totalAnswered}/28 complete</span>
+      </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {DISC_GROUPS.map((group) => {
           const key = `g${group.id}`;
+          const groupComplete = mostResponses[key] && leastResponses[key];
           return (
-            <div key={group.id} className="p-4 bg-[#f5f0f0] rounded-xl">
+            <div key={group.id} className={`p-4 rounded-xl transition ${groupComplete ? "bg-green-50/50 ring-1 ring-green-200" : "bg-[#f5f0f0]"}`}>
               <p className="text-xs font-bold text-[#a59494] uppercase mb-3">Group {group.id}</p>
               <div className="space-y-2">
-                {group.words.map((w) => (
-                  <label
-                    key={w.letter}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
-                      responses[key] === w.letter
-                        ? "bg-[#1B6CA8] text-white shadow-md"
-                        : "bg-white text-[#272727] hover:bg-[#1B6CA8]/10 border border-transparent"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name={key}
-                      value={w.letter}
-                      checked={responses[key] === w.letter}
-                      onChange={() => setResponses((p) => ({ ...p, [key]: w.letter }))}
-                      className="sr-only"
-                    />
-                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      responses[key] === w.letter ? "border-white" : "border-[#a59494]/40"
-                    }`}>
-                      {responses[key] === w.letter && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-white" />
-                      )}
-                    </span>
-                    <span className="text-sm font-medium">{w.label}</span>
-                  </label>
-                ))}
+                {group.words.map((w) => {
+                  const isMost = mostResponses[key] === w.letter;
+                  const isLeast = leastResponses[key] === w.letter;
+                  return (
+                    <div
+                      key={w.letter}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-all ${
+                        isMost
+                          ? "bg-[#1B6CA8] text-white shadow-md"
+                          : isLeast
+                            ? "bg-[#C0392B] text-white shadow-md"
+                            : "bg-white text-[#272727] border border-transparent"
+                      }`}
+                    >
+                      <span className="text-sm font-medium flex-1">{w.label}</span>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleMostSelect(key, w.letter)}
+                          title="Most like me"
+                          className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
+                            isMost
+                              ? "bg-white text-[#1B6CA8] shadow"
+                              : "border-2 border-[#1B6CA8]/30 text-[#1B6CA8] hover:bg-[#1B6CA8]/10"
+                          }`}
+                        >
+                          M
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLeastSelect(key, w.letter)}
+                          title="Least like me"
+                          className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
+                            isLeast
+                              ? "bg-white text-[#C0392B] shadow"
+                              : "border-2 border-[#C0392B]/30 text-[#C0392B] hover:bg-[#C0392B]/10"
+                          }`}
+                        >
+                          L
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -686,10 +747,10 @@ function DISCForm({
 
       <button
         type="submit"
-        disabled={saving || answeredCount < 28}
+        disabled={saving || totalAnswered < 28}
         className="w-full py-3.5 mt-6 bg-[#1B6CA8] text-white font-semibold rounded-xl hover:bg-[#155a8a] transition disabled:opacity-50"
       >
-        {saving ? "Submitting..." : `Submit DISC Assessment (${answeredCount}/28)`}
+        {saving ? "Submitting..." : `Submit DISC Assessment (${totalAnswered}/28)`}
       </button>
     </form>
   );
