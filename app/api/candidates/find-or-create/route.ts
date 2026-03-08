@@ -45,17 +45,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ candidate_id: existing.id, created: false });
     }
 
-    // Fetch the first pipeline stage for this team
-    const { data: firstStage } = await supabase
+    // Fetch "New Lead" stage by ghl_tag (fall back to order_index if tag missing)
+    const { data: newLeadStage } = await supabase
       .from("pipeline_stages")
       .select("name")
       .eq("team_id", team_id)
       .eq("is_active", true)
-      .order("order_index")
+      .eq("ghl_tag", "vw_new_lead")
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    const stageName = firstStage?.name ?? "New Lead";
+    let stageName = newLeadStage?.name;
+    if (!stageName) {
+      const { data: firstStage } = await supabase
+        .from("pipeline_stages")
+        .select("name")
+        .eq("team_id", team_id)
+        .eq("is_active", true)
+        .order("order_index")
+        .limit(1)
+        .single();
+      stageName = firstStage?.name ?? "New Lead";
+    }
+
+    const now = new Date().toISOString();
 
     // Create new candidate
     const { data: newCandidate, error: insertErr } = await supabase
@@ -66,6 +79,7 @@ export async function POST(req: NextRequest) {
         last_name: last_name.trim(),
         email: email.trim().toLowerCase(),
         stage: stageName,
+        stage_entered_at: now,
         hire_track: "agent",
       })
       .select("id")
@@ -78,6 +92,14 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Create stage_history entry for initial stage
+    await supabase.from("stage_history").insert({
+      candidate_id: newCandidate.id,
+      team_id,
+      new_stage: stageName,
+      changed_by: auth.userId,
+    });
 
     return NextResponse.json({ candidate_id: newCandidate.id, created: true });
   } catch (err) {

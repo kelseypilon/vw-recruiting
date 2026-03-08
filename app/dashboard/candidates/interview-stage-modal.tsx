@@ -41,6 +41,7 @@ export default function InterviewStageModal({
       <GroupInterviewFlow
         candidateName={candidateName}
         candidateId={candidateId}
+        candidateEmail={candidateEmail}
         teamId={teamId}
         currentUserId={currentUserId}
         upcomingSessions={upcomingSessions}
@@ -66,11 +67,14 @@ export default function InterviewStageModal({
   );
 }
 
-/* ── Group Interview Flow (unchanged) ─────────────────────────── */
+/* ── Group Interview Flow — session selector + email editor ──── */
+
+type GroupStep = "select" | "email";
 
 function GroupInterviewFlow({
   candidateName,
   candidateId,
+  candidateEmail,
   teamId,
   currentUserId,
   upcomingSessions,
@@ -80,6 +84,7 @@ function GroupInterviewFlow({
 }: {
   candidateName: string;
   candidateId: string;
+  candidateEmail: string | null;
   teamId: string;
   currentUserId: string;
   upcomingSessions: GroupInterviewSession[];
@@ -87,15 +92,82 @@ function GroupInterviewFlow({
   onComplete: () => void;
   onCancel: () => void;
 }) {
+  const [step, setStep] = useState<GroupStep>("select");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     upcomingSessions.length === 1 ? upcomingSessions[0].id : null
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sendEmail, setSendEmail] = useState(true);
+  const [toast, setToast] = useState("");
+
+  // Email editor state
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+
+  const firstName = candidateName.split(" ")[0] || candidateName;
+  const selectedSession = upcomingSessions.find((s) => s.id === selectedSessionId);
+
+  // Fetch templates on mount
+  useEffect(() => {
+    async function fetchTemplates() {
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list_email_templates", payload: { team_id: teamId } }),
+        });
+        const data = await res.json();
+        if (data.templates) setTemplates(data.templates);
+      } catch { /* templates unavailable */ }
+    }
+    fetchTemplates();
+  }, [teamId]);
+
+  // Resolve merge tags for group interview template
+  function resolveGroupTemplate(session: GroupInterviewSession) {
+    const groupTemplate = templates.find(
+      (t) => t.is_active && (t.trigger === "group_interview" || t.name.toLowerCase().includes("group interview"))
+    );
+
+    const dateStr = session.session_date
+      ? new Date(session.session_date).toLocaleDateString("en-US", {
+          weekday: "long", month: "long", day: "numeric", year: "numeric",
+          hour: "numeric", minute: "2-digit",
+        })
+      : "TBD";
+    const zoomLink = session.zoom_link || teamZoomLink || "";
+
+    if (groupTemplate) {
+      const replacements: Record<string, string> = {
+        "{{first_name}}": firstName,
+        "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
+        "{{candidate_name}}": candidateName,
+        "{{team_name}}": "Vantage West Realty",
+        "{{group_interview_date}}": dateStr,
+        "{{zoom_link}}": zoomLink,
+        "{{sender_name}}": "",
+        "{{session_title}}": session.title,
+      };
+      let subject = groupTemplate.subject;
+      let body = groupTemplate.body;
+      for (const [tag, value] of Object.entries(replacements)) {
+        subject = subject.replaceAll(tag, value);
+        body = body.replaceAll(tag, value);
+      }
+      return { subject, body };
+    }
+
+    // Fallback if no template found
+    return {
+      subject: `You're Invited to a Group Interview — Vantage West Realty`,
+      body: `Hi ${firstName},\n\nWe're excited to invite you to our group interview session!\n\nDetails:\n- Date: ${dateStr}${zoomLink ? `\n- Zoom Link: ${zoomLink}` : ""}\n\nPlease join 5 minutes early and have your camera on. This is a great opportunity to learn about our team culture.\n\nSee you there!\n\nVantage West Realty`,
+    };
+  }
 
   async function handleAddToSession() {
-    if (!selectedSessionId) {
+    if (!selectedSessionId || !selectedSession) {
       setError("Please select a session");
       return;
     }
@@ -103,6 +175,7 @@ function GroupInterviewFlow({
     setError("");
 
     try {
+      // 1. Add candidate to session
       const addRes = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,8 +191,7 @@ function GroupInterviewFlow({
         return;
       }
 
-      const selectedSession = upcomingSessions.find((s) => s.id === selectedSessionId);
-
+      // 2. Create interview record
       await fetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,161 +202,266 @@ function GroupInterviewFlow({
             candidate_id: candidateId,
             interview_type: "Group Interview",
             status: "scheduled",
-            scheduled_at: selectedSession?.session_date || null,
+            scheduled_at: selectedSession.session_date || null,
             notes: "Added to group interview session",
             interviewer_ids: [currentUserId],
           },
         }),
       });
 
-      if (sendEmail && selectedSession) {
-        try {
-          await fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              candidate_id: candidateId,
-              team_id: teamId,
-              trigger: "group_interview_invite",
-              context: {
-                session_title: selectedSession.title,
-                interview_date: selectedSession.session_date,
-                zoom_link: selectedSession.zoom_link || teamZoomLink || "",
-              },
-            }),
-          });
-        } catch {
-          // Email failure shouldn't block the flow
-        }
-      }
-
       setLoading(false);
-      onComplete();
+
+      // 3. If email checkbox checked, show email editor
+      if (sendEmail && candidateEmail) {
+        const resolved = resolveGroupTemplate(selectedSession);
+        setEmailSubject(resolved.subject);
+        setEmailBody(resolved.body);
+        setStep("email");
+      } else {
+        onComplete();
+      }
     } catch {
       setError("Failed to add candidate to session");
       setLoading(false);
     }
   }
 
+  async function handleSendEmail() {
+    if (!candidateEmail) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: candidateEmail,
+          subject: emailSubject,
+          body: emailBody.replace(/\n/g, "<br>"),
+          candidate_id: candidateId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to send email");
+        setLoading(false);
+        return;
+      }
+
+      setToast(`Invitation sent to ${candidateEmail}`);
+      setTimeout(() => onComplete(), 1500);
+    } catch {
+      setError("Failed to send email");
+      setLoading(false);
+    }
+  }
+
+  // Toast overlay
+  if (toast) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex items-center gap-3">
+          <span className="text-green-500 text-xl">&#10003;</span>
+          <span className="text-sm font-medium text-[#272727]">{toast}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const inputClasses = "w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-base font-bold text-[#272727] mb-1">
-          Add to Group Interview
-        </h3>
-        <p className="text-xs text-[#a59494] mb-5">
-          Select an upcoming group interview session for {candidateName}.
-        </p>
 
-        {upcomingSessions.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center mb-4">
-            <p className="text-sm text-[#a59494] mb-2">
-              No upcoming group interview sessions
+        {/* ─── Step 1: Select Session ──────────────────────── */}
+        {step === "select" && (
+          <>
+            <h3 className="text-base font-bold text-[#272727] mb-1">
+              Add to Group Interview
+            </h3>
+            <p className="text-xs text-[#a59494] mb-5">
+              Select an upcoming group interview session for {candidateName}.
             </p>
-            <Link
-              href="/dashboard/group-interviews"
-              className="text-xs font-medium text-brand hover:text-brand-dark transition"
-            >
-              Create one on the Group Interviews page &rarr;
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-2 mb-4">
-            {upcomingSessions.map((session) => {
-              const isSelected = selectedSessionId === session.id;
-              return (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => setSelectedSessionId(session.id)}
-                  className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border transition text-left ${
-                    isSelected
-                      ? "border-brand bg-brand/5 ring-1 ring-brand/30"
-                      : "border-[#a59494]/20 hover:border-brand/40 hover:bg-gray-50"
-                  }`}
+
+            {upcomingSessions.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-[#a59494]/20 p-6 text-center mb-4">
+                <p className="text-sm text-[#a59494] mb-2">
+                  No upcoming group interview sessions
+                </p>
+                <Link
+                  href="/dashboard/group-interviews"
+                  className="text-xs font-medium text-brand hover:text-brand-dark transition"
                 >
-                  <div
-                    className={`w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center ${
-                      isSelected ? "border-brand" : "border-[#a59494]/40"
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="w-2 h-2 rounded-full bg-brand" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#272727] truncate">
-                      {session.title}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      {session.session_date && (
-                        <span className="text-xs text-[#a59494]">
-                          {new Date(session.session_date).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      )}
-                      {(session.zoom_link || teamZoomLink) && (
-                        <span className="text-xs text-brand">Zoom link set</span>
-                      )}
-                    </div>
-                    {session._candidate_count != null && (
-                      <p className="text-[11px] text-[#a59494] mt-0.5">
-                        {session._candidate_count} candidate{session._candidate_count !== 1 ? "s" : ""} added
-                      </p>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {upcomingSessions.length > 0 && selectedSessionId && (
-          <label className="flex items-center gap-2 mb-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={sendEmail}
-              onChange={(e) => setSendEmail(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40"
-            />
-            <span className="text-xs text-[#272727]">
-              Send interview invitation email to candidate
-            </span>
-          </label>
-        )}
-
-        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-
-        <div className="flex justify-between items-center pt-2">
-          <button
-            onClick={onComplete}
-            className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
-          >
-            Skip for now
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
-            {upcomingSessions.length > 0 && (
-              <button
-                onClick={handleAddToSession}
-                disabled={loading || !selectedSessionId}
-                className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-              >
-                {loading ? "Adding..." : "Add to Session"}
-              </button>
+                  Create one on the Group Interviews page &rarr;
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {upcomingSessions.map((session) => {
+                  const isSelected = selectedSessionId === session.id;
+                  return (
+                    <button
+                      key={session.id}
+                      type="button"
+                      onClick={() => setSelectedSessionId(session.id)}
+                      className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border transition text-left ${
+                        isSelected
+                          ? "border-brand bg-brand/5 ring-1 ring-brand/30"
+                          : "border-[#a59494]/20 hover:border-brand/40 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center ${
+                          isSelected ? "border-brand" : "border-[#a59494]/40"
+                        }`}
+                      >
+                        {isSelected && (
+                          <div className="w-2 h-2 rounded-full bg-brand" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#272727] truncate">
+                          {session.title}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1">
+                          {session.session_date && (
+                            <span className="text-xs text-[#a59494]">
+                              {new Date(session.session_date).toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                          {(session.zoom_link || teamZoomLink) && (
+                            <span className="text-xs text-brand">Zoom link set</span>
+                          )}
+                        </div>
+                        {session._candidate_count != null && (
+                          <p className="text-[11px] text-[#a59494] mt-0.5">
+                            {session._candidate_count} candidate{session._candidate_count !== 1 ? "s" : ""} added
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
-          </div>
-        </div>
+
+            {upcomingSessions.length > 0 && selectedSessionId && (
+              <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand/40"
+                />
+                <span className="text-xs text-[#272727]">
+                  Send interview invitation email to candidate
+                </span>
+              </label>
+            )}
+
+            {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+            <div className="flex justify-between items-center pt-2">
+              <button
+                onClick={onComplete}
+                className="text-xs font-medium text-[#a59494] hover:text-[#272727] transition"
+              >
+                Skip for now
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onCancel}
+                  className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                {upcomingSessions.length > 0 && (
+                  <button
+                    onClick={handleAddToSession}
+                    disabled={loading || !selectedSessionId}
+                    className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+                  >
+                    {loading ? "Adding..." : "Add to Session"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ─── Step 2: Email Editor ───────────────────────── */}
+        {step === "email" && (
+          <>
+            <h3 className="text-base font-bold text-[#272727] mb-1">
+              Send Interview Invitation to {firstName}
+            </h3>
+            <p className="text-xs text-[#a59494] mb-5">
+              Review and send the invitation email.
+            </p>
+
+            <div className="space-y-4">
+              {/* To */}
+              <div>
+                <label className="block text-sm font-medium text-[#272727] mb-1">To</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={candidateEmail || ""}
+                  className={`${inputClasses} bg-gray-50 text-[#a59494]`}
+                />
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block text-sm font-medium text-[#272727] mb-1">Subject</label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              {/* Body */}
+              <div>
+                <label className="block text-sm font-medium text-[#272727] mb-1">Body</label>
+                <textarea
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  rows={10}
+                  className={`${inputClasses} resize-y`}
+                />
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+            <div className="flex justify-between items-center mt-5 pt-3 border-t border-[#a59494]/10">
+              <button
+                onClick={onComplete}
+                className="text-sm text-[#a59494] hover:text-[#272727] transition"
+              >
+                Skip — don&apos;t send
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={loading || !emailSubject.trim()}
+                className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {loading ? "Sending..." : "Send Email"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

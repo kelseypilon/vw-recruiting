@@ -6,6 +6,7 @@ import type { PipelineStage } from "./types";
  */
 export const STAGE_TAGS = {
   NEW_LEAD: "vw_new_lead",
+  APP_SENT: "vw_app_sent",
   GROUP_INTERVIEW: "vw_group_interview",
   ONE_ON_ONE: "vw_1on1_interview",
   NOT_A_FIT: "vw_not_fit",

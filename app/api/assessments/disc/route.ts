@@ -175,6 +175,43 @@ export async function POST(req: NextRequest) {
     // Recalculate composite score now that DISC data is available
     await calculateCompositeScore(candidate_id);
 
+    // ─── Auto-move to "Application Received" if all assessments complete ───
+    // DISC is the last assessment. Check if application + AQ are also done.
+    const { data: cand } = await supabase
+      .from("candidates")
+      .select("stage, app_submitted_at, aq_total")
+      .eq("id", candidate_id)
+      .single();
+
+    if (cand?.app_submitted_at && cand.aq_total != null) {
+      // All 3 assessments done — look up "Application Received" stage by ghl_tag
+      const { data: appSentStage } = await supabase
+        .from("pipeline_stages")
+        .select("name")
+        .eq("team_id", team_id)
+        .eq("ghl_tag", "vw_app_sent")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (appSentStage) {
+        const previousStage = cand.stage;
+        const now = new Date().toISOString();
+
+        await supabase
+          .from("candidates")
+          .update({ stage: appSentStage.name, stage_entered_at: now })
+          .eq("id", candidate_id);
+
+        await supabase.from("stage_history").insert({
+          candidate_id,
+          team_id,
+          old_stage: previousStage,
+          new_stage: appSentStage.name,
+          changed_by: null, // system-triggered
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       scores: {
