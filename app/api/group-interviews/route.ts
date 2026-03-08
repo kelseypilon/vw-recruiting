@@ -6,10 +6,11 @@ import { verifyAuth } from "@/lib/api-auth";
  * POST /api/group-interviews
  *
  * Actions:
- *   create_session   { team_id, title, session_date?, zoom_link?, created_by?, candidate_ids[] }
+ *   create_session   { team_id, title, session_date?, zoom_link?, general_notes?, created_by?, candidate_ids[] }
  *   list_sessions    { team_id }
  *   get_session      { session_id }
  *   update_session   { session_id, title?, session_date?, zoom_link?, summary?, general_notes? }
+ *   delete_session   { session_id }
  *   save_note        { session_id, candidate_id, author_user_id, team_id, note_text, mentioned_ids? }
  *   add_candidate    { session_id, candidate_id }
  *   remove_candidate { session_id, candidate_id }
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     /* ── create_session ──────────────────────────────────────────── */
     if (action === "create_session") {
-      const { team_id, title, session_date, zoom_link, created_by, candidate_ids } =
+      const { team_id, title, session_date, zoom_link, general_notes, created_by, candidate_ids } =
         payload ?? {};
       if (!team_id || !title) {
         return NextResponse.json(
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
           title,
           session_date: session_date || null,
           zoom_link: zoom_link || null,
+          general_notes: general_notes || null,
           created_by: created_by || null,
         })
         .select()
@@ -472,6 +474,65 @@ export async function POST(req: NextRequest) {
           { error: firstError.error.message },
           { status: 500 }
         );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    /* ── delete_session ───────────────────────────────────────────── */
+    if (action === "delete_session") {
+      const { session_id } = payload ?? {};
+      if (!session_id) {
+        return NextResponse.json(
+          { error: "session_id is required" },
+          { status: 400 }
+        );
+      }
+
+      // Verify session belongs to team
+      const { data: session, error: sessErr } = await supabase
+        .from("group_interview_sessions")
+        .select("id, team_id")
+        .eq("id", session_id)
+        .single();
+
+      if (sessErr || !session) {
+        return NextResponse.json(
+          { error: "Session not found" },
+          { status: 404 }
+        );
+      }
+
+      if (session.team_id !== auth.teamId) {
+        return NextResponse.json(
+          { error: "Unauthorized for this team" },
+          { status: 403 }
+        );
+      }
+
+      // Delete child records first, then session
+      await supabase
+        .from("group_interview_scores")
+        .delete()
+        .eq("session_id", session_id);
+
+      await supabase
+        .from("group_interview_notes")
+        .delete()
+        .eq("session_id", session_id);
+
+      await supabase
+        .from("group_interview_candidates")
+        .delete()
+        .eq("session_id", session_id);
+
+      const { error: delErr } = await supabase
+        .from("group_interview_sessions")
+        .delete()
+        .eq("id", session_id);
+
+      if (delErr) {
+        return NextResponse.json({ error: delErr.message }, { status: 500 });
       }
 
       return NextResponse.json({ success: true });
