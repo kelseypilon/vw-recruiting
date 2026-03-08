@@ -107,16 +107,18 @@ type TabId = string;
 async function saveSettings(
   action: string,
   payload: Record<string, unknown>
-): Promise<{ success?: boolean; data?: unknown; error?: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
   const res = await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, payload }),
   });
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    return { error: `Request failed (${res.status})` };
+    return { error: body.error ?? `Request failed (${res.status})`, ...body };
   }
-  return res.json();
+  return body;
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -2233,6 +2235,8 @@ function RolesPermissionsTab({
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editRoleName, setEditRoleName] = useState("");
   const [deleteRole, setDeleteRole] = useState<string | null>(null);
+  const [deleteRoleUserCount, setDeleteRoleUserCount] = useState(0);
+  const [reassignTo, setReassignTo] = useState<string>("");
   const [roleActionLoading, setRoleActionLoading] = useState(false);
 
   const protectedRoles = new Set(["Admin", "Team Lead", "Leader", "Agent", "Employee"]);
@@ -2303,18 +2307,25 @@ function RolesPermissionsTab({
     setRoleActionLoading(false);
   }
 
-  async function handleDeleteRole() {
+  async function handleDeleteRole(forceReassignTo?: string) {
     if (!deleteRole) return;
     setRoleActionLoading(true);
     const result = await saveSettings("delete_role", {
       team_id: teamId,
       role_name: deleteRole,
-    });
+      ...(forceReassignTo ? { reassign_to: forceReassignTo } : {}),
+    }) as { error?: string; needs_reassignment?: boolean; user_count?: number; settings?: Record<string, unknown> };
+    if (result.needs_reassignment) {
+      // API says users need reassignment — show the reassignment UI
+      setDeleteRoleUserCount(result.user_count ?? 0);
+      setRoleActionLoading(false);
+      return; // keep modal open with reassignment dropdown
+    }
     if (result.error) {
       setSaveStatus(`Error: ${result.error}`);
     } else {
-      const newSettings = (result as { settings: Record<string, unknown> }).settings;
-      updateTeamState(newSettings);
+      const newSettings = result.settings;
+      if (newSettings) updateTeamState(newSettings);
       setPermissions((prev) => {
         const updated = { ...prev };
         delete updated[deleteRole];
@@ -2324,6 +2335,8 @@ function RolesPermissionsTab({
       setTimeout(() => setSaveStatus(""), 2000);
     }
     setDeleteRole(null);
+    setDeleteRoleUserCount(0);
+    setReassignTo("");
     setRoleActionLoading(false);
   }
 
@@ -2442,7 +2455,7 @@ function RolesPermissionsTab({
               return (
                 <div
                   key={role}
-                  className="group flex items-center gap-1.5 bg-[#f5f0f0] border border-[#a59494]/15 rounded-full px-3 py-1.5"
+                  className="group flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5"
                 >
                   <span
                     className={`w-2 h-2 rounded-full ${
@@ -2479,22 +2492,20 @@ function RolesPermissionsTab({
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
                       </button>
-                      {count > 0 ? (
-                        <span className="text-[10px] text-red-400 ml-1" title={`${count} user${count !== 1 ? "s" : ""} have this role. Reassign them first.`}>
-                          Can&apos;t delete
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setDeleteRole(role)}
-                          className="text-[#a59494] hover:text-red-500"
-                          title="Delete role"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setDeleteRole(role);
+                          setDeleteRoleUserCount(count);
+                          setReassignTo("");
+                        }}
+                        className="text-[#a59494] hover:text-red-500"
+                        title={count > 0 ? `Delete role (${count} user${count !== 1 ? "s" : ""} will need reassignment)` : "Delete role"}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2579,29 +2590,69 @@ function RolesPermissionsTab({
         </div>
       </div>
 
-      {/* ── Delete Confirmation Modal ──────────────────────────── */}
+      {/* ── Delete / Reassign Role Modal ────────────────────────── */}
       {deleteRole && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="text-sm font-semibold text-[#272727] mb-2">
               Delete &ldquo;{deleteRole}&rdquo;?
             </h3>
-            <p className="text-xs text-[#a59494] mb-4">
-              This role and its permissions will be permanently removed.
-            </p>
+
+            {deleteRoleUserCount > 0 ? (
+              <>
+                <p className="text-xs text-[#a59494] mb-3">
+                  {deleteRoleUserCount} user{deleteRoleUserCount !== 1 ? "s" : ""} currently
+                  {deleteRoleUserCount !== 1 ? " have " : " has "} this role. Choose a role to
+                  reassign them to before deleting.
+                </p>
+                <select
+                  value={reassignTo}
+                  onChange={(e) => setReassignTo(e.target.value)}
+                  className="w-full mb-4 px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/30"
+                >
+                  <option value="">Select a role...</option>
+                  {roles
+                    .filter((r) => r !== deleteRole)
+                    .map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                </select>
+              </>
+            ) : (
+              <p className="text-xs text-[#a59494] mb-4">
+                This role and its permissions will be permanently removed.
+              </p>
+            )}
+
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setDeleteRole(null)}
+                onClick={() => {
+                  setDeleteRole(null);
+                  setDeleteRoleUserCount(0);
+                  setReassignTo("");
+                }}
                 className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDeleteRole}
-                disabled={roleActionLoading}
+                onClick={() => {
+                  if (deleteRoleUserCount > 0) {
+                    handleDeleteRole(reassignTo);
+                  } else {
+                    handleDeleteRole();
+                  }
+                }}
+                disabled={roleActionLoading || (deleteRoleUserCount > 0 && !reassignTo)}
                 className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition disabled:opacity-50"
               >
-                {roleActionLoading ? "Deleting..." : "Delete Role"}
+                {roleActionLoading
+                  ? "Deleting..."
+                  : deleteRoleUserCount > 0
+                    ? "Reassign & Delete"
+                    : "Delete Role"}
               </button>
             </div>
           </div>

@@ -162,6 +162,11 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.old_name || !payload?.new_name) {
         return NextResponse.json({ error: "team_id, old_name, and new_name are required" }, { status: 400 });
       }
+      const protectedRoleNames = ["Admin", "Team Lead", "Leader", "Agent", "Employee"];
+      if (protectedRoleNames.includes(payload.old_name as string)) {
+        return NextResponse.json({ error: "Cannot rename a protected role" }, { status: 400 });
+      }
+
       const { data: team, error: fetchErr } = await supabase
         .from("teams").select("settings").eq("id", payload.team_id).single();
       if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
@@ -170,12 +175,18 @@ export async function POST(req: NextRequest) {
       const customRoles = (settings.custom_roles as string[]) ?? [];
       const rolePerms = (settings.role_permissions ?? {}) as Record<string, Record<string, boolean>>;
 
-      const idx = customRoles.indexOf(payload.old_name);
-      if (idx !== -1) customRoles[idx] = payload.new_name;
+      // Check for duplicate name
+      const allRoleNames = [...protectedRoleNames, ...customRoles];
+      if (allRoleNames.includes(payload.new_name as string) && payload.new_name !== payload.old_name) {
+        return NextResponse.json({ error: "A role with that name already exists" }, { status: 400 });
+      }
 
-      if (rolePerms[payload.old_name]) {
-        rolePerms[payload.new_name] = rolePerms[payload.old_name];
-        delete rolePerms[payload.old_name];
+      const idx = customRoles.indexOf(payload.old_name as string);
+      if (idx !== -1) customRoles[idx] = payload.new_name as string;
+
+      if (rolePerms[payload.old_name as string]) {
+        rolePerms[payload.new_name as string] = rolePerms[payload.old_name as string];
+        delete rolePerms[payload.old_name as string];
       }
 
       const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms };
@@ -203,11 +214,23 @@ export async function POST(req: NextRequest) {
         .eq("role", payload.role_name)
         .eq("is_active", true);
 
-      if ((userCount ?? 0) > 0) {
+      // If users exist but no reassign_to provided, return the count so UI can show reassignment modal
+      if ((userCount ?? 0) > 0 && !payload.reassign_to) {
         return NextResponse.json({
-          error: `${userCount} user${userCount !== 1 ? "s" : ""} have this role. Reassign them first.`,
+          error: `${userCount} user${userCount !== 1 ? "s" : ""} currently have this role. Choose a role to reassign them to.`,
           user_count: userCount,
-        }, { status: 400 });
+          needs_reassignment: true,
+        }, { status: 409 });
+      }
+
+      // Reassign users if needed
+      if ((userCount ?? 0) > 0 && payload.reassign_to) {
+        const { error: reassignErr } = await supabase
+          .from("users")
+          .update({ role: payload.reassign_to })
+          .eq("team_id", payload.team_id)
+          .eq("role", payload.role_name);
+        if (reassignErr) return NextResponse.json({ error: reassignErr.message }, { status: 500 });
       }
 
       const { data: team, error: fetchErr } = await supabase
