@@ -11,8 +11,6 @@ import {
 
 /* ── Constants ────────────────────────────────────────────────── */
 
-const PROTECTED_STAGES = new Set(["New Lead", "Onboarding", "Not a Fit"]);
-
 const DEFAULT_COLORS = [
   "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
   "#EC4899", "#06B6D4", "#6B7280", "#2D9E6B", "#1c759e",
@@ -110,7 +108,7 @@ export default function PipelineStagesTab({
   /* ── Inline name edit ────────────────────────────── */
 
   function startEditName(stage: PipelineStage) {
-    if (PROTECTED_STAGES.has(stage.name)) return;
+    if (stage.is_protected) return;
     setEditingId(stage.id);
     setEditName(stage.name);
   }
@@ -300,7 +298,7 @@ export default function PipelineStagesTab({
                 className="divide-y divide-[#a59494]/10"
               >
                 {stages.map((stage, index) => {
-                  const isProtected = PROTECTED_STAGES.has(stage.name);
+                  const isProtected = stage.is_protected;
 
                   return (
                     <Draggable

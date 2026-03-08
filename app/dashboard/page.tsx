@@ -67,14 +67,14 @@ export default async function DashboardPage() {
     .select("name, ghl_tag")
     .eq("team_id", teamId)
     .eq("is_active", true)
-    .in("ghl_tag", ["not-a-fit", "group-interview", "1on1-interview"]);
+    .in("ghl_tag", ["vw_not_fit", "vw_group_interview", "vw_1on1_interview"]);
 
   const stageByTag = (tag: string, fallback: string) =>
     taggedStages?.find((s: { ghl_tag: string }) => s.ghl_tag === tag)?.name ?? fallback;
 
-  const notAFitName = stageByTag("not-a-fit", "Not a Fit");
-  const groupInterviewName = stageByTag("group-interview", "Group Interview");
-  const oneOnOneName = stageByTag("1on1-interview", "1on1 Interview");
+  const notAFitName = stageByTag("vw_not_fit", "Not a Fit");
+  const groupInterviewName = stageByTag("vw_group_interview", "Group Interview");
+  const oneOnOneName = stageByTag("vw_1on1_interview", "1on1 Interview");
 
   // ── Parallel data fetch ─────────────────────────────────────
   const excludedStages = [notAFitName, "Archived"];

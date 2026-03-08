@@ -46,7 +46,7 @@ create table if not exists candidates (
   is_licensed           boolean,
   years_experience      numeric(4,1),
   transactions_2024     integer,
-  current_role          text,
+  "current_role"        text,
   heard_about           text,
   stage                 text not null default 'New Lead',
 

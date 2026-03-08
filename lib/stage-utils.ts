@@ -5,12 +5,13 @@ import type { PipelineStage } from "./types";
  * These allow stage names to be customized while keeping behavior intact.
  */
 export const STAGE_TAGS = {
-  GROUP_INTERVIEW: "group-interview",
-  ONE_ON_ONE: "1on1-interview",
-  NOT_A_FIT: "not-a-fit",
-  OFFER: "offer",
-  ONBOARDING: "onboarding",
-  HIRED: "hired",
+  NEW_LEAD: "vw_new_lead",
+  GROUP_INTERVIEW: "vw_group_interview",
+  ONE_ON_ONE: "vw_1on1_interview",
+  NOT_A_FIT: "vw_not_fit",
+  OFFER: "vw_offer",
+  ONBOARDING: "vw_onboarding",
+  HIRED: "vw_hired",
 } as const;
 
 /** Returns the stage name for a given ghl_tag, or the fallback if not found. */

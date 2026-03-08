@@ -20,13 +20,13 @@ export default async function GroupInterviewsPage() {
     .select("name, ghl_tag")
     .eq("team_id", TEAM_ID)
     .eq("is_active", true)
-    .in("ghl_tag", ["group-interview", "1on1-interview"]);
+    .in("ghl_tag", ["vw_group_interview", "vw_1on1_interview"]);
 
   const stageByTag = (tag: string, fallback: string) =>
     taggedStages?.find((s: { ghl_tag: string }) => s.ghl_tag === tag)?.name ?? fallback;
 
-  const groupInterviewName = stageByTag("group-interview", "Group Interview");
-  const oneOnOneName = stageByTag("1on1-interview", "1on1 Interview");
+  const groupInterviewName = stageByTag("vw_group_interview", "Group Interview");
+  const oneOnOneName = stageByTag("vw_1on1_interview", "1on1 Interview");
 
   const [candidatesResult, usersResult, profileResult, teamResult] = await Promise.all([
     supabase

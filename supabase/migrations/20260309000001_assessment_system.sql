@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS application_submissions (
   email            text,
   phone            text,
   city             text,
-  current_role     text,
+  "current_role"   text,
   years_experience integer,
   why_real_estate  text,
   why_vantage      text,

@@ -79,6 +79,7 @@ export interface PipelineStage {
   ghl_tag: string | null;
   color: string | null;
   is_active: boolean;
+  is_protected: boolean;
   hire_track: "agent" | "employee" | "all";
 }
 

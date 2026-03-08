@@ -296,13 +296,18 @@ export async function POST(req: NextRequest) {
       if (!payload?.id) {
         return NextResponse.json({ error: "payload.id is required" }, { status: 400 });
       }
-      // Get the stage to find its name
+      // Get the stage to find its name and protection status
       const { data: stage } = await supabase
         .from("pipeline_stages")
-        .select("name, team_id")
+        .select("name, team_id, is_protected")
         .eq("id", payload.id)
         .single();
       if (!stage) return NextResponse.json({ error: "Stage not found" }, { status: 404 });
+
+      // Server-side guard: protected stages cannot be deleted
+      if (stage.is_protected) {
+        return NextResponse.json({ error: "This stage cannot be deleted" }, { status: 403 });
+      }
 
       // Move candidates if a target stage is specified
       if (payload.move_candidates_to) {

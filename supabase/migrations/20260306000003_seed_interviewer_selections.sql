@@ -2,8 +2,8 @@
 -- This gives every team member all active questions in their personal set by default
 -- so they don't need to manually activate each question one by one.
 
-INSERT INTO interviewer_question_selections (user_id, question_id)
-SELECT u.id, q.id
+INSERT INTO interviewer_question_selections (user_id, question_id, team_id)
+SELECT u.id, q.id, '9bdd061b-8f89-4d08-bf19-bed29d129210'
 FROM users u
 CROSS JOIN interview_questions q
 WHERE u.team_id = '9bdd061b-8f89-4d08-bf19-bed29d129210'
