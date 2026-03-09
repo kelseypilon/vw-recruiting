@@ -193,8 +193,8 @@ export default function AssessmentsPage({
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B6CA8] flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-20 h-20 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
@@ -242,7 +242,7 @@ export default function AssessmentsPage({
         <div className="max-w-4xl mx-auto px-6">
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-green-400 rounded-full transition-all duration-500"
+              className="h-full bg-[#1B6CA8] rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / 3) * 100}%` }}
             />
           </div>
@@ -263,7 +263,7 @@ export default function AssessmentsPage({
               }`}
             >
               {completed[tab.key] ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : (
@@ -359,8 +359,8 @@ function ApplicationForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">Application Submitted</h2>
         <p className="text-[#a59494]">Your application has been received. Move on to the next assessment.</p>
@@ -479,8 +479,8 @@ function AQForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">AQ Assessment Complete</h2>
         <p className="text-[#a59494]">Your Adversity Quotient assessment has been recorded.</p>
@@ -597,8 +597,8 @@ function DISCForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">DISC Assessment Complete</h2>
         <p className="text-[#a59494]">Your DISC personality profile has been recorded.</p>
@@ -682,7 +682,7 @@ function DISCForm({
           <span className="w-3 h-3 rounded-full bg-[#1B6CA8]" /> MOST like me
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#C0392B]" /> LEAST like me
+          <span className="w-3 h-3 rounded-full bg-[#0D1B2A]" /> LEAST like me
         </span>
         <span className="ml-auto">{totalAnswered}/28 complete</span>
       </div>
@@ -694,7 +694,7 @@ function DISCForm({
           const key = `g${group.id}`;
           const groupComplete = mostResponses[key] && leastResponses[key];
           return (
-            <div key={group.id} className={`p-4 rounded-xl transition ${groupComplete ? "bg-green-50/50 ring-1 ring-green-200" : "bg-[#f5f0f0]"}`}>
+            <div key={group.id} className={`p-4 rounded-xl transition ${groupComplete ? "bg-[#1B6CA8]/5 ring-1 ring-[#1B6CA8]/20" : "bg-[#f5f0f0]"}`}>
               <p className="text-xs font-bold text-[#a59494] uppercase mb-3">Group {group.id}</p>
               <div className="space-y-2">
                 {group.words.map((w) => {
@@ -707,7 +707,7 @@ function DISCForm({
                         isMost
                           ? "bg-[#1B6CA8] text-white shadow-md"
                           : isLeast
-                            ? "bg-[#C0392B] text-white shadow-md"
+                            ? "bg-[#0D1B2A] text-white shadow-md"
                             : "bg-white text-[#272727] border border-transparent"
                       }`}
                     >
@@ -731,8 +731,8 @@ function DISCForm({
                           title="Least like me"
                           className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
                             isLeast
-                              ? "bg-white text-[#C0392B] shadow"
-                              : "border-2 border-[#C0392B]/30 text-[#C0392B] hover:bg-[#C0392B]/10"
+                              ? "bg-white text-[#0D1B2A] shadow"
+                              : "border-2 border-[#0D1B2A]/30 text-[#0D1B2A] hover:bg-[#0D1B2A]/10"
                           }`}
                         >
                           L

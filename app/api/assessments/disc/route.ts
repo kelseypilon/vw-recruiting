@@ -177,39 +177,78 @@ export async function POST(req: NextRequest) {
 
     // ─── Auto-move to "Application Received" if all assessments complete ───
     // DISC is the last assessment. Check if application + AQ are also done.
-    const { data: cand } = await supabase
+    const { data: cand, error: candFetchErr } = await supabase
       .from("candidates")
       .select("stage, app_submitted_at, aq_total")
       .eq("id", candidate_id)
       .single();
 
+    if (candFetchErr) {
+      console.error("Pipeline auto-move: failed to fetch candidate stage:", candFetchErr);
+    }
+
     if (cand?.app_submitted_at && cand.aq_total != null) {
       // All 3 assessments done — look up "Application Received" stage by ghl_tag
-      const { data: appSentStage } = await supabase
+      const { data: appSentStage, error: stageLookupErr } = await supabase
         .from("pipeline_stages")
-        .select("name")
+        .select("name, order_index")
         .eq("team_id", team_id)
         .eq("ghl_tag", "vw_app_sent")
         .eq("is_active", true)
         .maybeSingle();
 
-      if (appSentStage) {
-        const previousStage = cand.stage;
-        const now = new Date().toISOString();
-
-        await supabase
-          .from("candidates")
-          .update({ stage: appSentStage.name, stage_entered_at: now })
-          .eq("id", candidate_id);
-
-        await supabase.from("stage_history").insert({
-          candidate_id,
-          team_id,
-          old_stage: previousStage,
-          new_stage: appSentStage.name,
-          changed_by: null, // system-triggered
-        });
+      if (stageLookupErr) {
+        console.error("Pipeline auto-move: failed to look up vw_app_sent stage:", stageLookupErr);
       }
+
+      if (appSentStage) {
+        // Edge case: only move forward — don't move candidates backward if they're
+        // already past "Application Received" (e.g. already in interview stages)
+        const { data: currentStage } = await supabase
+          .from("pipeline_stages")
+          .select("order_index")
+          .eq("team_id", team_id)
+          .eq("name", cand.stage)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        const currentIndex = currentStage?.order_index ?? -1;
+        const targetIndex = appSentStage.order_index ?? 999;
+
+        if (currentIndex < targetIndex) {
+          const previousStage = cand.stage;
+          const now = new Date().toISOString();
+
+          const { error: stageUpdateErr } = await supabase
+            .from("candidates")
+            .update({ stage: appSentStage.name, stage_entered_at: now })
+            .eq("id", candidate_id);
+
+          if (stageUpdateErr) {
+            console.error("Pipeline auto-move: failed to update candidate stage:", stageUpdateErr);
+          }
+
+          const { error: historyErr } = await supabase.from("stage_history").insert({
+            candidate_id,
+            team_id,
+            old_stage: previousStage,
+            new_stage: appSentStage.name,
+            changed_by: null, // system-triggered
+          });
+
+          if (historyErr) {
+            console.error("Pipeline auto-move: failed to insert stage_history:", historyErr);
+          }
+
+          console.log(`Pipeline auto-move: candidate ${candidate_id} moved from "${previousStage}" to "${appSentStage.name}"`);
+        } else {
+          console.log(`Pipeline auto-move: skipped — candidate ${candidate_id} already at "${cand.stage}" (index ${currentIndex}) which is >= target "${appSentStage.name}" (index ${targetIndex})`);
+        }
+      } else {
+        console.warn(`Pipeline auto-move: vw_app_sent stage not found for team ${team_id}`);
+      }
+    } else {
+      console.log(`Pipeline auto-move: skipped — not all assessments complete for candidate ${candidate_id} (app: ${!!cand?.app_submitted_at}, aq: ${cand?.aq_total != null})`);
     }
 
     return NextResponse.json({
