@@ -871,6 +871,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Application Form Fields ─────────────────────────────────────
+
+    if (action === "get_form_fields") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+      const { data: team, error: fetchErr } = await supabase
+        .from("teams")
+        .select("settings")
+        .eq("id", payload.team_id)
+        .single();
+      if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+      const settings = (team?.settings ?? {}) as Record<string, unknown>;
+      const fields = (settings.application_form_fields as unknown[]) ?? null;
+
+      // Return stored fields, or null if not yet configured (frontend uses defaults)
+      return NextResponse.json({ fields });
+    }
+
+    if (action === "save_form_fields") {
+      if (!payload?.team_id || !payload?.fields || !Array.isArray(payload.fields)) {
+        return NextResponse.json(
+          { error: "team_id and fields array are required" },
+          { status: 400 }
+        );
+      }
+
+      // Validate constraints
+      if (payload.fields.length > 20) {
+        return NextResponse.json({ error: "Maximum 20 fields allowed" }, { status: 400 });
+      }
+
+      // Verify locked fields are present
+      const lockedIds = ["first_name", "last_name", "email"];
+      for (const lockId of lockedIds) {
+        if (!payload.fields.find((f: { id: string }) => f.id === lockId)) {
+          return NextResponse.json(
+            { error: `Locked field "${lockId}" cannot be removed` },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Check for duplicate IDs
+      const ids = payload.fields.map((f: { id: string }) => f.id);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "Duplicate field IDs are not allowed" }, { status: 400 });
+      }
+
+      const { data: team, error: fetchErr } = await supabase
+        .from("teams")
+        .select("settings")
+        .eq("id", payload.team_id)
+        .single();
+      if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+      const settings = (team?.settings ?? {}) as Record<string, unknown>;
+      const newSettings = { ...settings, application_form_fields: payload.fields };
+
+      const { error: updateErr } = await supabase
+        .from("teams")
+        .update({ settings: newSettings })
+        .eq("id", payload.team_id);
+      if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, settings: newSettings });
+    }
+
     // ── Business Units ──────────────────────────────────────────────
 
     if (action === "update_business_units") {

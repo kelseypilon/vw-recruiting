@@ -308,8 +308,20 @@ export default function AssessmentsPage({
 }
 
 /* ══════════════════════════════════════════════════════════════
-   APPLICATION FORM
+   APPLICATION FORM — Dynamic fields from team config
    ══════════════════════════════════════════════════════════════ */
+
+interface FormField {
+  id: string;
+  label: string;
+  type: "text" | "email" | "tel" | "number" | "boolean" | "select" | "textarea" | "interested_in";
+  required: boolean;
+  locked: boolean;
+  order: number;
+  options?: string[];
+  conditionalOn?: string;
+}
+
 function ApplicationForm({
   candidateId,
   teamId,
@@ -323,38 +335,71 @@ function ApplicationForm({
   alreadyDone: boolean;
   onComplete: () => void;
 }) {
-  const [form, setForm] = useState({
-    full_name: candidate ? `${candidate.first_name} ${candidate.last_name}`.trim() : "",
-    email: candidate?.email ?? "",
-    phone: candidate?.phone ?? "",
-    city: "",
-    current_role: "",
-    years_experience: "",
-    has_license: false,
-    license_number: "",
-    referral_source: "",
-    why_real_estate: "",
-    why_vantage: "",
-    biggest_achievement: "",
-    one_year_goal: "",
-    hours_per_week: "",
-  });
+  const [fields, setFields] = useState<FormField[]>([]);
+  const [interestedInOptions, setInterestedInOptions] = useState<{ id: string; label: string }[]>([]);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [form, setForm] = useState<Record<string, string | boolean | string[]>>({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  // Pre-fill when candidate data arrives
+  // Fetch form config
   useEffect(() => {
-    if (candidate) {
-      setForm((prev) => ({
-        ...prev,
-        full_name: prev.full_name || `${candidate.first_name} ${candidate.last_name}`.trim(),
-        email: prev.email || candidate.email || "",
-        phone: prev.phone || candidate.phone || "",
-      }));
-    }
-  }, [candidate]);
+    if (!teamId) return;
+    let cancelled = false;
 
-  const update = (key: string, value: string | boolean) => setForm((p) => ({ ...p, [key]: value }));
+    async function loadConfig() {
+      try {
+        const res = await fetch(`/api/assessments/form-config?team_id=${teamId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            const sorted = [...(data.fields as FormField[])].sort((a, b) => a.order - b.order);
+            setFields(sorted);
+            setInterestedInOptions(data.interested_in_options ?? []);
+
+            // Initialize form state with defaults for each field
+            const initial: Record<string, string | boolean | string[]> = {};
+            for (const f of sorted) {
+              if (f.type === "boolean") initial[f.id] = false;
+              else if (f.type === "interested_in") initial[f.id] = [];
+              else initial[f.id] = "";
+            }
+            // Pre-fill from candidate data
+            if (candidate) {
+              if (initial.first_name !== undefined) initial.first_name = candidate.first_name || "";
+              if (initial.last_name !== undefined) initial.last_name = candidate.last_name || "";
+              if (initial.email !== undefined) initial.email = candidate.email || "";
+              if (initial.phone !== undefined) initial.phone = candidate.phone || "";
+            }
+            setForm(initial);
+          }
+        }
+      } catch {
+        // Fall back to empty — will show error on submit
+      } finally {
+        if (!cancelled) setConfigLoading(false);
+      }
+    }
+
+    loadConfig();
+    return () => { cancelled = true; };
+  }, [teamId, candidate]);
+
+  // Pre-fill when candidate data arrives after config load
+  useEffect(() => {
+    if (candidate && fields.length > 0) {
+      setForm((prev) => {
+        const next = { ...prev };
+        if (next.first_name !== undefined && !next.first_name) next.first_name = candidate.first_name || "";
+        if (next.last_name !== undefined && !next.last_name) next.last_name = candidate.last_name || "";
+        if (next.email !== undefined && !next.email) next.email = candidate.email || "";
+        if (next.phone !== undefined && !next.phone) next.phone = candidate.phone || "";
+        return next;
+      });
+    }
+  }, [candidate, fields]);
+
+  const update = (key: string, value: string | boolean | string[]) => setForm((p) => ({ ...p, [key]: value }));
 
   if (alreadyDone) {
     return (
@@ -368,14 +413,32 @@ function ApplicationForm({
     );
   }
 
+  if (configLoading) {
+    return (
+      <div className="p-12 text-center">
+        <div className="animate-spin w-6 h-6 border-3 border-[#1B6CA8]/30 border-t-[#1B6CA8] rounded-full mx-auto" />
+        <p className="text-sm text-[#a59494] mt-3">Loading form...</p>
+      </div>
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
 
-    // Validate required fields
-    const required = ["full_name", "email", "phone", "city", "years_experience", "why_real_estate", "why_vantage", "biggest_achievement", "one_year_goal", "hours_per_week"];
-    for (const key of required) {
-      if (!form[key as keyof typeof form]) {
+    // Validate required visible fields
+    for (const f of fields) {
+      if (!f.required) continue;
+      // Skip if conditional and parent is falsy
+      if (f.conditionalOn && !form[f.conditionalOn]) continue;
+
+      const val = form[f.id];
+      if (f.type === "interested_in") {
+        // interested_in is optional by nature even if required — skip strict check
+        continue;
+      }
+      if (f.type === "boolean") continue; // boolean is always valid
+      if (!val || (typeof val === "string" && !val.trim())) {
         setErr("Please fill in all required fields.");
         return;
       }
@@ -386,7 +449,11 @@ function ApplicationForm({
       const res = await fetch("/api/assessments/application", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_id: candidateId, team_id: teamId, ...form }),
+        body: JSON.stringify({
+          candidate_id: candidateId,
+          team_id: teamId,
+          form_data: form,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -401,6 +468,15 @@ function ApplicationForm({
     }
   }
 
+  // Separate fields by display type for layout
+  const shortFields = fields.filter(
+    (f) => ["text", "email", "tel", "number", "select"].includes(f.type) && !f.conditionalOn
+  );
+  const booleanFields = fields.filter((f) => f.type === "boolean");
+  const textareaFields = fields.filter((f) => f.type === "textarea");
+  const interestedInField = fields.find((f) => f.type === "interested_in");
+  const conditionalFields = fields.filter((f) => f.conditionalOn);
+
   return (
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">Application Form</h2>
@@ -408,44 +484,97 @@ function ApplicationForm({
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Input label="Full Name *" value={form.full_name} onChange={(v) => update("full_name", v)} />
-        <Input label="Email *" type="email" value={form.email} onChange={(v) => update("email", v)} />
-        <Input label="Phone *" type="tel" value={form.phone} onChange={(v) => update("phone", v)} />
-        <Input label="City / Location *" value={form.city} onChange={(v) => update("city", v)} />
-        <Input label="Current Role / Title" value={form.current_role} onChange={(v) => update("current_role", v)} />
-        <Select label="Years of Experience *" value={form.years_experience} onChange={(v) => update("years_experience", v)} options={["0-1", "1-3", "3-5", "5-10", "10+"]} />
-      </div>
+      {/* Short fields in 2-col grid */}
+      {shortFields.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {shortFields.map((f) => (
+            <DynamicField
+              key={f.id}
+              field={f}
+              value={form[f.id] ?? ""}
+              onChange={(v) => update(f.id, v)}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* License toggle */}
-      <div className="mb-6 p-4 bg-[#f5f0f0] rounded-xl">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <div
-            className={`w-11 h-6 rounded-full transition-colors relative ${form.has_license ? "bg-[#1B6CA8]" : "bg-[#a59494]/40"}`}
-            onClick={() => update("has_license", !form.has_license)}
-          >
-            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.has_license ? "translate-x-5" : "translate-x-0.5"}`} />
+      {/* Boolean toggles with conditional children */}
+      {booleanFields.map((f) => {
+        const childFields = conditionalFields.filter((c) => c.conditionalOn === f.id);
+        return (
+          <div key={f.id} className="mb-6 p-4 bg-[#f5f0f0] rounded-xl">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[#1B6CA8]" : "bg-[#a59494]/40"}`}
+                onClick={() => update(f.id, !form[f.id])}
+              >
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form[f.id] ? "translate-x-5" : "translate-x-0.5"}`} />
+              </div>
+              <span className="text-sm font-medium text-[#272727]">
+                {f.label}{f.required ? " *" : ""}
+              </span>
+            </label>
+            {form[f.id] && childFields.map((child) => (
+              <div key={child.id} className="mt-3">
+                <DynamicField
+                  field={child}
+                  value={form[child.id] ?? ""}
+                  onChange={(v) => update(child.id, v)}
+                />
+              </div>
+            ))}
           </div>
-          <span className="text-sm font-medium text-[#272727]">Do you have a real estate license?</span>
-        </label>
-        {form.has_license && (
-          <div className="mt-3">
-            <Input label="License Number" value={form.license_number} onChange={(v) => update("license_number", v)} />
+        );
+      })}
+
+      {/* Interested-In tags */}
+      {interestedInField && interestedInOptions.length > 0 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-[#272727] mb-2">
+            {interestedInField.label}
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {interestedInOptions.map((opt) => {
+              const selected = Array.isArray(form[interestedInField.id])
+                && (form[interestedInField.id] as string[]).includes(opt.id);
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    const current = (form[interestedInField.id] as string[]) || [];
+                    update(
+                      interestedInField.id,
+                      selected ? current.filter((id) => id !== opt.id) : [...current, opt.id]
+                    );
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
+                    selected
+                      ? "bg-[#1B6CA8] text-white"
+                      : "bg-[#f5f0f0] text-[#272727] hover:bg-[#1B6CA8]/10"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Select label="How did you hear about us?" value={form.referral_source} onChange={(v) => update("referral_source", v)} options={["Referral", "Social Media", "Job Board", "Website", "Other"]} />
-        <Select label="Hours per week you can commit? *" value={form.hours_per_week} onChange={(v) => update("hours_per_week", v)} options={["20-30", "30-40", "40-50", "50+"]} />
-      </div>
-
-      <div className="space-y-4 mb-8">
-        <Textarea label="Why do you want to be in real estate? *" value={form.why_real_estate} onChange={(v) => update("why_real_estate", v)} />
-        <Textarea label="Why Vantage West specifically? *" value={form.why_vantage} onChange={(v) => update("why_vantage", v)} />
-        <Textarea label="What's your biggest professional achievement? *" value={form.biggest_achievement} onChange={(v) => update("biggest_achievement", v)} />
-        <Textarea label="Where do you want to be in 1 year? *" value={form.one_year_goal} onChange={(v) => update("one_year_goal", v)} />
-      </div>
+      {/* Textarea fields — full width */}
+      {textareaFields.length > 0 && (
+        <div className="space-y-4 mb-8">
+          {textareaFields.map((f) => (
+            <Textarea
+              key={f.id}
+              label={`${f.label}${f.required ? " *" : ""}`}
+              value={(form[f.id] as string) ?? ""}
+              onChange={(v) => update(f.id, v)}
+            />
+          ))}
+        </div>
+      )}
 
       <button
         type="submit"
@@ -456,6 +585,35 @@ function ApplicationForm({
       </button>
     </form>
   );
+}
+
+/** Renders a single form field based on its type */
+function DynamicField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FormField;
+  value: string | boolean | string[];
+  onChange: (v: string | boolean) => void;
+}) {
+  const label = `${field.label}${field.required ? " *" : ""}`;
+
+  switch (field.type) {
+    case "text":
+    case "number":
+      return <Input label={label} type={field.type} value={value as string} onChange={(v) => onChange(v)} />;
+    case "email":
+      return <Input label={label} type="email" value={value as string} onChange={(v) => onChange(v)} />;
+    case "tel":
+      return <Input label={label} type="tel" value={value as string} onChange={(v) => onChange(v)} />;
+    case "select":
+      return <Select label={label} value={value as string} onChange={(v) => onChange(v)} options={field.options ?? []} />;
+    case "textarea":
+      return <Textarea label={label} value={value as string} onChange={(v) => onChange(v)} />;
+    default:
+      return <Input label={label} value={value as string} onChange={(v) => onChange(v)} />;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════

@@ -407,3 +407,14 @@ export interface InviteToken {
   team?: { name: string } | null;
   inviter?: { name: string } | null;
 }
+
+export interface ApplicationFormField {
+  id: string;
+  label: string;
+  type: "text" | "email" | "tel" | "number" | "boolean" | "select" | "textarea" | "interested_in";
+  required: boolean;
+  locked: boolean;
+  order: number;
+  options?: string[];
+  conditionalOn?: string;
+}

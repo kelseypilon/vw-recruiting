@@ -19,6 +19,7 @@ import OnboardingTasksTab from "./onboarding-tasks-tab";
 import GroupInterviewPromptsTab from "./group-interview-prompts-tab";
 import PipelineStagesTab from "./pipeline-stages-tab";
 import IntegrationsTab from "./integrations-tab";
+import ApplicationFormTab from "./application-form-tab";
 import { usePermissions } from "@/lib/user-permissions-context";
 import {
   PERMISSION_KEYS,
@@ -75,6 +76,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     title: "RECRUITING",
     tabs: [
+      { id: "app-form", label: "Application Form", permission: "manage_settings", icon: "📝" },
       { id: "stages", label: "Pipeline Stages", permission: "manage_settings", icon: "📊" },
       { id: "templates", label: "Email Templates", permission: "manage_templates", icon: "📧" },
       { id: "criteria", label: "Scoring Criteria", permission: "manage_settings", icon: "📏" },
@@ -225,6 +227,9 @@ export default function SettingsDashboard({
       )}
       {activeTab === "roles" && (
         <RolesPermissionsTab team={team} onTeamUpdated={setTeam} teamId={teamId} users={users} currentUserId={currentUserId} />
+      )}
+      {activeTab === "app-form" && (
+        <ApplicationFormTab teamId={teamId} />
       )}
       {activeTab === "stages" && (
         <PipelineStagesTab stages={stages} onStagesUpdated={setStages} teamId={teamId} />

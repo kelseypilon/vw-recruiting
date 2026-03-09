@@ -1,33 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { KNOWN_CANDIDATE_COLUMNS } from "@/lib/default-form-fields";
 
 /**
  * POST /api/assessments/application
  *
  * Public endpoint — saves an application form submission.
  * Also updates the candidate record with key fields.
+ * Supports dynamic form fields — unknown fields go to candidates.custom_fields.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      candidate_id,
-      team_id,
-      full_name,
-      email,
-      phone,
-      city,
-      current_role,
-      years_experience,
-      why_real_estate,
-      why_vantage,
-      biggest_achievement,
-      one_year_goal,
-      hours_per_week,
-      has_license,
-      license_number,
-      referral_source,
-    } = body;
+    const { candidate_id, team_id, form_data, ...legacyFields } = body;
 
     if (!candidate_id || !team_id) {
       return NextResponse.json(
@@ -67,26 +52,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Insert submission
+    // Normalize: support both new `form_data` envelope and legacy flat fields
+    const data = form_data ?? legacyFields;
+
+    // For backward compat: map legacy full_name → first_name + last_name
+    let firstName = data.first_name ?? "";
+    let lastName = data.last_name ?? "";
+    if (!firstName && data.full_name) {
+      const parts = data.full_name.trim().split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(" ") || "";
+    }
+
+    const email = data.email ?? "";
+    const phone = data.phone ?? "";
+    const city = data.city ?? "";
+    const currentRole = data.current_role ?? "";
+    const yearsExperience = data.years_experience ?? "";
+    const whyRealEstate = data.why_real_estate ?? "";
+    const whyVantage = data.why_vantage ?? "";
+    const biggestAchievement = data.biggest_achievement ?? "";
+    const oneYearGoal = data.one_year_goal ?? "";
+    const hoursPerWeek = data.hours_per_week ?? "";
+    const hasLicense = data.currently_licensed ?? data.has_license ?? false;
+    const licenseNumber = data.license_number ?? "";
+    const referralSource = data.referral_source ?? "";
+
+    // Insert submission (keep existing columns for backward compat)
     const { error: insertErr } = await supabase
       .from("application_submissions")
       .insert({
         candidate_id,
         team_id,
-        full_name,
+        full_name: `${firstName} ${lastName}`.trim(),
         email,
         phone,
         city,
-        current_role,
-        years_experience: years_experience ? parseFloat(years_experience) : null,
-        why_real_estate,
-        why_vantage,
-        biggest_achievement,
-        one_year_goal,
-        hours_per_week,
-        has_license: !!has_license,
-        license_number: has_license ? license_number : null,
-        referral_source,
+        current_role: currentRole,
+        years_experience: yearsExperience ? parseFloat(yearsExperience) : null,
+        why_real_estate: whyRealEstate,
+        why_vantage: whyVantage,
+        biggest_achievement: biggestAchievement,
+        one_year_goal: oneYearGoal,
+        hours_per_week: hoursPerWeek,
+        has_license: !!hasLicense,
+        license_number: hasLicense ? licenseNumber : null,
+        referral_source: referralSource,
       });
 
     if (insertErr) {
@@ -97,23 +108,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Separate custom fields from known fields
+    const customFields: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (key.startsWith("custom_") && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
+        customFields[key] = val;
+      }
+    }
+
     // Update candidate record with key fields
     const candidateUpdate: Record<string, unknown> = {
       app_submitted_at: new Date().toISOString(),
     };
 
-    // Split full_name into first/last
-    if (full_name) {
-      const parts = full_name.trim().split(/\s+/);
-      candidateUpdate.first_name = parts[0];
-      candidateUpdate.last_name = parts.slice(1).join(" ") || "";
-    }
+    if (firstName) candidateUpdate.first_name = firstName;
+    if (lastName) candidateUpdate.last_name = lastName;
     if (email) candidateUpdate.email = email;
     if (phone) candidateUpdate.phone = phone;
-    if (current_role) candidateUpdate.current_role = current_role;
-    if (years_experience) candidateUpdate.years_experience = parseFloat(years_experience);
-    candidateUpdate.is_licensed = !!has_license;
-    if (referral_source) candidateUpdate.heard_about = referral_source;
+    if (currentRole) candidateUpdate.current_role = currentRole;
+    if (yearsExperience) candidateUpdate.years_experience = parseFloat(yearsExperience);
+    candidateUpdate.is_licensed = !!hasLicense;
+    if (referralSource) candidateUpdate.heard_about = referralSource;
+
+    // Store custom fields in the jsonb column
+    if (Object.keys(customFields).length > 0) {
+      candidateUpdate.custom_fields = customFields;
+    }
 
     const { error: updateErr } = await supabase
       .from("candidates")
