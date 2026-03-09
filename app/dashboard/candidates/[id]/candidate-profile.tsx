@@ -184,8 +184,8 @@ export default function CandidateProfile({
           onScheduleInterview={() => setShowScheduleModal(true)}
           onMoveStage={async (newStage) => {
             // Intercept Not a Fit / Archived moves
-            const notAFitStages = ["Not a Fit", "Archived"];
-            if (notAFitStages.includes(newStage)) {
+            const resolvedNotAFit = stageNameByTag(stages, STAGE_TAGS.NOT_A_FIT, "Not a Fit");
+            if (newStage === resolvedNotAFit) {
               setPendingNotAFitStage(newStage);
               return;
             }

@@ -47,6 +47,7 @@ interface Props {
   activityFeed: ActivityItem[];
   upcomingInterviews: UpcomingInterview[];
   candidateStageRows?: CandidateStageRow[];
+  notAFitName?: string;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────── */
@@ -93,6 +94,7 @@ export default function AdminDashboard({
   activityFeed,
   upcomingInterviews,
   candidateStageRows,
+  notAFitName = "Not a Fit",
 }: Props) {
   const [hireTrackFilter, setHireTrackFilter] = useState<"all" | "agent" | "employee">("all");
 
@@ -129,7 +131,7 @@ export default function AdminDashboard({
   // Compute filtered active count
   const filteredActiveCount = useMemo(() => {
     if (hireTrackFilter === "all" || !candidateStageRows) return stats.activeCandidates;
-    const excluded = new Set(["Not a Fit", "Archived"]);
+    const excluded = new Set([notAFitName]);
     return candidateStageRows.filter(
       (r) =>
         !excluded.has(r.stage) &&

@@ -77,7 +77,7 @@ export default async function DashboardPage() {
   const oneOnOneName = stageByTag("vw_1on1_interview", "1on1 Interview");
 
   // ── Parallel data fetch ─────────────────────────────────────
-  const excludedStages = [notAFitName, "Archived"];
+  const excludedStages = [notAFitName];
 
   const [
     activeCandidatesResult,
@@ -595,6 +595,7 @@ export default async function DashboardPage() {
           activityFeed={activityFeedSlice}
           upcomingInterviews={upcomingInterviews}
           candidateStageRows={stageRows}
+          notAFitName={notAFitName}
         />
       ) : (
         <LeaderDashboard

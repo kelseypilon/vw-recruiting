@@ -67,7 +67,7 @@ export default function KanbanBoard({
   // Dynamic stage names from ghl_tag (allows teams to rename stages)
   const INTERVIEW_STAGES = getInterviewStageNames(stages);
   const notAFitName = stageNameByTag(stages, STAGE_TAGS.NOT_A_FIT, "Not a Fit");
-  const NOT_A_FIT_STAGES = [notAFitName, "Archived"];
+  const NOT_A_FIT_STAGES = [notAFitName];
 
   // @hello-pangea/dnd requires client-only rendering to avoid SSR hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
