@@ -320,6 +320,25 @@ interface FormField {
   order: number;
   options?: string[];
   conditionalOn?: string;
+  show_if?: { field_id: string; value: unknown };
+}
+
+/** Resolve both legacy conditionalOn and new show_if */
+function resolveFieldCondition(field: FormField): { field_id: string; value: unknown } | null {
+  if (field.show_if) return field.show_if;
+  if (field.conditionalOn) return { field_id: field.conditionalOn, value: true };
+  return null;
+}
+
+/** Check if a field should be visible given current form values */
+function isFieldVisible(
+  field: FormField,
+  formValues: Record<string, string | boolean | string[]>
+): boolean {
+  const cond = resolveFieldCondition(field);
+  if (!cond) return true;
+  const parentValue = formValues[cond.field_id];
+  return parentValue === cond.value;
 }
 
 function ApplicationForm({
@@ -429,8 +448,8 @@ function ApplicationForm({
     // Validate required visible fields
     for (const f of fields) {
       if (!f.required) continue;
-      // Skip if conditional and parent is falsy
-      if (f.conditionalOn && !form[f.conditionalOn]) continue;
+      // Skip hidden conditional fields
+      if (!isFieldVisible(f, form)) continue;
 
       const val = form[f.id];
       if (f.type === "interested_in") {
@@ -470,12 +489,12 @@ function ApplicationForm({
 
   // Separate fields by display type for layout
   const shortFields = fields.filter(
-    (f) => ["text", "email", "tel", "number", "select"].includes(f.type) && !f.conditionalOn
+    (f) => ["text", "email", "tel", "number", "select"].includes(f.type) && !resolveFieldCondition(f)
   );
   const booleanFields = fields.filter((f) => f.type === "boolean");
-  const textareaFields = fields.filter((f) => f.type === "textarea");
+  const textareaFields = fields.filter((f) => f.type === "textarea" && !resolveFieldCondition(f));
   const interestedInField = fields.find((f) => f.type === "interested_in");
-  const conditionalFields = fields.filter((f) => f.conditionalOn);
+  const conditionalFields = fields.filter((f) => resolveFieldCondition(f));
 
   return (
     <form onSubmit={handleSubmit} className="p-8">
@@ -492,21 +511,61 @@ function ApplicationForm({
               key={f.id}
               field={f}
               value={form[f.id] ?? ""}
-              onChange={(v) => update(f.id, v)}
+              onChange={(v) => {
+                update(f.id, v);
+                // Clear conditional children when parent value changes
+                for (const child of conditionalFields) {
+                  const cond = resolveFieldCondition(child);
+                  if (cond?.field_id === f.id && v !== cond.value) {
+                    update(child.id, child.type === "boolean" ? false : "");
+                  }
+                }
+              }}
             />
           ))}
         </div>
       )}
 
+      {/* Conditional fields whose parent is a non-boolean (select/text) */}
+      {conditionalFields
+        .filter((c) => {
+          const cond = resolveFieldCondition(c);
+          if (!cond) return false;
+          const parent = fields.find((f) => f.id === cond.field_id);
+          return parent && parent.type !== "boolean" && isFieldVisible(c, form);
+        })
+        .map((c) => (
+          <div key={c.id} className="mb-4 ml-4 pl-4 border-l-2 border-[#1B6CA8]/20">
+            <DynamicField
+              field={c}
+              value={form[c.id] ?? ""}
+              onChange={(v) => update(c.id, v)}
+            />
+          </div>
+        ))}
+
       {/* Boolean toggles with conditional children */}
       {booleanFields.map((f) => {
-        const childFields = conditionalFields.filter((c) => c.conditionalOn === f.id);
+        const childFields = conditionalFields.filter((c) => {
+          const cond = resolveFieldCondition(c);
+          return cond?.field_id === f.id;
+        });
         return (
           <div key={f.id} className="mb-6 p-4 bg-[#f5f0f0] rounded-xl">
             <label className="flex items-center gap-3 cursor-pointer">
               <div
                 className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[#1B6CA8]" : "bg-[#a59494]/40"}`}
-                onClick={() => update(f.id, !form[f.id])}
+                onClick={() => {
+                  const newVal = !form[f.id];
+                  update(f.id, newVal);
+                  // Clear child field values when parent changes and children become hidden
+                  for (const child of childFields) {
+                    const cond = resolveFieldCondition(child);
+                    if (cond && newVal !== cond.value) {
+                      update(child.id, child.type === "boolean" ? false : "");
+                    }
+                  }
+                }}
               >
                 <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form[f.id] ? "translate-x-5" : "translate-x-0.5"}`} />
               </div>
@@ -514,7 +573,7 @@ function ApplicationForm({
                 {f.label}{f.required ? " *" : ""}
               </span>
             </label>
-            {form[f.id] && childFields.map((child) => (
+            {childFields.filter((child) => isFieldVisible(child, form)).map((child) => (
               <div key={child.id} className="mt-3">
                 <DynamicField
                   field={child}

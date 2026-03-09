@@ -416,5 +416,8 @@ export interface ApplicationFormField {
   locked: boolean;
   order: number;
   options?: string[];
+  /** @deprecated Use show_if instead */
   conditionalOn?: string;
+  /** Show this field only when another field equals a specific value */
+  show_if?: { field_id: string; value: unknown };
 }

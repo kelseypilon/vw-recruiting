@@ -11,7 +11,7 @@ export const DEFAULT_FORM_FIELDS: ApplicationFormField[] = [
   { id: "city", label: "City / Location", type: "text", required: true, locked: false, order: 4 },
   { id: "years_experience", label: "Years of Experience", type: "select", required: true, locked: false, order: 5, options: ["0-1", "1-3", "3-5", "5-10", "10+"] },
   { id: "currently_licensed", label: "Do you have a real estate license?", type: "boolean", required: false, locked: false, order: 6 },
-  { id: "license_number", label: "License Number", type: "text", required: false, locked: false, order: 7, conditionalOn: "currently_licensed" },
+  { id: "license_number", label: "License Number", type: "text", required: false, locked: false, order: 7, show_if: { field_id: "currently_licensed", value: true } },
   { id: "referral_source", label: "How did you hear about us?", type: "select", required: false, locked: false, order: 8, options: ["Referral", "Social Media", "Job Board", "Website", "Other"] },
   { id: "hours_per_week", label: "Hours per week you can commit?", type: "select", required: true, locked: false, order: 9, options: ["20-30", "30-40", "40-50", "50+"] },
   { id: "why_real_estate", label: "Why do you want to be in real estate?", type: "textarea", required: true, locked: false, order: 10 },
