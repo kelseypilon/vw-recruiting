@@ -365,7 +365,7 @@ export default function DateTimePicker({
               onChange={(e) => handleMinuteChange(Number(e.target.value))}
               className="px-2 py-1.5 rounded-md border border-[#a59494]/30 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
             >
-              {[0, 15, 30, 45].map((m) => (
+              {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
                 <option key={m} value={m}>
                   {pad(m)}
                 </option>

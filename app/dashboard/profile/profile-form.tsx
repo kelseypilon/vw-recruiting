@@ -56,6 +56,7 @@ export default function ProfileForm({ user }: Props) {
   const [virtualBookingUrl, setVirtualBookingUrl] = useState(user.virtual_booking_url ?? "");
   const [inpersonBookingUrl, setInpersonBookingUrl] = useState(user.inperson_booking_url ?? "");
   const [virtualMeetingLink, setVirtualMeetingLink] = useState(user.virtual_meeting_link ?? "");
+  const [meetingLink, setMeetingLink] = useState(user.meeting_link ?? "");
   const [scorecardVisibility, setScorecardVisibility] = useState(
     user.scorecard_visibility ?? "team"
   );
@@ -102,6 +103,7 @@ export default function ProfileForm({ user }: Props) {
     virtualBookingUrl !== (user.virtual_booking_url ?? "") ||
     inpersonBookingUrl !== (user.inperson_booking_url ?? "") ||
     virtualMeetingLink !== (user.virtual_meeting_link ?? "") ||
+    meetingLink !== (user.meeting_link ?? "") ||
     scorecardVisibility !== (user.scorecard_visibility ?? "team") ||
     emailReminders !== (user.notification_preferences?.email_reminders ?? true) ||
     digest !== (user.notification_preferences?.digest ?? false);
@@ -172,6 +174,7 @@ export default function ProfileForm({ user }: Props) {
         virtual_booking_url: virtualBookingUrl.trim() || null,
         inperson_booking_url: inpersonBookingUrl.trim() || null,
         virtual_meeting_link: virtualMeetingLink.trim() || null,
+        meeting_link: meetingLink.trim() || null,
         scorecard_visibility: scorecardVisibility,
         notification_preferences: {
           email_reminders: emailReminders,
@@ -470,6 +473,22 @@ export default function ProfileForm({ user }: Props) {
             />
             <p className="text-xs text-[#a59494] mt-1">
               Your personal Zoom or Google Meet link for virtual interviews.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Meeting Link
+            </label>
+            <input
+              type="url"
+              value={meetingLink}
+              onChange={(e) => setMeetingLink(e.target.value)}
+              placeholder="https://zoom.us/j/... or https://meet.google.com/..."
+              className="w-full border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <p className="text-xs text-[#a59494] mt-1">
+              Default meeting link used when scheduling virtual interviews.
             </p>
           </div>
 

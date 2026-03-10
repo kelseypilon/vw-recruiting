@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import type { PipelineStage, TeamUser, GroupInterviewSession, EmailTemplate } from "@/lib/types";
 import { isGroupInterviewStage } from "@/lib/stage-utils";
+import DateTimePicker from "@/components/date-time-picker";
 
 interface Props {
   candidateName: string;
@@ -274,7 +275,17 @@ function GroupInterviewFlow({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        {/* X close button */}
+        <button
+          onClick={onCancel}
+          className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
 
         {/* ─── Step 1: Select Session ──────────────────────── */}
         {step === "select" && (
@@ -501,9 +512,9 @@ function OneOnOneFlow({
   const [interviewerId, setInterviewerId] = useState(currentUserId);
 
   // Step 2B fields
-  const [interviewDate, setInterviewDate] = useState("");
-  const [interviewTime, setInterviewTime] = useState("");
-  const [location, setLocation] = useState("");
+  const [dateTimeValue, setDateTimeValue] = useState("");
+  const [locationMode, setLocationMode] = useState<"office" | "virtual" | "other">("virtual");
+  const [locationCustom, setLocationCustom] = useState("");
 
   // Template state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -555,18 +566,26 @@ function OneOnOneFlow({
     }
   }, [step, templatesLoaded, templates]);
 
+  // Compute resolved location string
+  const resolvedLocation = locationMode === "office"
+    ? "(Office Address)" // Will be replaced with team.office_address when available
+    : locationMode === "virtual"
+      ? selectedInterviewer?.virtual_meeting_link || selectedInterviewer?.meeting_link || ""
+      : locationCustom;
+
   // Resolve merge tags in template body
   const resolveTemplate = useCallback(
     (template: EmailTemplate | undefined) => {
       if (!template) return { subject: "", body: "" };
       const bookingUrl = selectedInterviewer?.google_booking_url || selectedInterviewer?.virtual_booking_url || "";
-      const dateStr = interviewDate
-        ? new Date(interviewDate + (interviewTime ? `T${interviewTime}` : "")).toLocaleDateString("en-US", {
+      const dateStr = dateTimeValue
+        ? new Date(dateTimeValue).toLocaleDateString("en-US", {
             weekday: "long",
             month: "long",
             day: "numeric",
             year: "numeric",
-            ...(interviewTime ? { hour: "numeric", minute: "2-digit" } : {}),
+            hour: "numeric",
+            minute: "2-digit",
           })
         : "TBD";
 
@@ -579,7 +598,7 @@ function OneOnOneFlow({
         "{{interview_date}}": dateStr,
         "{{leader_name}}": selectedInterviewer?.name || "",
         "{{booking_link}}": bookingUrl,
-        "{{location}}": location,
+        "{{location}}": resolvedLocation,
         "{{sender_name}}": selectedInterviewer?.name || "",
       };
 
@@ -591,7 +610,7 @@ function OneOnOneFlow({
       }
       return { subject, body };
     },
-    [firstName, candidateName, selectedInterviewer, interviewDate, interviewTime, location]
+    [firstName, candidateName, selectedInterviewer, dateTimeValue, resolvedLocation]
   );
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
@@ -612,7 +631,7 @@ function OneOnOneFlow({
           scheduled_at: scheduledAtISO,
           notes: `Created when moved to ${newStage}`,
           interviewer_ids: interviewerId ? [interviewerId] : [],
-          location: location || null,
+          location: resolvedLocation || null,
         },
       }),
     });
@@ -683,8 +702,8 @@ function OneOnOneFlow({
       setError("Please select an interviewer");
       return;
     }
-    if (!interviewDate) {
-      setError("Please select a date");
+    if (!dateTimeValue) {
+      setError("Please select a date and time");
       return;
     }
     if (!candidateEmail) {
@@ -695,14 +714,16 @@ function OneOnOneFlow({
     setError("");
 
     try {
-      const scheduledAtISO = interviewTime
-        ? new Date(`${interviewDate}T${interviewTime}`).toISOString()
-        : new Date(`${interviewDate}T09:00`).toISOString();
+      const scheduledAtISO = new Date(dateTimeValue).toISOString();
 
       await createInterviewRecord(scheduledAtISO);
 
+      const dateStr = new Date(dateTimeValue).toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit",
+      });
       const subject = resolved.subject || `Interview Confirmation — Vantage West Realty`;
-      const body = resolved.body || `Hi ${firstName},\n\nYour interview has been confirmed!\n\nDate: ${interviewDate}\nTime: ${interviewTime || "TBD"}\n${location ? `Location: ${location}\n` : ""}\nLooking forward to meeting you!\n\nVantage West Realty`;
+      const body = resolved.body || `Hi ${firstName},\n\nYour interview has been confirmed!\n\nDate: ${dateStr}\n${resolvedLocation ? `Location: ${resolvedLocation}\n` : ""}\nLooking forward to meeting you!\n\nVantage West Realty`;
       await sendEmail(subject, body);
 
       setToast("Interview scheduled and confirmation sent");
@@ -732,7 +753,18 @@ function OneOnOneFlow({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        {/* X close button */}
+        <button
+          onClick={onCancel}
+          className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
         {/* ─── STEP 1: Choose ──────────────────────────────── */}
         {step === "choose" && (
           <>
@@ -872,18 +904,35 @@ function OneOnOneFlow({
                 </div>
               )}
 
-              {/* Email preview */}
+              {/* Email preview — editable */}
               {resolved.body && (
                 <div>
                   <label className={labelClasses}>Email Preview</label>
-                  <div className="rounded-lg border border-[#a59494]/20 p-3 bg-gray-50 max-h-40 overflow-y-auto">
-                    <p className="text-xs font-medium text-[#272727] mb-1">
-                      Subject: {resolved.subject}
-                    </p>
-                    <div className="text-xs text-[#a59494] whitespace-pre-wrap leading-relaxed">
-                      {resolved.body}
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    value={resolved.subject}
+                    onChange={(e) => {
+                      const template = templates.find((t) => t.id === selectedTemplateId);
+                      if (template) {
+                        template.subject = e.target.value;
+                        setSelectedTemplateId(selectedTemplateId);
+                      }
+                    }}
+                    className={`${inputClasses} text-xs font-medium mb-1`}
+                    placeholder="Subject"
+                  />
+                  <textarea
+                    value={resolved.body}
+                    onChange={(e) => {
+                      const template = templates.find((t) => t.id === selectedTemplateId);
+                      if (template) {
+                        template.body = e.target.value;
+                        setSelectedTemplateId(selectedTemplateId);
+                      }
+                    }}
+                    rows={8}
+                    className={`${inputClasses} resize-y text-xs leading-relaxed`}
+                  />
                 </div>
               )}
 
@@ -925,25 +974,13 @@ function OneOnOneFlow({
             </p>
 
             <div className="space-y-4">
-              {/* Date */}
+              {/* Date & Time */}
               <div>
-                <label className={labelClasses}>Date</label>
-                <input
-                  type="date"
-                  value={interviewDate}
-                  onChange={(e) => setInterviewDate(e.target.value)}
-                  className={inputClasses}
-                />
-              </div>
-
-              {/* Time */}
-              <div>
-                <label className={labelClasses}>Time</label>
-                <input
-                  type="time"
-                  value={interviewTime}
-                  onChange={(e) => setInterviewTime(e.target.value)}
-                  className={inputClasses}
+                <label className={labelClasses}>Date &amp; Time</label>
+                <DateTimePicker
+                  value={dateTimeValue}
+                  onChange={setDateTimeValue}
+                  placeholder="Select date & time"
                 />
               </div>
 
@@ -964,19 +1001,30 @@ function OneOnOneFlow({
                 </select>
               </div>
 
-              {/* Location / Link */}
+              {/* Location / Link — Smart dropdown */}
               <div>
-                <label className={labelClasses}>
-                  Location / Link{" "}
-                  <span className="text-xs font-normal text-[#a59494]">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Zoom link, office address, etc."
-                  className={inputClasses}
-                />
+                <label className={labelClasses}>Location / Link</label>
+                <select
+                  value={locationMode}
+                  onChange={(e) => setLocationMode(e.target.value as "office" | "virtual" | "other")}
+                  className={selectClasses}
+                >
+                  <option value="virtual">Virtual (meeting link)</option>
+                  <option value="office">Office (in-person)</option>
+                  <option value="other">Other</option>
+                </select>
+                {locationMode === "virtual" && resolvedLocation && (
+                  <p className="text-xs text-brand mt-1 truncate">{resolvedLocation}</p>
+                )}
+                {locationMode === "other" && (
+                  <input
+                    type="text"
+                    value={locationCustom}
+                    onChange={(e) => setLocationCustom(e.target.value)}
+                    placeholder="Enter address, link, or details..."
+                    className={`${inputClasses} mt-2`}
+                  />
+                )}
               </div>
 
               {/* Email template */}
@@ -1000,18 +1048,36 @@ function OneOnOneFlow({
                 </div>
               )}
 
-              {/* Email preview */}
+              {/* Email preview — editable */}
               {resolved.body && (
                 <div>
                   <label className={labelClasses}>Email Preview</label>
-                  <div className="rounded-lg border border-[#a59494]/20 p-3 bg-gray-50 max-h-40 overflow-y-auto">
-                    <p className="text-xs font-medium text-[#272727] mb-1">
-                      Subject: {resolved.subject}
-                    </p>
-                    <div className="text-xs text-[#a59494] whitespace-pre-wrap leading-relaxed">
-                      {resolved.body}
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    value={resolved.subject}
+                    onChange={(e) => {
+                      // Allow inline subject edits — store as override
+                      const template = templates.find((t) => t.id === selectedTemplateId);
+                      if (template) {
+                        template.subject = e.target.value;
+                        setSelectedTemplateId(selectedTemplateId); // force re-render
+                      }
+                    }}
+                    className={`${inputClasses} text-xs font-medium mb-1`}
+                    placeholder="Subject"
+                  />
+                  <textarea
+                    value={resolved.body}
+                    onChange={(e) => {
+                      const template = templates.find((t) => t.id === selectedTemplateId);
+                      if (template) {
+                        template.body = e.target.value;
+                        setSelectedTemplateId(selectedTemplateId);
+                      }
+                    }}
+                    rows={8}
+                    className={`${inputClasses} resize-y text-xs leading-relaxed`}
+                  />
                 </div>
               )}
 
@@ -1033,7 +1099,7 @@ function OneOnOneFlow({
               </button>
               <button
                 onClick={handleScheduleAndSend}
-                disabled={loading || !interviewerId || !interviewDate || !candidateEmail}
+                disabled={loading || !interviewerId || !dateTimeValue || !candidateEmail}
                 className="px-5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
               >
                 {loading ? "Scheduling..." : "Schedule & Send"}

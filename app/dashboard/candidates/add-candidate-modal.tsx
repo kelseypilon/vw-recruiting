@@ -6,31 +6,27 @@ import type { CandidateCard } from "@/lib/types";
 
 interface Props {
   teamId: string;
-  businessUnits: string[];
   onClose: () => void;
   onAdded: (candidate: CandidateCard) => void;
 }
 
-export default function AddCandidateModal({ teamId, businessUnits, onClose, onAdded }: Props) {
-  const ROLE_OPTIONS = ["Agent", "Employee", "Other"];
-  const HIRE_TRACK_OPTIONS = [
-    { value: "agent", label: "Agent" },
-    { value: "employee", label: "Employee" },
-  ];
+const ROLE_OPTIONS = ["Agent", "ISA", "Showing Partner", "Intern", "Admin", "Other"];
+const LICENSED_OPTIONS = ["Yes", "No", "In Course"];
+
+export default function AddCandidateModal({ teamId, onClose, onAdded }: Props) {
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
     email: "",
     phone: "",
-    role_applied: [] as string[],
-    is_licensed: false,
-    business_unit: businessUnits[0] ?? "",
-    hire_track: "agent",
+    role_applied: "",
+    role_applied_other: "",
+    licensed_status: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function updateField(field: string, value: string | boolean) {
+  function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -38,6 +34,11 @@ export default function AddCandidateModal({ teamId, businessUnits, onClose, onAd
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    const roleValue =
+      formData.role_applied === "Other" && formData.role_applied_other.trim()
+        ? formData.role_applied_other.trim()
+        : formData.role_applied || null;
 
     const supabase = createClient();
     const { data, error: insertError } = await supabase
@@ -48,10 +49,9 @@ export default function AddCandidateModal({ teamId, businessUnits, onClose, onAd
         last_name: formData.last_name,
         email: formData.email || null,
         phone: formData.phone || null,
-        role_applied: formData.role_applied.length > 0 ? JSON.stringify(formData.role_applied) : null,
-        is_licensed: formData.is_licensed,
-        business_unit: formData.business_unit || null,
-        hire_track: formData.hire_track,
+        role_applied: roleValue,
+        is_licensed: formData.licensed_status === "Yes",
+        licensed_status: formData.licensed_status || null,
         stage: "New Lead",
       })
       .select()
@@ -77,9 +77,19 @@ export default function AddCandidateModal({ teamId, businessUnits, onClose, onAd
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mx-4">
-        <h3 className="text-lg font-bold text-[#272727] mb-4">
-          Add Candidate
-        </h3>
+        {/* Header with X close */}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-[#272727]">Add Candidate</h3>
+          <button
+            onClick={onClose}
+            className="text-[#a59494] hover:text-[#272727] transition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
         {error && (
           <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -146,80 +156,52 @@ export default function AddCandidateModal({ teamId, businessUnits, onClose, onAd
             />
           </div>
 
-          {/* Role Applied (multi-select) */}
+          {/* Role Applied (dropdown) */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-[#272727]">
               Role Applied
             </label>
-            <div className="flex flex-wrap gap-2 px-1">
+            <select
+              value={formData.role_applied}
+              onChange={(e) => updateField("role_applied", e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select a role...</option>
               {ROLE_OPTIONS.map((role) => (
-                <label key={role} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.role_applied.includes(role)}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...formData.role_applied, role]
-                        : formData.role_applied.filter((r) => r !== role);
-                      setFormData((prev) => ({ ...prev, role_applied: next }));
-                    }}
-                    className="w-3.5 h-3.5 rounded border-[#a59494]/40 text-brand focus:ring-brand"
-                  />
-                  <span className="text-sm text-[#272727]">{role}</span>
-                </label>
+                <option key={role} value={role}>
+                  {role}
+                </option>
               ))}
-            </div>
+            </select>
+            {formData.role_applied === "Other" && (
+              <input
+                type="text"
+                value={formData.role_applied_other}
+                onChange={(e) => updateField("role_applied_other", e.target.value)}
+                placeholder="Specify role..."
+                className={`${inputClass} mt-1`}
+              />
+            )}
           </div>
 
-          {/* Business Unit + Hire Track */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#272727]">
-                Business Unit
-              </label>
-              <select
-                value={formData.business_unit}
-                onChange={(e) => updateField("business_unit", e.target.value)}
-                className={inputClass}
-              >
-                {businessUnits.map((bu) => (
-                  <option key={bu} value={bu}>{bu}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#272727]">
-                Hire Track
-              </label>
-              <div className="flex rounded-lg border border-[#a59494]/40 overflow-hidden">
-                {HIRE_TRACK_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => updateField("hire_track", opt.value)}
-                    className={`flex-1 px-3 py-2 text-sm font-medium transition ${
-                      formData.hire_track === opt.value
-                        ? "bg-brand text-white"
-                        : "bg-white text-[#272727] hover:bg-[#f5f0f0]"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Licensed (dropdown) */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-[#272727]">
+              Licensed
+            </label>
+            <select
+              value={formData.licensed_status}
+              onChange={(e) => updateField("licensed_status", e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select...</option>
+              {LICENSED_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Licensed checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formData.is_licensed}
-              onChange={(e) => updateField("is_licensed", e.target.checked)}
-              className="w-4 h-4 rounded border-[#a59494]/40 text-brand focus:ring-brand"
-            />
-            <span className="text-sm text-[#272727]">Licensed agent</span>
-          </label>
 
           {/* Actions */}
           <div className="flex justify-end gap-3 mt-2">

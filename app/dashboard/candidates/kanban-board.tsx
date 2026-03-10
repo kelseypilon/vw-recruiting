@@ -425,7 +425,6 @@ export default function KanbanBoard({
       {showAddModal && (
         <AddCandidateModal
           teamId={teamId}
-          businessUnits={businessUnits}
           onClose={() => setShowAddModal(false)}
           onAdded={handleCandidateAdded}
         />

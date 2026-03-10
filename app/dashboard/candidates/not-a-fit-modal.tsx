@@ -24,6 +24,17 @@ export default function NotAFitModal({
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
+        {/* X close button */}
+        <button
+          onClick={onCancel}
+          className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
         {/* Icon */}
         <div className="flex justify-center mb-4">
           <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">

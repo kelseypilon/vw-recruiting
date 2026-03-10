@@ -56,6 +56,7 @@ export interface TeamUser {
   virtual_booking_url: string | null;
   inperson_booking_url: string | null;
   virtual_meeting_link: string | null;
+  meeting_link: string | null;
   scorecard_visibility: string;
   photo_url: string | null;
   is_active: boolean;
@@ -119,6 +120,8 @@ export interface Candidate {
   active_listings: number | null;
   website_url: string | null;
   resume_url: string | null;
+  resume_filename: string | null;
+  licensed_status: string | null;
   app_submitted_at: string | null;
   hire_type: string | null;
   hire_track: string;

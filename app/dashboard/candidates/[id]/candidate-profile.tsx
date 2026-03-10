@@ -22,7 +22,6 @@ import type {
   GroupInterviewNote,
 } from "@/lib/types";
 import { getInterviewStageNames, stageNameByTag, STAGE_TAGS } from "@/lib/stage-utils";
-import ScheduleModal from "@/app/dashboard/interviews/schedule-modal";
 import EmailPreviewModal from "@/app/dashboard/interviews/email-preview-modal";
 import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-modal";
 import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
@@ -78,7 +77,7 @@ export default function CandidateProfile({
   const [isMoving, setIsMoving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTemplateHint, setEmailTemplateHint] = useState<string | null>(null);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews" | "emails">("profile");
 
@@ -181,7 +180,6 @@ export default function CandidateProfile({
           isMoving={isMoving}
           teamId={teamId}
           onSendEmail={() => setShowEmailModal(true)}
-          onScheduleInterview={() => setShowScheduleModal(true)}
           onMoveStage={async (newStage) => {
             // Intercept Not a Fit / Archived moves
             const resolvedNotAFit = stageNameByTag(stages, STAGE_TAGS.NOT_A_FIT, "Not a Fit");
@@ -363,20 +361,6 @@ export default function CandidateProfile({
           onClose={() => { setShowEmailModal(false); setEmailTemplateHint(null); }}
           currentUserId={currentUserId}
           preselectedTemplateHint={emailTemplateHint}
-        />
-      )}
-
-      {/* Schedule Interview Modal */}
-      {showScheduleModal && (
-        <ScheduleModal
-          eligibleCandidates={[candidate]}
-          leaders={leaders}
-          emailTemplates={emailTemplates}
-          teamId={teamId}
-          team={team}
-          preselectedCandidateId={candidate.id}
-          onClose={() => setShowScheduleModal(false)}
-          onScheduled={() => setShowScheduleModal(false)}
         />
       )}
 
@@ -1691,7 +1675,6 @@ function ActionButtons({
   isMoving,
   onMoveStage,
   onSendEmail,
-  onScheduleInterview,
   teamId,
 }: {
   candidate: Candidate;
@@ -1699,46 +1682,17 @@ function ActionButtons({
   isMoving: boolean;
   onMoveStage: (newStage: string) => void;
   onSendEmail?: () => void;
-  onScheduleInterview?: () => void;
   teamId: string;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
   const moveMenuRef = useRef<HTMLDivElement>(null);
   const { can } = usePermissions();
   const canSendEmails = can("send_emails");
   const canManageInterviews = can("manage_interviews");
   const canEditCandidates = can("edit_candidates");
 
-  function handleCopyAssessmentLink() {
-    const url = `${window.location.origin}/apply/${candidate.id}/assessments?team=${teamId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    });
-  }
-
   return (
     <div className="flex items-center gap-2 shrink-0">
-      {/* Copy Assessment Link */}
-      <button
-        onClick={handleCopyAssessmentLink}
-        className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-        title="Copy assessment link for this candidate"
-      >
-        {linkCopied ? (
-          <span className="flex items-center gap-1.5 text-green-600">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-            Copied!
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
-            Assessment Link
-          </span>
-        )}
-      </button>
-
       {/* Move Stage dropdown — requires edit_candidates permission */}
       {canEditCandidates && (
       <div
@@ -1793,16 +1747,6 @@ function ActionButtons({
           className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
         >
           Send Email
-        </button>
-      )}
-
-      {/* Schedule Interview — requires manage_interviews permission */}
-      {canManageInterviews && (
-        <button
-          onClick={() => onScheduleInterview?.()}
-          className="px-4 py-2 rounded-lg border border-[#a59494]/40 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
-        >
-          Schedule Interview
         </button>
       )}
 

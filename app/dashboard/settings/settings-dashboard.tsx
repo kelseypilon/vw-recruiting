@@ -300,6 +300,7 @@ function TeamTab({
   const [teamName, setTeamName] = useState(team?.name ?? "");
   const [adminEmail, setAdminEmail] = useState(team?.admin_email ?? "");
   const [adminCc, setAdminCc] = useState(team?.admin_cc ?? true);
+  const [officeAddress, setOfficeAddress] = useState(team?.office_address ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [slug, setSlug] = useState(team?.slug ?? "");
@@ -324,6 +325,7 @@ function TeamTab({
       name: teamName,
       admin_email: adminEmail || null,
       admin_cc: adminCc,
+      office_address: officeAddress.trim() || null,
     });
 
     if (result.error) {
@@ -511,6 +513,21 @@ function TeamTab({
               CC admin on all candidate emails
             </span>
           </label>
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Office Address
+            </label>
+            <input
+              type="text"
+              value={officeAddress}
+              onChange={(e) => setOfficeAddress(e.target.value)}
+              placeholder="123 Main St, Suite 100, Phoenix, AZ 85001"
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+            />
+            <p className="text-xs text-[#a59494] mt-1">
+              Auto-fills the &ldquo;Office&rdquo; location when scheduling in-person interviews.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -2036,7 +2053,16 @@ function TemplatesTab({
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
             <h3 className="text-lg font-bold text-[#272727] mb-2">Delete Template</h3>
             <p className="text-sm text-[#a59494] mb-4">
               Delete &ldquo;{selected.name}&rdquo;? This cannot be undone.
@@ -2598,7 +2624,16 @@ function RolesPermissionsTab({
       {/* ── Delete / Reassign Role Modal ────────────────────────── */}
       {deleteRole && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <button
+              onClick={() => { setDeleteRole(null); setDeleteRoleUserCount(0); setReassignTo(""); }}
+              className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
             <h3 className="text-sm font-semibold text-[#272727] mb-2">
               Delete &ldquo;{deleteRole}&rdquo;?
             </h3>
