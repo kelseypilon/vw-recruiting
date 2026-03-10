@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTeam } from "@/lib/team-context";
 
 type Step = "info" | "email" | "success";
+type LinkType = "personal" | "general";
 
 interface Props {
   onClose: () => void;
@@ -12,6 +13,19 @@ interface Props {
 export default function SendAssessmentModal({ onClose }: Props) {
   const { teamId, branding } = useTeam();
   const [step, setStep] = useState<Step>("info");
+  const [linkType, setLinkType] = useState<LinkType>("personal");
+
+  // Team slug (fetched on mount for general link)
+  const [teamSlug, setTeamSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/teams/by-id?id=${teamId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.slug) setTeamSlug(d.slug);
+      })
+      .catch(() => {});
+  }, [teamId]);
 
   // Step 1 fields
   const [firstName, setFirstName] = useState("");
@@ -36,6 +50,21 @@ export default function SendAssessmentModal({ onClose }: Props) {
     setSending(true);
 
     try {
+      const name = firstName.trim() || "there";
+
+      if (linkType === "general") {
+        // General link — use the team's public application URL, no candidate created
+        const url = `${window.location.origin}/apply/${teamSlug}`;
+        setAssessmentUrl(url);
+        setEmailSubject(`Apply Now — ${branding.name}`);
+        setEmailBody(
+          `Hi ${name},\n\nWe'd love to learn more about you! Please take a few minutes to complete our application:\n\nApply Now → ${url}\n\nThe link above will take you through a short application form and two assessments. It should take about 15–20 minutes.\n\nLooking forward to connecting!\n\n${branding.name}`
+        );
+        setStep("email");
+        return;
+      }
+
+      // Personal link — find or create candidate, then build per-candidate URL
       const res = await fetch("/api/candidates/find-or-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -59,7 +88,6 @@ export default function SendAssessmentModal({ onClose }: Props) {
       setAssessmentUrl(url);
 
       // Pre-fill email
-      const name = firstName.trim() || "there";
       setEmailSubject(`Complete Your Assessment — ${branding.name}`);
       setEmailBody(
         `Hi ${name},\n\nWe'd love to learn more about you! Please take a few minutes to complete our assessment:\n\nComplete Assessment → ${url}\n\nThe link above will take you through a short application form and two assessments. It should take about 15–20 minutes.\n\nLooking forward to connecting!\n\n${branding.name}`
@@ -79,22 +107,26 @@ export default function SendAssessmentModal({ onClose }: Props) {
 
     try {
       // Build HTML body with embedded link
+      const ctaLabel = linkType === "general" ? "Apply Now" : "Complete Assessment";
+      const ctaPattern = `${ctaLabel} → ${assessmentUrl}`;
       const htmlBody = emailBody
         .replace(/\n/g, "<br>")
         .replace(
-          `Complete Assessment → ${assessmentUrl}`,
-          `<a href="${assessmentUrl}" style="display:inline-block;padding:10px 24px;background-color:${branding.primaryColor};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;margin:8px 0;">Complete Assessment →</a>`
+          ctaPattern,
+          `<a href="${assessmentUrl}" style="display:inline-block;padding:10px 24px;background-color:${branding.primaryColor};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;margin:8px 0;">${ctaLabel} →</a>`
         );
+
+      const payload: Record<string, unknown> = {
+        to: email.trim(),
+        subject: emailSubject,
+        body: htmlBody,
+      };
+      if (candidateId) payload.candidate_id = candidateId;
 
       const res = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: email.trim(),
-          subject: emailSubject,
-          body: htmlBody,
-          candidate_id: candidateId,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -148,9 +180,38 @@ export default function SendAssessmentModal({ onClose }: Props) {
         {/* ─── Step 1: Candidate Info ─────────────────────── */}
         {step === "info" && (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Link type toggle */}
+            {teamSlug && (
+              <div className="flex gap-2 p-1 bg-[#a59494]/10 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setLinkType("personal")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
+                    linkType === "personal"
+                      ? "bg-white text-[#272727] shadow-sm"
+                      : "text-[#a59494] hover:text-[#272727]"
+                  }`}
+                >
+                  Personal Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkType("general")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
+                    linkType === "general"
+                      ? "bg-white text-[#272727] shadow-sm"
+                      : "text-[#a59494] hover:text-[#272727]"
+                  }`}
+                >
+                  General Application Link
+                </button>
+              </div>
+            )}
+
             <p className="text-sm text-[#a59494] -mt-2 mb-1">
-              Enter the candidate&apos;s info. A new candidate record will be
-              created if one doesn&apos;t exist.
+              {linkType === "general"
+                ? "Send the team\u2019s public application link. Candidate record is created when they submit."
+                : "Enter the candidate\u2019s info. A new candidate record will be created if one doesn\u2019t exist."}
             </p>
 
             {error && (
@@ -166,7 +227,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
                 </label>
                 <input
                   type="text"
-                  required
+                  required={linkType === "personal"}
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   className={inputClasses}
@@ -178,7 +239,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
                 </label>
                 <input
                   type="text"
-                  required
+                  required={linkType === "personal"}
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   className={inputClasses}
@@ -204,7 +265,11 @@ export default function SendAssessmentModal({ onClose }: Props) {
               disabled={sending}
               className="w-full py-2.5 bg-brand hover:bg-brand-dark text-white font-semibold text-sm rounded-lg transition disabled:opacity-50"
             >
-              {sending ? "Creating..." : "Next — Compose Email"}
+              {sending
+                ? linkType === "general"
+                  ? "Preparing..."
+                  : "Creating..."
+                : "Next — Compose Email"}
             </button>
           </form>
         )}

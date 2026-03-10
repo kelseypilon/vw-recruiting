@@ -315,6 +315,18 @@ function TeamTab({
   const [isSavingThresholds, setIsSavingThresholds] = useState(false);
   const [thresholdStatus, setThresholdStatus] = useState("");
 
+  // Public application link state
+  const teamSettings = (team?.settings ?? {}) as Record<string, unknown>;
+  const [acceptingApplications, setAcceptingApplications] = useState(
+    teamSettings.accepting_applications !== false
+  );
+  const [isSavingAccepting, setIsSavingAccepting] = useState(false);
+  const [acceptingStatus, setAcceptingStatus] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const publicUrl = slug
+    ? `${typeof window !== "undefined" ? window.location.origin : "https://vw-recruiting.vercel.app"}/apply/${slug}`
+    : "";
+
   // Branding state
   const [brandPrimary, setBrandPrimary] = useState(team?.brand_primary_color ?? "#1c759e");
   const [brandSecondary, setBrandSecondary] = useState(team?.brand_secondary_color ?? "#272727");
@@ -345,6 +357,34 @@ function TeamTab({
       setTimeout(() => setSaveStatus(""), 2000);
     }
     setIsSaving(false);
+  }
+
+  async function handleToggleAccepting(newValue: boolean) {
+    if (!team) return;
+    setIsSavingAccepting(true);
+    setAcceptingStatus("");
+
+    const result = await saveSettings("update_team", {
+      id: team.id,
+      accepting_applications: newValue,
+    });
+
+    if (result.error) {
+      setAcceptingStatus(`Error: ${result.error}`);
+    } else {
+      setAcceptingApplications(newValue);
+      if (result.data) onTeamUpdated(result.data as Team);
+      setAcceptingStatus(newValue ? "Now accepting applications" : "Applications paused");
+      setTimeout(() => setAcceptingStatus(""), 2500);
+    }
+    setIsSavingAccepting(false);
+  }
+
+  function handleCopyPublicLink() {
+    if (!publicUrl) return;
+    navigator.clipboard.writeText(publicUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   }
 
   async function handleSaveThresholds() {
@@ -632,6 +672,77 @@ function TeamTab({
         >
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
+      </div>
+
+      {/* Public Application Link */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6">
+        <h3 className="text-sm font-semibold text-[#272727] mb-1">Public Application Link</h3>
+        <p className="text-xs text-[#a59494] mb-4">
+          Share this link so candidates can apply directly. No login required.
+        </p>
+
+        <div className="space-y-4 max-w-lg">
+          {slug ? (
+            <>
+              {/* URL display + copy */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/20 bg-[#a59494]/5 text-sm text-[#272727] font-mono truncate">
+                  {publicUrl}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyPublicLink}
+                  className="shrink-0 px-3 py-2 rounded-lg border border-[#a59494]/30 text-xs font-semibold text-[#272727] hover:bg-[#a59494]/5 transition"
+                >
+                  {linkCopied ? "Copied!" : "Copy Link"}
+                </button>
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-3 py-2 rounded-lg border border-[#a59494]/30 text-xs font-semibold text-[#272727] hover:bg-[#a59494]/5 transition"
+                >
+                  Preview
+                </a>
+              </div>
+
+              {/* Accept Applications toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-[#272727]">Accept Applications</p>
+                  <p className="text-xs text-[#a59494]">
+                    {acceptingApplications
+                      ? "Candidates can submit applications via the public link."
+                      : "The public form shows a \"not accepting\" message."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAccepting(!acceptingApplications)}
+                  disabled={isSavingAccepting}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:opacity-50 ${
+                    acceptingApplications ? "bg-brand" : "bg-[#a59494]/30"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ${
+                      acceptingApplications ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+              {acceptingStatus && (
+                <p className={`text-xs ${acceptingStatus.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+                  {acceptingStatus}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-[#a59494] italic">
+              Set a team slug above to enable the public application link.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Branding */}
