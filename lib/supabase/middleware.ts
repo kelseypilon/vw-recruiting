@@ -25,14 +25,15 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Use getClaims() instead of getUser() — validates JWT locally without
+  // a network round-trip to Supabase, which is critical in the Node.js
+  // proxy runtime (Next.js 16 proxy runs in Node, not Edge).
+  const { data, error: claimsError } = await supabase.auth.getClaims();
 
   // Public routes (login, apply, auth/, api/) are excluded from the
   // middleware matcher, so this code only runs on protected routes.
-  // No user → redirect to login.
-  if (!user) {
+  // No valid claims → redirect to login.
+  if (claimsError || !data?.claims?.sub) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

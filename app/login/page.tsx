@@ -65,8 +65,9 @@ function LoginForm() {
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    // Hard navigation ensures the browser sends fresh auth cookies to the
+    // proxy on the next request (router.push + refresh can race in Next.js 16).
+    window.location.href = "/dashboard";
   }
 
   async function handleForgotPassword(e: React.FormEvent) {
