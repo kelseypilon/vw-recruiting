@@ -117,7 +117,6 @@ export const DEFAULT_ROLE_PERMISSIONS: TeamRolePermissions = {
   "Team Lead": { ...ALL_TRUE },
   Leader: {
     ...ALL_TRUE,
-    manage_settings: false,
     manage_members: false,
     manage_templates: false,
   },
@@ -236,7 +235,7 @@ export function hasPermission(
 ): boolean {
   // If no permissions configured, use defaults
   const perms = resolveRolePermissions(rolePermissions);
-  return perms[userRole]?.[permission] ?? false;
+  return perms[userRole]?.[permission] ?? true;
 }
 
 /* ── Convenience helper functions ──────────────────────────────────── */

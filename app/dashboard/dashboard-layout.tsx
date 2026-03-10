@@ -41,8 +41,10 @@ export default function DashboardLayout({
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
 
   // Filter nav items based on user permissions and super admin flag
+  // Super admins see ALL nav items on every team
   const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (item.superAdminOnly && !isSuperAdmin) return false;
+    if (isSuperAdmin) return true;
+    if (item.superAdminOnly) return false;
     if (item.permission && !can(item.permission)) return false;
     return true;
   });

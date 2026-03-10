@@ -285,7 +285,7 @@ function EditBrandingModal({
   onClose: () => void;
 }) {
   const [mode, setMode] = useState(team.branding_mode);
-  const [brandName, setBrandName] = useState(team.brand_name || "");
+  const [brandName, setBrandName] = useState(team.brand_name || team.name || "");
   const [logoUrl, setLogoUrl] = useState(team.brand_logo_url || "");
   const [primary, setPrimary] = useState(team.brand_primary_color);
   const [secondary, setSecondary] = useState(team.brand_secondary_color);
@@ -550,6 +550,7 @@ function EditBrandingModal({
             onClick={() =>
               onSave({
                 branding_mode: mode,
+                name: brandName || null,
                 brand_name: brandName || null,
                 brand_logo_url: logoUrl || null,
                 brand_primary_color: primary,
