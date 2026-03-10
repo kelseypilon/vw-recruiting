@@ -81,6 +81,12 @@ export default function CandidateProfile({
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews" | "emails">("profile");
 
+  // Assessment response panels
+  const [showAQPanel, setShowAQPanel] = useState(false);
+  const [showDISCPanel, setShowDISCPanel] = useState(false);
+  const [showAppPanel, setShowAppPanel] = useState(false);
+  const [showCompositePopover, setShowCompositePopover] = useState(false);
+
   // Handle ?sendEmail=true from kanban Not a Fit redirect
   const searchParams = useSearchParams();
   useEffect(() => {
@@ -280,10 +286,36 @@ export default function CandidateProfile({
           <div className="lg:col-span-2 flex flex-col gap-6">
             {/* Scoring row */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <DISCCard candidate={candidate} />
-              <AQCard candidate={candidate} />
-              <CompositeCard candidate={candidate} />
+              <DISCCard candidate={candidate} onClick={() => candidate.disc_primary && setShowDISCPanel(true)} />
+              <AQCard candidate={candidate} onClick={() => candidate.aq_normalized !== null && setShowAQPanel(true)} />
+              <div className="relative">
+                <CompositeCard candidate={candidate} onClick={() => candidate.composite_score !== null && setShowCompositePopover((p) => !p)} />
+                {showCompositePopover && candidate.composite_score !== null && (
+                  <CompositePopover candidate={candidate} onClose={() => setShowCompositePopover(false)} />
+                )}
+              </div>
             </div>
+
+            {/* View Application button */}
+            {candidate.app_submitted_at && (
+              <button
+                onClick={() => setShowAppPanel(true)}
+                className="w-full flex items-center justify-between bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-5 py-3 hover:border-brand/30 transition group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-brand">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                  <span className="text-sm font-semibold text-[#272727]">View Application</span>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#a59494] group-hover:text-brand transition">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            )}
 
             {/* Interview Score */}
             {candidate.interview_score != null && (
@@ -432,6 +464,17 @@ export default function CandidateProfile({
           }}
           onCancel={() => setPendingNotAFitStage(null)}
         />
+      )}
+
+      {/* Assessment Response Panels */}
+      {showAQPanel && (
+        <AQResponsesPanel candidate={candidate} onClose={() => setShowAQPanel(false)} />
+      )}
+      {showDISCPanel && (
+        <DISCResponsesPanel candidate={candidate} onClose={() => setShowDISCPanel(false)} />
+      )}
+      {showAppPanel && (
+        <ApplicationResponsesPanel candidate={candidate} teamId={teamId} onClose={() => setShowAppPanel(false)} />
       )}
     </div>
   );
@@ -1233,7 +1276,7 @@ function ResumeCard({
 
 /* ── DISC Score Card ───────────────────────────────────────────── */
 
-function DISCCard({ candidate }: { candidate: Candidate }) {
+function DISCCard({ candidate, onClick }: { candidate: Candidate; onClick?: () => void }) {
   const scores = [
     { label: "D", value: candidate.disc_d, color: "#EF4444" },
     { label: "I", value: candidate.disc_i, color: "#F59E0B" },
@@ -1246,9 +1289,13 @@ function DISCCard({ candidate }: { candidate: Candidate }) {
   const discTag = candidate.disc_primary
     ? `${candidate.disc_primary}${candidate.disc_secondary ? "/" + candidate.disc_secondary : ""}`
     : null;
+  const isClickable = !!candidate.disc_primary;
 
   return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
+    <div
+      className={`bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5 ${isClickable ? "cursor-pointer hover:border-brand/30 transition" : ""}`}
+      onClick={isClickable ? onClick : undefined}
+    >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-[#272727]">DISC Profile</h3>
         {discTag && (
@@ -1297,7 +1344,7 @@ function DISCCard({ candidate }: { candidate: Candidate }) {
 
 /* ── AQ Score Card ─────────────────────────────────────────────── */
 
-function AQCard({ candidate }: { candidate: Candidate }) {
+function AQCard({ candidate, onClick }: { candidate: Candidate; onClick?: () => void }) {
   const tierColors: Record<string, { bg: string; text: string }> = {
     "Very High": { bg: "bg-green-100", text: "text-green-800" },
     High: { bg: "bg-blue-100", text: "text-blue-800" },
@@ -1308,6 +1355,7 @@ function AQCard({ candidate }: { candidate: Candidate }) {
   const tier = candidate.aq_tier ?? "Unknown";
   const colors = tierColors[tier] ?? { bg: "bg-gray-100", text: "text-gray-600" };
   const hasScore = candidate.aq_normalized !== null;
+  const isClickable = hasScore;
 
   const coreScores = [
     { label: "C", value: candidate.aq_score_c, color: "bg-blue-500" },
@@ -1317,7 +1365,10 @@ function AQCard({ candidate }: { candidate: Candidate }) {
   ];
 
   return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
+    <div
+      className={`bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5 ${isClickable ? "cursor-pointer hover:border-brand/30 transition" : ""}`}
+      onClick={isClickable ? onClick : undefined}
+    >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-[#272727]">AQ Score</h3>
         {candidate.aq_tier && (
@@ -1385,7 +1436,7 @@ function AQCard({ candidate }: { candidate: Candidate }) {
 
 /* ── Composite Score Card ──────────────────────────────────────── */
 
-function CompositeCard({ candidate }: { candidate: Candidate }) {
+function CompositeCard({ candidate, onClick }: { candidate: Candidate; onClick?: () => void }) {
   const verdictColors: Record<string, { bg: string; text: string; ring: string }> = {
     "Strong Hire": { bg: "bg-green-100", text: "text-green-800", ring: "ring-green-300" },
     Hire: { bg: "bg-blue-100", text: "text-blue-800", ring: "ring-blue-300" },
@@ -1398,9 +1449,13 @@ function CompositeCard({ candidate }: { candidate: Candidate }) {
   const verdict = candidate.composite_verdict ?? "Pending";
   const colors = verdictColors[verdict] ?? { bg: "bg-gray-100", text: "text-gray-600", ring: "ring-gray-200" };
   const hasScore = candidate.composite_score !== null;
+  const isClickable = hasScore;
 
   return (
-    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
+    <div
+      className={`bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5 ${isClickable ? "cursor-pointer hover:border-brand/30 transition" : ""}`}
+      onClick={isClickable ? onClick : undefined}
+    >
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Composite Score</h3>
 
       {hasScore ? (
@@ -3541,6 +3596,616 @@ function EmailsTab({ candidateId }: { candidateId: string }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SLIDE-OUT PANEL SHELL
+   ══════════════════════════════════════════════════════════════════ */
+
+function SlideOutPanel({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      {/* Panel */}
+      <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#a59494]/10 shrink-0">
+          <h2 className="text-base font-bold text-[#272727] pr-4">{title}</h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-[#f5f0f0] transition text-[#a59494] hover:text-[#272727]"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   AQ QUESTIONS (duplicated from assessments page for display)
+   ══════════════════════════════════════════════════════════════════ */
+const AQ_QUESTIONS: { id: string; text: string; category: string }[] = [
+  { id: "q1", text: "I follow through on my commitments even when it becomes inconvenient.", category: "C" },
+  { id: "q2", text: "I set clear goals and consistently work toward them.", category: "C" },
+  { id: "q3", text: "I show up fully even when I don't feel motivated.", category: "C" },
+  { id: "q4", text: "I keep my word to others, even in small matters.", category: "C" },
+  { id: "q5", text: "I take my professional development seriously and invest time in it.", category: "C" },
+  { id: "q6", text: "When something goes wrong, I look at what I could have done differently.", category: "O" },
+  { id: "q7", text: "I take full responsibility for my results without blaming circumstances.", category: "O" },
+  { id: "q8", text: "I proactively solve problems rather than waiting for someone to fix them.", category: "O" },
+  { id: "q9", text: "I own my mistakes and work quickly to correct them.", category: "O" },
+  { id: "q10", text: "I hold myself to a higher standard than what's required of me.", category: "O" },
+  { id: "q11", text: "I am willing to step outside my comfort zone to achieve my goals.", category: "R" },
+  { id: "q12", text: "I actively seek out new challenges and opportunities.", category: "R" },
+  { id: "q13", text: "I push myself beyond what feels safe or familiar.", category: "R" },
+  { id: "q14", text: "I set ambitious targets even when success isn't guaranteed.", category: "R" },
+  { id: "q15", text: "I take calculated risks when the potential upside is significant.", category: "R" },
+  { id: "q16", text: "I bounce back quickly after setbacks or failures.", category: "E" },
+  { id: "q17", text: "I stay focused on long-term goals when facing short-term difficulties.", category: "E" },
+  { id: "q18", text: "I maintain my effort and attitude even when results are slow.", category: "E" },
+  { id: "q19", text: "I treat rejection or failure as feedback rather than a reason to quit.", category: "E" },
+  { id: "q20", text: "I have a track record of persisting through difficult periods.", category: "E" },
+];
+
+const AQ_CATEGORY_LABELS: Record<string, string> = { C: "Commitment", O: "Ownership", R: "Reach", E: "Endurance" };
+const AQ_ANSWER_LABELS: Record<number, string> = { 1: "Strongly Disagree", 2: "Disagree", 3: "Neutral", 4: "Agree", 5: "Strongly Agree" };
+
+/* ══════════════════════════════════════════════════════════════════
+   AQ RESPONSES PANEL (FIX 1)
+   ══════════════════════════════════════════════════════════════════ */
+
+function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+  const [responses, setResponses] = useState<Record<string, number> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("aq_submissions")
+      .select("responses")
+      .eq("candidate_id", candidate.id)
+      .order("submitted_at", { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        setResponses((data?.responses as Record<string, number>) ?? null);
+        setLoading(false);
+      });
+  }, [candidate.id]);
+
+  const tier = candidate.aq_tier ?? "Unknown";
+  const score = candidate.aq_normalized ?? 0;
+
+  // Group questions by category
+  const grouped = ["C", "O", "R", "E"].map((cat) => ({
+    category: cat,
+    label: AQ_CATEGORY_LABELS[cat],
+    questions: AQ_QUESTIONS.filter((q) => q.category === cat),
+  }));
+
+  return (
+    <SlideOutPanel title={`AQ Assessment — ${candidate.first_name} ${candidate.last_name}`} onClose={onClose}>
+      {/* Score header */}
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#a59494]/10">
+        <div className="w-12 h-12 rounded-full bg-brand/10 flex items-center justify-center">
+          <span className="text-lg font-bold text-brand">{Math.round(score)}</span>
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[#272727]">Score: {Math.round(score)} / 100</p>
+          <p className="text-xs text-[#a59494]">Tier: {tier}</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full" />
+        </div>
+      ) : !responses ? (
+        <p className="text-sm text-[#a59494] text-center py-8">No response data available.</p>
+      ) : (
+        <div className="space-y-6">
+          {grouped.map((group) => (
+            <div key={group.category}>
+              <h4 className="text-xs font-bold text-[#a59494] uppercase tracking-wider mb-3">
+                {group.label} ({group.category})
+              </h4>
+              <div className="space-y-3">
+                {group.questions.map((q, idx) => {
+                  const answer = responses[q.id] as number | undefined;
+                  return (
+                    <div key={q.id} className="bg-[#f9f7f7] rounded-lg p-3">
+                      <p className="text-sm text-[#272727] mb-2">
+                        <span className="text-xs font-semibold text-[#a59494] mr-1.5">{idx + 1}.</span>
+                        {q.text}
+                      </p>
+                      {answer !== undefined ? (
+                        <div className="flex items-center gap-1.5">
+                          {[1, 2, 3, 4, 5].map((val) => (
+                            <span
+                              key={val}
+                              className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border ${
+                                val === answer
+                                  ? "bg-brand text-white border-brand"
+                                  : "bg-white text-[#a59494] border-[#a59494]/20"
+                              }`}
+                            >
+                              {val}
+                            </span>
+                          ))}
+                          <span className="text-xs text-[#a59494] ml-2">
+                            {AQ_ANSWER_LABELS[answer] ?? answer}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[#a59494]">Not answered</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="mt-6 pt-4 border-t border-[#a59494]/10 flex items-center justify-between">
+        <span className="text-sm font-semibold text-[#272727]">Overall AQ Score</span>
+        <span className="text-sm font-bold text-brand">{Math.round(score)} — {tier}</span>
+      </div>
+    </SlideOutPanel>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DISC WORD GROUPS (duplicated from assessments page for display)
+   ══════════════════════════════════════════════════════════════════ */
+const DISC_GROUPS: { id: number; words: { label: string; letter: string }[] }[] = [
+  { id: 1, words: [{ label: "Decisive", letter: "D" }, { label: "Enthusiastic", letter: "I" }, { label: "Harmonious", letter: "S" }, { label: "Accurate", letter: "C" }] },
+  { id: 2, words: [{ label: "Pioneering", letter: "D" }, { label: "Sociable", letter: "I" }, { label: "Patient", letter: "S" }, { label: "Precise", letter: "C" }] },
+  { id: 3, words: [{ label: "Competitive", letter: "D" }, { label: "Talkative", letter: "I" }, { label: "Gentle", letter: "S" }, { label: "Systematic", letter: "C" }] },
+  { id: 4, words: [{ label: "Direct", letter: "D" }, { label: "Influential", letter: "I" }, { label: "Stable", letter: "S" }, { label: "Analytical", letter: "C" }] },
+  { id: 5, words: [{ label: "Bold", letter: "D" }, { label: "Optimistic", letter: "I" }, { label: "Supportive", letter: "S" }, { label: "Careful", letter: "C" }] },
+  { id: 6, words: [{ label: "Results-driven", letter: "D" }, { label: "Expressive", letter: "I" }, { label: "Consistent", letter: "S" }, { label: "Thorough", letter: "C" }] },
+  { id: 7, words: [{ label: "Assertive", letter: "D" }, { label: "Inspiring", letter: "I" }, { label: "Cooperative", letter: "S" }, { label: "Detail-oriented", letter: "C" }] },
+  { id: 8, words: [{ label: "Daring", letter: "D" }, { label: "Persuasive", letter: "I" }, { label: "Loyal", letter: "S" }, { label: "Cautious", letter: "C" }] },
+  { id: 9, words: [{ label: "Driven", letter: "D" }, { label: "Outgoing", letter: "I" }, { label: "Dependable", letter: "S" }, { label: "Methodical", letter: "C" }] },
+  { id: 10, words: [{ label: "Demanding", letter: "D" }, { label: "Lively", letter: "I" }, { label: "Relaxed", letter: "S" }, { label: "Disciplined", letter: "C" }] },
+  { id: 11, words: [{ label: "Strong-willed", letter: "D" }, { label: "Gregarious", letter: "I" }, { label: "Steady", letter: "S" }, { label: "Conscientious", letter: "C" }] },
+  { id: 12, words: [{ label: "Independent", letter: "D" }, { label: "Animated", letter: "I" }, { label: "Team-oriented", letter: "S" }, { label: "Perfectionistic", letter: "C" }] },
+  { id: 13, words: [{ label: "Forceful", letter: "D" }, { label: "Warm", letter: "I" }, { label: "Reserved", letter: "S" }, { label: "Logical", letter: "C" }] },
+  { id: 14, words: [{ label: "Self-confident", letter: "D" }, { label: "Trusting", letter: "I" }, { label: "Predictable", letter: "S" }, { label: "Factual", letter: "C" }] },
+  { id: 15, words: [{ label: "Adventurous", letter: "D" }, { label: "Cheerful", letter: "I" }, { label: "Accommodating", letter: "S" }, { label: "Restrained", letter: "C" }] },
+  { id: 16, words: [{ label: "Determined", letter: "D" }, { label: "Convincing", letter: "I" }, { label: "Easy-going", letter: "S" }, { label: "Orderly", letter: "C" }] },
+  { id: 17, words: [{ label: "Tough", letter: "D" }, { label: "Playful", letter: "I" }, { label: "Lenient", letter: "S" }, { label: "Particular", letter: "C" }] },
+  { id: 18, words: [{ label: "Vigorous", letter: "D" }, { label: "Charming", letter: "I" }, { label: "Kind", letter: "S" }, { label: "Compliant", letter: "C" }] },
+  { id: 19, words: [{ label: "Dominant", letter: "D" }, { label: "Communicative", letter: "I" }, { label: "Tolerant", letter: "S" }, { label: "Conventional", letter: "C" }] },
+  { id: 20, words: [{ label: "Persistent", letter: "D" }, { label: "Fun-loving", letter: "I" }, { label: "Sympathetic", letter: "S" }, { label: "Rule-following", letter: "C" }] },
+  { id: 21, words: [{ label: "Risk-taking", letter: "D" }, { label: "Motivating", letter: "I" }, { label: "Modest", letter: "S" }, { label: "Deliberate", letter: "C" }] },
+  { id: 22, words: [{ label: "Resolute", letter: "D" }, { label: "Spontaneous", letter: "I" }, { label: "Sincere", letter: "S" }, { label: "Structured", letter: "C" }] },
+  { id: 23, words: [{ label: "Inquisitive", letter: "D" }, { label: "Charismatic", letter: "I" }, { label: "Attentive", letter: "S" }, { label: "Composed", letter: "C" }] },
+  { id: 24, words: [{ label: "Action-oriented", letter: "D" }, { label: "Positive", letter: "I" }, { label: "Thoughtful", letter: "S" }, { label: "Exacting", letter: "C" }] },
+  { id: 25, words: [{ label: "Fearless", letter: "D" }, { label: "Popular", letter: "I" }, { label: "Agreeable", letter: "S" }, { label: "Meticulous", letter: "C" }] },
+  { id: 26, words: [{ label: "Ambitious", letter: "D" }, { label: "Sociable", letter: "I" }, { label: "Reliable", letter: "S" }, { label: "Composed", letter: "C" }] },
+  { id: 27, words: [{ label: "Resolute", letter: "D" }, { label: "Enthusiastic", letter: "I" }, { label: "Even-tempered", letter: "S" }, { label: "Principled", letter: "C" }] },
+  { id: 28, words: [{ label: "Forthright", letter: "D" }, { label: "Engaging", letter: "I" }, { label: "Considerate", letter: "S" }, { label: "Rigorous", letter: "C" }] },
+];
+
+const DISC_TYPE_DESCRIPTIONS: Record<string, string> = {
+  "D": "Direct and decisive, thrives on challenge and control",
+  "I": "Enthusiastic and optimistic, excels at influencing and inspiring others",
+  "S": "Patient and reliable, values stability and supportive teamwork",
+  "C": "Analytical and precise, focused on quality and accuracy",
+  "D/I": "Driven and influential, results-focused with strong people skills",
+  "D/S": "Determined yet steady, balances ambition with patience",
+  "D/C": "Demanding and analytical, combines drive with high standards",
+  "I/D": "Charismatic and assertive, leads with energy and confidence",
+  "I/S": "Warm and supportive, builds relationships through genuine care",
+  "I/C": "Expressive yet detail-oriented, blends creativity with precision",
+  "S/D": "Steady but assertive when needed, a calm and resilient performer",
+  "S/I": "Friendly and dependable, a natural team player and collaborator",
+  "S/C": "Reliable and methodical, values consistency and thoroughness",
+  "C/D": "Strategic and results-oriented, combines analysis with action",
+  "C/I": "Thoughtful and persuasive, brings data and warmth together",
+  "C/S": "Careful and cooperative, ensures quality through steady effort",
+};
+
+const DISC_LETTER_COLORS: Record<string, string> = {
+  D: "bg-red-500 text-white",
+  I: "bg-amber-500 text-white",
+  S: "bg-green-500 text-white",
+  C: "bg-blue-500 text-white",
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   DISC RESPONSES PANEL (FIX 2)
+   ══════════════════════════════════════════════════════════════════ */
+
+function DISCResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+  const [rawResponses, setRawResponses] = useState<Record<string, string> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("disc_submissions")
+      .select("raw_responses")
+      .eq("candidate_id", candidate.id)
+      .order("submitted_at", { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        setRawResponses((data?.raw_responses as Record<string, string>) ?? null);
+        setLoading(false);
+      });
+  }, [candidate.id]);
+
+  const discTag = candidate.disc_primary
+    ? `${candidate.disc_primary}${candidate.disc_secondary ? "/" + candidate.disc_secondary : ""}`
+    : "";
+  const description = DISC_TYPE_DESCRIPTIONS[discTag] ?? "";
+
+  return (
+    <SlideOutPanel title={`DISC Profile — ${candidate.first_name} ${candidate.last_name}`} onClose={onClose}>
+      {/* Header badge */}
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#a59494]/10">
+        <div className="flex gap-1">
+          {discTag.split("/").map((l) => (
+            <span key={l} className={`w-9 h-9 rounded-full ${DISC_LETTER_COLORS[l] ?? "bg-gray-400 text-white"} flex items-center justify-center text-sm font-bold`}>
+              {l}
+            </span>
+          ))}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[#272727]">Type: {discTag}</p>
+          {description && <p className="text-xs text-[#a59494]">{description}</p>}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full" />
+        </div>
+      ) : !rawResponses ? (
+        <p className="text-sm text-[#a59494] text-center py-8">No response data available.</p>
+      ) : (
+        <div className="space-y-2">
+          {/* Table header */}
+          <div className="grid grid-cols-[3rem_1fr_1fr_1fr] gap-2 px-3 py-2 text-xs font-bold text-[#a59494] uppercase tracking-wider">
+            <span>Group</span>
+            <span>Words</span>
+            <span className="text-center">Most</span>
+            <span className="text-center">Least</span>
+          </div>
+
+          {DISC_GROUPS.map((group) => {
+            const mostLetter = rawResponses[`g${group.id}`];
+            const leastLetter = rawResponses[`g${group.id}_least`];
+            const mostWord = group.words.find((w) => w.letter === mostLetter);
+            const leastWord = group.words.find((w) => w.letter === leastLetter);
+
+            return (
+              <div key={group.id} className="grid grid-cols-[3rem_1fr_1fr_1fr] gap-2 px-3 py-2.5 rounded-lg bg-[#f9f7f7] items-center">
+                <span className="text-xs font-semibold text-[#a59494]">{group.id}</span>
+                <div className="flex flex-wrap gap-1">
+                  {group.words.map((w) => {
+                    const isMost = w.letter === mostLetter;
+                    const isLeast = w.letter === leastLetter;
+                    return (
+                      <span
+                        key={w.label}
+                        className={`text-[11px] px-1.5 py-0.5 rounded ${
+                          isMost
+                            ? "bg-green-100 text-green-700 font-semibold"
+                            : isLeast
+                            ? "bg-red-50 text-red-500 font-semibold"
+                            : "text-[#a59494]"
+                        }`}
+                      >
+                        {w.label}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="text-center">
+                  {mostWord ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
+                      <span className={`w-4 h-4 rounded-full ${DISC_LETTER_COLORS[mostLetter] ?? ""} text-[9px] font-bold flex items-center justify-center`}>
+                        {mostLetter}
+                      </span>
+                      {mostWord.label}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[#a59494]">—</span>
+                  )}
+                </div>
+                <div className="text-center">
+                  {leastWord ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-red-500">
+                      <span className="w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold flex items-center justify-center">
+                        {leastLetter}
+                      </span>
+                      {leastWord.label}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[#a59494]">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="mt-6 pt-4 border-t border-[#a59494]/10">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-semibold text-[#272727]">DISC Type</span>
+          <span className="text-sm font-bold text-brand">{discTag}</span>
+        </div>
+        {description && <p className="text-xs text-[#a59494]">{discTag} — {description}</p>}
+      </div>
+    </SlideOutPanel>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   APPLICATION RESPONSES PANEL (FIX 3)
+   ══════════════════════════════════════════════════════════════════ */
+
+function ApplicationResponsesPanel({
+  candidate,
+  teamId,
+  onClose,
+}: {
+  candidate: Candidate;
+  teamId: string;
+  onClose: () => void;
+}) {
+  const [formFields, setFormFields] = useState<{ id: string; label: string; type: string; options?: string[]; order?: number }[]>([]);
+  const [submission, setSubmission] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+
+      // Fetch form config
+      const configRes = await fetch(`/api/assessments/form-config?team_id=${teamId}`);
+      const configData = await configRes.json();
+      const fields = (configData.fields ?? []) as { id: string; label: string; type: string; options?: string[]; order?: number }[];
+      setFormFields(fields);
+
+      // Fetch submission
+      const { data } = await supabase
+        .from("application_submissions")
+        .select("*")
+        .eq("candidate_id", candidate.id)
+        .order("submitted_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      // Also get custom fields from candidate
+      const customFields = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+      setSubmission(data ? { ...(data as Record<string, unknown>), ...customFields } : null);
+      setLoading(false);
+    }
+    load();
+  }, [candidate.id, teamId, candidate.custom_fields]);
+
+  // Map field ids to their stored column names
+  function getFieldValue(fieldId: string): unknown {
+    if (!submission) return undefined;
+    // Direct match on submission
+    if (fieldId in submission) return submission[fieldId];
+    // Some field mappings
+    const mappings: Record<string, string> = {
+      currently_licensed: "has_license",
+    };
+    if (mappings[fieldId] && mappings[fieldId] in submission) return submission[mappings[fieldId]];
+    // Fallback to candidate record
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    if (fieldId in candidateRecord) return candidateRecord[fieldId];
+    return undefined;
+  }
+
+  function renderValue(value: unknown, type: string): React.ReactNode {
+    if (value === null || value === undefined || value === "") {
+      return <span className="text-sm text-[#a59494] italic">Not answered</span>;
+    }
+    if (type === "boolean") {
+      return <span className="text-sm text-[#272727]">{value === true || value === "true" ? "Yes" : "No"}</span>;
+    }
+    if (type === "interested_in") {
+      try {
+        const items = typeof value === "string" ? JSON.parse(value) : value;
+        if (Array.isArray(items)) {
+          return (
+            <div className="flex flex-wrap gap-1.5">
+              {items.map((item: string, i: number) => (
+                <span key={i} className="text-xs font-medium px-2 py-0.5 rounded-full bg-brand/10 text-brand">{item}</span>
+              ))}
+            </div>
+          );
+        }
+      } catch { /* fallthrough */ }
+    }
+    return <span className="text-sm text-[#272727] whitespace-pre-wrap">{String(value)}</span>;
+  }
+
+  // Parse role_applied
+  let roleDisplay = candidate.role_applied ?? "";
+  try {
+    const parsed = JSON.parse(roleDisplay);
+    if (Array.isArray(parsed)) roleDisplay = parsed.join(", ");
+  } catch { /* keep original */ }
+
+  return (
+    <SlideOutPanel title={`Application — ${candidate.first_name} ${candidate.last_name}`} onClose={onClose}>
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full" />
+        </div>
+      ) : (
+        <>
+          {/* Candidate info header */}
+          <div className="bg-[#f9f7f7] rounded-lg p-4 mb-6 space-y-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <div>
+                <p className="text-xs text-[#a59494]">Name</p>
+                <p className="text-sm font-medium text-[#272727]">{candidate.first_name} {candidate.last_name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#a59494]">Email</p>
+                <p className="text-sm text-[#272727]">{candidate.email || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#a59494]">Phone</p>
+                <p className="text-sm text-[#272727]">{candidate.phone || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#a59494]">Role Applied</p>
+                <p className="text-sm text-[#272727]">{roleDisplay || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#a59494]">Licensed</p>
+                <p className="text-sm text-[#272727]">{candidate.is_licensed === null ? "—" : candidate.is_licensed ? "Yes" : "No"}</p>
+              </div>
+              {candidate.app_submitted_at && (
+                <div>
+                  <p className="text-xs text-[#a59494]">Submitted</p>
+                  <p className="text-sm text-[#272727]">
+                    {new Date(candidate.app_submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Form questions & answers */}
+          {!submission ? (
+            <p className="text-sm text-[#a59494] text-center py-8">No application submission found.</p>
+          ) : (
+            <div className="space-y-4">
+              {formFields
+                .filter((f) => !["first_name", "last_name", "email", "phone"].includes(f.id))
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((field) => {
+                  const value = getFieldValue(field.id);
+                  return (
+                    <div key={field.id} className="bg-[#f9f7f7] rounded-lg p-3">
+                      <p className="text-xs font-semibold text-[#a59494] mb-1">{field.label}</p>
+                      {renderValue(value, field.type)}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </>
+      )}
+    </SlideOutPanel>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   COMPOSITE SCORE POPOVER (FIX 4)
+   ══════════════════════════════════════════════════════════════════ */
+
+function CompositePopover({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+  // Calculate individual normalized scores matching lib/scoring.ts
+  const aqScore = candidate.aq_normalized;
+  const discScores = [candidate.disc_d, candidate.disc_i, candidate.disc_s, candidate.disc_c];
+  const hasDisc = discScores.some((s) => s !== null && s !== undefined);
+  const discMax = hasDisc
+    ? Math.max(...discScores.filter((s): s is number => s !== null && s !== undefined))
+    : null;
+  const discNormalized = discMax !== null ? Math.min((discMax / 28) * 100, 100) : null;
+  const interviewScore = candidate.interview_score;
+  const interviewNormalized = interviewScore !== null && interviewScore !== undefined
+    ? Math.min((interviewScore / 10) * 100, 100)
+    : null;
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClick() {
+      onClose();
+    }
+    // Slight delay to avoid the initial click
+    const timer = setTimeout(() => {
+      document.addEventListener("click", handleClick);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("click", handleClick);
+    };
+  }, [onClose]);
+
+  const rows = [
+    { label: "AQ Score", value: aqScore !== null && aqScore !== undefined ? `${Math.round(aqScore)}` : "--", weight: "30%" },
+    { label: "DISC Score", value: discNormalized !== null ? `${Math.round(discNormalized)}` : "--", weight: "20%" },
+    { label: "Interview Score", value: interviewNormalized !== null ? `${Math.round(interviewNormalized)}` : "--", weight: "50%" },
+  ];
+
+  const hasInterview = interviewScore !== null && interviewScore !== undefined;
+
+  return (
+    <div
+      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 bg-white rounded-xl shadow-xl border border-[#a59494]/15 p-4 w-64"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Arrow */}
+      <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-t border-l border-[#a59494]/15 rotate-45" />
+
+      <h4 className="text-xs font-bold text-[#a59494] uppercase tracking-wider mb-3">Score Breakdown</h4>
+
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between">
+            <span className="text-sm text-[#272727]">{row.label}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-[#272727]">{row.value}</span>
+              <span className="text-[10px] text-[#a59494]">({row.weight})</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-[#a59494]/10 flex items-center justify-between">
+        <span className="text-sm font-bold text-[#272727]">Composite</span>
+        <span className="text-sm font-bold text-brand">{candidate.composite_score?.toFixed(1) ?? "--"} / 100</span>
+      </div>
+
+      {!hasInterview && (
+        <p className="text-[10px] text-[#a59494] mt-2 leading-tight">
+          Composite will update once interview scorecard is submitted.
+        </p>
       )}
     </div>
   );

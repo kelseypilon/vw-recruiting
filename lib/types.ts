@@ -133,6 +133,7 @@ export interface Candidate {
   is_isa: boolean;
   stage_entered_at: string | null;
   created_at: string;
+  custom_fields: Record<string, unknown> | null;
 }
 
 export interface CandidateCard extends Candidate {
