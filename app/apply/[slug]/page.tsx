@@ -69,13 +69,10 @@ const DISC_GROUPS: { id: number; words: { label: string; letter: string }[] }[] 
    ══════════════════════════════════════════════════════════════ */
 type Tab = "application" | "disc" | "aq";
 
-interface CandidateInfo {
+interface TeamInfo {
   id: string;
-  team_id: string;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: string | null;
+  name: string;
+  slug: string;
 }
 
 interface CompletionStatus {
@@ -85,18 +82,19 @@ interface CompletionStatus {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Main Page Component
+   Main Page Component — Generic Public Application
    ══════════════════════════════════════════════════════════════ */
-export default function AssessmentsPage({
+export default function PublicApplyPage({
   params,
 }: {
-  params: Promise<{ candidateId: string }>;
+  params: Promise<{ slug: string }>;
 }) {
-  const { candidateId } = use(params);
+  const { slug: teamSlug } = use(params);
 
-  const [candidate, setCandidate] = useState<CandidateInfo | null>(null);
+  const [team, setTeam] = useState<TeamInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notAccepting, setNotAccepting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("application");
   const [completed, setCompleted] = useState<CompletionStatus>({
     application: false,
@@ -105,51 +103,33 @@ export default function AssessmentsPage({
   });
   const [branding, setBranding] = useState<TeamBranding>(resolveTeamBranding(null));
 
+  // After application submit, we get the candidateId back
+  const [candidateId, setCandidateId] = useState<string | null>(null);
+  const [candidateFirstName, setCandidateFirstName] = useState("");
+
   const completedCount = [completed.application, completed.aq, completed.disc].filter(Boolean).length;
   const allDone = completedCount === 3;
 
-  // Validate candidate and check existing submissions
+  // Load team by slug
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
       try {
-        // Validate candidate via a lightweight check
-        const res = await fetch(`/api/assessments/application?candidate_id=${candidateId}`);
+        const res = await fetch(`/api/teams/by-slug?slug=${encodeURIComponent(teamSlug)}`);
         if (!res.ok) {
-          setError("Invalid link — candidate not found.");
+          setError("This application link is invalid or the team was not found.");
           setLoading(false);
           return;
         }
 
-        // Fetch candidate info + team branding
-        const candidateRes = await fetch(`/api/assessments/candidate?candidate_id=${candidateId}`);
-        if (candidateRes.ok) {
-          const cData = await candidateRes.json();
-          if (!cancelled) {
-            setCandidate(cData.data);
-            if (cData.team) setBranding(resolveTeamBranding(cData.team));
-          }
-        }
-
-        // Check all 3 submission statuses in parallel
-        const [appRes, aqRes, discRes] = await Promise.all([
-          fetch(`/api/assessments/application?candidate_id=${candidateId}`).then((r) => r.json()),
-          fetch(`/api/assessments/aq?candidate_id=${candidateId}`).then((r) => r.json()),
-          fetch(`/api/assessments/disc?candidate_id=${candidateId}`).then((r) => r.json()),
-        ]);
-
+        const data = await res.json();
         if (!cancelled) {
-          const status: CompletionStatus = {
-            application: !!appRes.submitted,
-            aq: !!aqRes.submitted,
-            disc: !!discRes.submitted,
-          };
-          setCompleted(status);
-
-          // Auto-select first incomplete tab
-          if (status.application && !status.disc) setActiveTab("disc");
-          else if (status.application && status.disc && !status.aq) setActiveTab("aq");
+          setTeam({ id: data.team.id, name: data.team.name, slug: data.team.slug });
+          setBranding(resolveTeamBranding(data.team));
+          if (!data.accepting_applications) {
+            setNotAccepting(true);
+          }
         }
       } catch {
         if (!cancelled) setError("Something went wrong. Please try again.");
@@ -160,7 +140,7 @@ export default function AssessmentsPage({
 
     init();
     return () => { cancelled = true; };
-  }, [candidateId]);
+  }, [teamSlug]);
 
   const markComplete = useCallback((tab: Tab) => {
     setCompleted((prev) => {
@@ -173,8 +153,7 @@ export default function AssessmentsPage({
     });
   }, []);
 
-  /* ── Loading / Error / Invalid states ── */
-  /* ── Brand CSS vars (injected for loading/error/done screens too) ── */
+  /* ── Brand CSS vars ── */
   const brandStyle = `
     :root {
       --brand-primary: ${branding.primaryColor};
@@ -198,9 +177,32 @@ export default function AssessmentsPage({
       <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
-          <div className="text-4xl mb-4">⚠️</div>
+          <div className="text-4xl mb-4">&#x26A0;&#xFE0F;</div>
           <h1 className="text-xl font-bold text-[#272727] mb-2">Invalid Link</h1>
           <p className="text-[#a59494]">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (notAccepting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+        <style>{brandStyle}</style>
+        <title>{branding.name} — Application</title>
+        <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.name} className="h-12 w-auto max-w-[180px] object-contain mx-auto mb-6" />
+          ) : (
+            <div className="w-14 h-14 bg-[var(--brand-primary)] rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="text-white font-bold text-lg">{branding.initials}</span>
+            </div>
+          )}
+          <h1 className="text-xl font-bold text-[#272727] mb-3">Not Accepting Applications</h1>
+          <p className="text-[#a59494] leading-relaxed">
+            We&apos;re not currently accepting applications. Please check back later.
+          </p>
+          <p className="text-xs text-[#a59494]/60 mt-6">{getBrandingFooter(branding)}</p>
         </div>
       </div>
     );
@@ -211,13 +213,16 @@ export default function AssessmentsPage({
     return (
       <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
+        <title>{branding.name} — Application Complete</title>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg text-center">
           <div className="w-20 h-20 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-[#272727] mb-3">All Done!</h1>
+          <h1 className="text-2xl font-bold text-[#272727] mb-3">
+            All Done{candidateFirstName ? `, ${candidateFirstName}` : ""}!
+          </h1>
           <p className="text-[#a59494] text-lg leading-relaxed">
             We&apos;ve received everything — we&apos;ll be in touch soon!
           </p>
@@ -237,9 +242,7 @@ export default function AssessmentsPage({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)]">
-      {/* Dynamic brand CSS variables */}
       <style>{brandStyle}</style>
-      {/* Dynamic page title */}
       <title>{branding.name} — Application</title>
 
       {/* Header */}
@@ -255,9 +258,7 @@ export default function AssessmentsPage({
             )}
             <div>
               <h1 className="text-white font-bold text-lg tracking-tight">{branding.name}</h1>
-              <p className="text-white/50 text-xs">
-                {candidate ? `Hi ${candidate.first_name}! Complete your assessment below.` : "Candidate Assessment"}
-              </p>
+              <p className="text-white/50 text-xs">Complete your application and assessments below.</p>
             </div>
           </div>
           <div className="text-white/50 text-sm">
@@ -281,51 +282,60 @@ export default function AssessmentsPage({
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
-                activeTab === tab.key
-                  ? "bg-white text-[#272727] shadow-lg"
-                  : "bg-white/10 text-white/70 hover:bg-white/20"
-              }`}
-            >
-              {completed[tab.key] ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <span className="w-4 h-4 rounded-full border-2 border-current opacity-40" />
-              )}
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            // Only allow clicking completed tabs or the next one to do
+            const isLocked = tab.key !== "application" && !completed.application;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => !isLocked && setActiveTab(tab.key)}
+                disabled={isLocked}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  activeTab === tab.key
+                    ? "bg-white text-[#272727] shadow-lg"
+                    : isLocked
+                      ? "bg-white/5 text-white/30 cursor-not-allowed"
+                      : "bg-white/10 text-white/70 hover:bg-white/20"
+                }`}
+              >
+                {completed[tab.key] ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <span className="w-4 h-4 rounded-full border-2 border-current opacity-40" />
+                )}
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Tab Content */}
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {activeTab === "application" && (
+          {activeTab === "application" && team && (
             <ApplicationForm
-              candidateId={candidateId}
-              teamId={candidate?.team_id ?? ""}
-              candidate={candidate}
+              teamId={team.id}
               alreadyDone={completed.application}
-              onComplete={() => markComplete("application")}
+              onComplete={(cId: string, firstName: string) => {
+                setCandidateId(cId);
+                setCandidateFirstName(firstName);
+                markComplete("application");
+              }}
             />
           )}
-          {activeTab === "disc" && (
+          {activeTab === "disc" && candidateId && team && (
             <DISCForm
               candidateId={candidateId}
-              teamId={candidate?.team_id ?? ""}
+              teamId={team.id}
               alreadyDone={completed.disc}
               onComplete={() => markComplete("disc")}
             />
           )}
-          {activeTab === "aq" && (
+          {activeTab === "aq" && candidateId && team && (
             <AQForm
               candidateId={candidateId}
-              teamId={candidate?.team_id ?? ""}
+              teamId={team.id}
               alreadyDone={completed.aq}
               onComplete={() => markComplete("aq")}
             />
@@ -357,14 +367,12 @@ interface FormField {
   show_if?: { field_id: string; value: unknown };
 }
 
-/** Resolve both legacy conditionalOn and new show_if */
 function resolveFieldCondition(field: FormField): { field_id: string; value: unknown } | null {
   if (field.show_if) return field.show_if;
   if (field.conditionalOn) return { field_id: field.conditionalOn, value: true };
   return null;
 }
 
-/** Check if a field should be visible given current form values */
 function isFieldVisible(
   field: FormField,
   formValues: Record<string, string | boolean | string[]>
@@ -376,17 +384,13 @@ function isFieldVisible(
 }
 
 function ApplicationForm({
-  candidateId,
   teamId,
-  candidate,
   alreadyDone,
   onComplete,
 }: {
-  candidateId: string;
   teamId: string;
-  candidate: CandidateInfo | null;
   alreadyDone: boolean;
-  onComplete: () => void;
+  onComplete: (candidateId: string, firstName: string) => void;
 }) {
   const [fields, setFields] = useState<FormField[]>([]);
   const [interestedInOptions, setInterestedInOptions] = useState<{ id: string; label: string }[]>([]);
@@ -410,25 +414,17 @@ function ApplicationForm({
             setFields(sorted);
             setInterestedInOptions(data.interested_in_options ?? []);
 
-            // Initialize form state with defaults for each field
             const initial: Record<string, string | boolean | string[]> = {};
             for (const f of sorted) {
               if (f.type === "boolean") initial[f.id] = false;
               else if (f.type === "interested_in") initial[f.id] = [];
               else initial[f.id] = "";
             }
-            // Pre-fill from candidate data
-            if (candidate) {
-              if (initial.first_name !== undefined) initial.first_name = candidate.first_name || "";
-              if (initial.last_name !== undefined) initial.last_name = candidate.last_name || "";
-              if (initial.email !== undefined) initial.email = candidate.email || "";
-              if (initial.phone !== undefined) initial.phone = candidate.phone || "";
-            }
             setForm(initial);
           }
         }
       } catch {
-        // Fall back to empty — will show error on submit
+        // Fall back to empty
       } finally {
         if (!cancelled) setConfigLoading(false);
       }
@@ -436,21 +432,7 @@ function ApplicationForm({
 
     loadConfig();
     return () => { cancelled = true; };
-  }, [teamId, candidate]);
-
-  // Pre-fill when candidate data arrives after config load
-  useEffect(() => {
-    if (candidate && fields.length > 0) {
-      setForm((prev) => {
-        const next = { ...prev };
-        if (next.first_name !== undefined && !next.first_name) next.first_name = candidate.first_name || "";
-        if (next.last_name !== undefined && !next.last_name) next.last_name = candidate.last_name || "";
-        if (next.email !== undefined && !next.email) next.email = candidate.email || "";
-        if (next.phone !== undefined && !next.phone) next.phone = candidate.phone || "";
-        return next;
-      });
-    }
-  }, [candidate, fields]);
+  }, [teamId]);
 
   const update = (key: string, value: string | boolean | string[]) => setForm((p) => ({ ...p, [key]: value }));
 
@@ -479,18 +461,12 @@ function ApplicationForm({
     e.preventDefault();
     setErr("");
 
-    // Validate required visible fields
     for (const f of fields) {
       if (!f.required) continue;
-      // Skip hidden conditional fields
       if (!isFieldVisible(f, form)) continue;
-
       const val = form[f.id];
-      if (f.type === "interested_in") {
-        // interested_in is optional by nature even if required — skip strict check
-        continue;
-      }
-      if (f.type === "boolean") continue; // boolean is always valid
+      if (f.type === "interested_in") continue;
+      if (f.type === "boolean") continue;
       if (!val || (typeof val === "string" && !val.trim())) {
         setErr("Please fill in all required fields.");
         return;
@@ -499,21 +475,17 @@ function ApplicationForm({
 
     setSaving(true);
     try {
-      const res = await fetch("/api/assessments/application", {
+      const res = await fetch("/api/assessments/public-apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidate_id: candidateId,
-          team_id: teamId,
-          form_data: form,
-        }),
+        body: JSON.stringify({ team_id: teamId, form_data: form }),
       });
       const data = await res.json();
       if (!res.ok) {
         setErr(data.error || "Failed to submit application");
         return;
       }
-      onComplete();
+      onComplete(data.candidate_id, data.first_name);
     } catch {
       setErr("Network error — please try again.");
     } finally {
@@ -521,7 +493,6 @@ function ApplicationForm({
     }
   }
 
-  // Separate fields by display type for layout
   const shortFields = fields.filter(
     (f) => ["text", "email", "tel", "number", "select"].includes(f.type) && !resolveFieldCondition(f)
   );
@@ -537,7 +508,6 @@ function ApplicationForm({
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
 
-      {/* Short fields in 2-col grid */}
       {shortFields.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           {shortFields.map((f) => (
@@ -547,7 +517,6 @@ function ApplicationForm({
               value={form[f.id] ?? ""}
               onChange={(v) => {
                 update(f.id, v);
-                // Clear conditional children when parent value changes
                 for (const child of conditionalFields) {
                   const cond = resolveFieldCondition(child);
                   if (cond?.field_id === f.id && v !== cond.value) {
@@ -560,7 +529,6 @@ function ApplicationForm({
         </div>
       )}
 
-      {/* Conditional fields whose parent is a non-boolean (select/text) */}
       {conditionalFields
         .filter((c) => {
           const cond = resolveFieldCondition(c);
@@ -578,7 +546,6 @@ function ApplicationForm({
           </div>
         ))}
 
-      {/* Boolean toggles with conditional children */}
       {booleanFields.map((f) => {
         const childFields = conditionalFields.filter((c) => {
           const cond = resolveFieldCondition(c);
@@ -592,7 +559,6 @@ function ApplicationForm({
                 onClick={() => {
                   const newVal = !form[f.id];
                   update(f.id, newVal);
-                  // Clear child field values when parent changes and children become hidden
                   for (const child of childFields) {
                     const cond = resolveFieldCondition(child);
                     if (cond && newVal !== cond.value) {
@@ -620,7 +586,6 @@ function ApplicationForm({
         );
       })}
 
-      {/* Interested-In tags */}
       {interestedInField && interestedInOptions.length > 0 && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-[#272727] mb-2">
@@ -655,11 +620,10 @@ function ApplicationForm({
         </div>
       )}
 
-      {/* Textarea fields — full width */}
       {textareaFields.length > 0 && (
         <div className="space-y-4 mb-8">
           {textareaFields.map((f) => (
-            <Textarea
+            <TextareaField
               key={f.id}
               label={`${f.label}${f.required ? " *" : ""}`}
               value={(form[f.id] as string) ?? ""}
@@ -680,7 +644,6 @@ function ApplicationForm({
   );
 }
 
-/** Renders a single form field based on its type */
 function DynamicField({
   field,
   value,
@@ -695,17 +658,17 @@ function DynamicField({
   switch (field.type) {
     case "text":
     case "number":
-      return <Input label={label} type={field.type} value={value as string} onChange={(v) => onChange(v)} />;
+      return <InputField label={label} type={field.type} value={value as string} onChange={(v) => onChange(v)} />;
     case "email":
-      return <Input label={label} type="email" value={value as string} onChange={(v) => onChange(v)} />;
+      return <InputField label={label} type="email" value={value as string} onChange={(v) => onChange(v)} />;
     case "tel":
-      return <Input label={label} type="tel" value={value as string} onChange={(v) => onChange(v)} />;
+      return <InputField label={label} type="tel" value={value as string} onChange={(v) => onChange(v)} />;
     case "select":
-      return <Select label={label} value={value as string} onChange={(v) => onChange(v)} options={field.options ?? []} />;
+      return <SelectField label={label} value={value as string} onChange={(v) => onChange(v)} options={field.options ?? []} />;
     case "textarea":
-      return <Textarea label={label} value={value as string} onChange={(v) => onChange(v)} />;
+      return <TextareaField label={label} value={value as string} onChange={(v) => onChange(v)} />;
     default:
-      return <Input label={label} value={value as string} onChange={(v) => onChange(v)} />;
+      return <InputField label={label} value={value as string} onChange={(v) => onChange(v)} />;
   }
 }
 
@@ -863,7 +826,6 @@ function DISCForm({
 
   function handleMostSelect(groupKey: string, letter: string) {
     setMostResponses((p) => ({ ...p, [groupKey]: letter }));
-    // If same word selected for both MOST and LEAST, clear LEAST
     if (leastResponses[groupKey] === letter) {
       setLeastResponses((p) => {
         const next = { ...p };
@@ -875,7 +837,6 @@ function DISCForm({
 
   function handleLeastSelect(groupKey: string, letter: string) {
     setLeastResponses((p) => ({ ...p, [groupKey]: letter }));
-    // If same word selected for both MOST and LEAST, clear MOST
     if (mostResponses[groupKey] === letter) {
       setMostResponses((p) => {
         const next = { ...p };
@@ -894,11 +855,10 @@ function DISCForm({
       return;
     }
 
-    // Build combined responses: { g1_most: "D", g1_least: "S", ... }
     const responses: Record<string, string> = {};
     for (let i = 1; i <= 28; i++) {
       const key = `g${i}`;
-      responses[key] = mostResponses[key]; // backward compatible "most" key
+      responses[key] = mostResponses[key];
       responses[`${key}_least`] = leastResponses[key];
     }
 
@@ -1012,7 +972,7 @@ function DISCForm({
 /* ══════════════════════════════════════════════════════════════
    Shared Form Components
    ══════════════════════════════════════════════════════════════ */
-function Input({
+function InputField({
   label,
   value,
   onChange,
@@ -1036,7 +996,7 @@ function Input({
   );
 }
 
-function Select({
+function SelectField({
   label,
   value,
   onChange,
@@ -1064,7 +1024,7 @@ function Select({
   );
 }
 
-function Textarea({
+function TextareaField({
   label,
   value,
   onChange,
