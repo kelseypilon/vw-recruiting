@@ -183,6 +183,17 @@ export default async function CandidateProfilePage({ params }: Props) {
   const groupNotes: GroupInterviewNote[] =
     (groupNotesResult.data ?? []) as GroupInterviewNote[];
 
+  // Fetch upcoming group interview sessions and team zoom link for the InterviewStageModal
+  const [upcomingSessionsResult] = await Promise.all([
+    supabase
+      .from("group_interview_sessions")
+      .select("*")
+      .eq("team_id", TEAM_ID)
+      .eq("status", "upcoming"),
+  ]);
+  const upcomingSessions = (upcomingSessionsResult.data ?? []) as import("@/lib/types").GroupInterviewSession[];
+  const teamZoomLink: string | null = (teamResult.data as Record<string, unknown>)?.group_interview_zoom_link as string | null ?? null;
+
   return (
     <CandidateProfile
       candidate={candidate}
@@ -201,6 +212,8 @@ export default async function CandidateProfilePage({ params }: Props) {
       currentUserId={currentUserId}
       groupSessions={groupSessions}
       groupNotes={groupNotes}
+      upcomingSessions={upcomingSessions}
+      teamZoomLink={teamZoomLink}
     />
   );
 }

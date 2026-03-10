@@ -20,6 +20,7 @@ import type {
   InterviewQuestion,
   CandidateGroupSession,
   GroupInterviewNote,
+  GroupInterviewSession,
 } from "@/lib/types";
 import { getInterviewStageNames, stageNameByTag, STAGE_TAGS } from "@/lib/stage-utils";
 import EmailPreviewModal from "@/app/dashboard/interviews/email-preview-modal";
@@ -27,6 +28,7 @@ import type { EmailPreviewData } from "@/app/dashboard/interviews/email-preview-
 import OnboardingTaskList from "@/app/dashboard/onboarding/onboarding-task-list";
 import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-modal";
 import NotAFitModal from "@/app/dashboard/candidates/not-a-fit-modal";
+import InterviewStageModal from "@/app/dashboard/candidates/interview-stage-modal";
 import DateTimePicker from "@/components/date-time-picker";
 
 /* ── Props ─────────────────────────────────────────────────────── */
@@ -48,6 +50,8 @@ interface Props {
   currentUserId: string;
   groupSessions?: CandidateGroupSession[];
   groupNotes?: GroupInterviewNote[];
+  upcomingSessions?: GroupInterviewSession[];
+  teamZoomLink?: string | null;
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -69,6 +73,8 @@ export default function CandidateProfile({
   currentUserId,
   groupSessions = [],
   groupNotes = [],
+  upcomingSessions = [],
+  teamZoomLink = null,
 }: Props) {
   const [candidate, setCandidate] = useState(initialCandidate);
   const [notes, setNotes] = useState(initialNotes);
@@ -79,6 +85,7 @@ export default function CandidateProfile({
   const [emailTemplateHint, setEmailTemplateHint] = useState<string | null>(null);
 
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
+  const [pendingInterviewMove, setPendingInterviewMove] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews" | "emails">("profile");
 
   // Assessment response panels
@@ -172,6 +179,12 @@ export default function CandidateProfile({
             const resolvedNotAFit = stageNameByTag(stages, STAGE_TAGS.NOT_A_FIT, "Not a Fit");
             if (newStage === resolvedNotAFit) {
               setPendingNotAFitStage(newStage);
+              return;
+            }
+            // Intercept interview stage moves → show InterviewStageModal
+            const interviewStageNames = getInterviewStageNames(stages);
+            if (interviewStageNames.includes(newStage)) {
+              setPendingInterviewMove(newStage);
               return;
             }
             setIsMoving(true);
@@ -463,6 +476,56 @@ export default function CandidateProfile({
             setIsMoving(false);
           }}
           onCancel={() => setPendingNotAFitStage(null)}
+        />
+      )}
+
+      {/* Interview Stage Modal — mirrors kanban's flow */}
+      {pendingInterviewMove && (
+        <InterviewStageModal
+          candidateName={`${candidate.first_name} ${candidate.last_name}`}
+          candidateId={candidate.id}
+          candidateEmail={candidate.email}
+          newStage={pendingInterviewMove}
+          teamId={teamId}
+          currentUserId={currentUserId}
+          leaders={leaders}
+          upcomingSessions={upcomingSessions}
+          teamZoomLink={teamZoomLink ?? null}
+          stages={stages}
+          onComplete={async () => {
+            // Modal already created the interview/session association.
+            // Now persist the stage change.
+            const newStage = pendingInterviewMove;
+            setPendingInterviewMove(null);
+            setIsMoving(true);
+            const supabase = createClient();
+            const { error } = await supabase
+              .from("candidates")
+              .update({ stage: newStage })
+              .eq("id", candidate.id);
+            if (!error) {
+              await supabase.from("stage_history").insert({
+                candidate_id: candidate.id,
+                from_stage: candidate.stage,
+                to_stage: newStage,
+              });
+              setCandidate((prev) => ({ ...prev, stage: newStage }));
+              setHistory((prev) => [
+                {
+                  id: crypto.randomUUID(),
+                  candidate_id: candidate.id,
+                  from_stage: candidate.stage,
+                  to_stage: newStage,
+                  changed_by: null,
+                  created_at: new Date().toISOString(),
+                  changer: null,
+                },
+                ...prev,
+              ]);
+            }
+            setIsMoving(false);
+          }}
+          onCancel={() => setPendingInterviewMove(null)}
         />
       )}
 
@@ -3693,7 +3756,7 @@ function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClos
       .eq("candidate_id", candidate.id)
       .order("submitted_at", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
         setResponses((data?.responses as Record<string, number>) ?? null);
         setLoading(false);
@@ -3860,7 +3923,7 @@ function DISCResponsesPanel({ candidate, onClose }: { candidate: Candidate; onCl
       .eq("candidate_id", candidate.id)
       .order("submitted_at", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
         setRawResponses((data?.raw_responses as Record<string, string>) ?? null);
         setLoading(false);
@@ -4010,7 +4073,7 @@ function ApplicationResponsesPanel({
         .eq("candidate_id", candidate.id)
         .order("submitted_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       // Also get custom fields from candidate
       const customFields = (candidate.custom_fields ?? {}) as Record<string, unknown>;
