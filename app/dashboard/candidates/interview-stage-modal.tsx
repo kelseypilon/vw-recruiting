@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import type { PipelineStage, TeamUser, GroupInterviewSession, EmailTemplate } from "@/lib/types";
 import { isGroupInterviewStage } from "@/lib/stage-utils";
+import { useTeam } from "@/lib/team-context";
 import DateTimePicker from "@/components/date-time-picker";
 
 interface Props {
@@ -35,6 +36,7 @@ export default function InterviewStageModal({
   onComplete,
   onCancel,
 }: Props) {
+  const { branding } = useTeam();
   const isGroup = isGroupInterviewStage(stages, newStage);
 
   if (isGroup) {
@@ -93,6 +95,7 @@ function GroupInterviewFlow({
   onComplete: () => void;
   onCancel: () => void;
 }) {
+  const { branding } = useTeam();
   const [step, setStep] = useState<GroupStep>("select");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     upcomingSessions.length === 1 ? upcomingSessions[0].id : null
@@ -145,7 +148,7 @@ function GroupInterviewFlow({
         "{{first_name}}": firstName,
         "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
         "{{candidate_name}}": candidateName,
-        "{{team_name}}": "Vantage West Realty",
+        "{{team_name}}": branding.name,
         "{{group_interview_date}}": dateStr,
         "{{zoom_link}}": zoomLink,
         "{{sender_name}}": "",
@@ -162,8 +165,8 @@ function GroupInterviewFlow({
 
     // Fallback if no template found
     return {
-      subject: `You're Invited to a Group Interview — Vantage West Realty`,
-      body: `Hi ${firstName},\n\nWe're excited to invite you to our group interview session!\n\nDetails:\n- Date: ${dateStr}${zoomLink ? `\n- Zoom Link: ${zoomLink}` : ""}\n\nPlease join 5 minutes early and have your camera on. This is a great opportunity to learn about our team culture.\n\nSee you there!\n\nVantage West Realty`,
+      subject: `You're Invited to a Group Interview — ${branding.name}`,
+      body: `Hi ${firstName},\n\nWe're excited to invite you to our group interview session!\n\nDetails:\n- Date: ${dateStr}${zoomLink ? `\n- Zoom Link: ${zoomLink}` : ""}\n\nPlease join 5 minutes early and have your camera on. This is a great opportunity to learn about our team culture.\n\nSee you there!\n\n${branding.name}`,
     };
   }
 
@@ -440,7 +443,7 @@ function GroupInterviewFlow({
                           "{{first_name}}": firstName,
                           "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
                           "{{candidate_name}}": candidateName,
-                          "{{team_name}}": "Vantage West Realty",
+                          "{{team_name}}": branding.name,
                           "{{group_interview_date}}": dateStr,
                           "{{zoom_link}}": zoomLink,
                           "{{sender_name}}": "",
@@ -553,6 +556,7 @@ function OneOnOneFlow({
   onComplete: () => void;
   onCancel: () => void;
 }) {
+  const { branding } = useTeam();
   const [step, setStep] = useState<Step>("choose");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -643,7 +647,7 @@ function OneOnOneFlow({
         "{{first_name}}": firstName,
         "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
         "{{candidate_name}}": candidateName,
-        "{{team_name}}": "Vantage West Realty",
+        "{{team_name}}": branding.name,
         "{{interview_type}}": "1:1 Interview",
         "{{interview_date}}": dateStr,
         "{{leader_name}}": selectedInterviewer?.name || "",
@@ -734,8 +738,8 @@ function OneOnOneFlow({
     try {
       await createInterviewRecord(null);
 
-      const subject = resolved.subject || `Your Interview with Vantage West Realty`;
-      const body = resolved.body || `Hi ${firstName},\n\nYou've been selected for a 1:1 interview with ${selectedInterviewer?.name || "our team"}.\n\nPlease use the link below to book a time that works for you:\n${selectedInterviewer?.google_booking_url || selectedInterviewer?.virtual_booking_url || "(booking link)"}\n\nLooking forward to connecting!\n\nVantage West Realty`;
+      const subject = resolved.subject || `Your Interview with ${branding.name}`;
+      const body = resolved.body || `Hi ${firstName},\n\nYou've been selected for a 1:1 interview with ${selectedInterviewer?.name || "our team"}.\n\nPlease use the link below to book a time that works for you:\n${selectedInterviewer?.google_booking_url || selectedInterviewer?.virtual_booking_url || "(booking link)"}\n\nLooking forward to connecting!\n\n${branding.name}`;
       await sendEmail(subject, body);
 
       setToast(`Scheduling link sent to ${candidateEmail}`);
@@ -772,8 +776,8 @@ function OneOnOneFlow({
         weekday: "long", month: "long", day: "numeric", year: "numeric",
         hour: "numeric", minute: "2-digit",
       });
-      const subject = resolved.subject || `Interview Confirmation — Vantage West Realty`;
-      const body = resolved.body || `Hi ${firstName},\n\nYour interview has been confirmed!\n\nDate: ${dateStr}\n${resolvedLocation ? `Location: ${resolvedLocation}\n` : ""}\nLooking forward to meeting you!\n\nVantage West Realty`;
+      const subject = resolved.subject || `Interview Confirmation — ${branding.name}`;
+      const body = resolved.body || `Hi ${firstName},\n\nYour interview has been confirmed!\n\nDate: ${dateStr}\n${resolvedLocation ? `Location: ${resolvedLocation}\n` : ""}\nLooking forward to meeting you!\n\n${branding.name}`;
       await sendEmail(subject, body);
 
       setToast("Interview scheduled and confirmation sent");

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, use, useCallback } from "react";
+import { resolveTeamBranding, getBrandingFooter } from "@/lib/branding";
+import type { TeamBranding } from "@/lib/types";
 
 /* ══════════════════════════════════════════════════════════════
    AQ Questions — 20 questions mapped to CORE categories
@@ -101,6 +103,7 @@ export default function AssessmentsPage({
     aq: false,
     disc: false,
   });
+  const [branding, setBranding] = useState<TeamBranding>(resolveTeamBranding(null));
 
   const completedCount = [completed.application, completed.aq, completed.disc].filter(Boolean).length;
   const allDone = completedCount === 3;
@@ -119,11 +122,14 @@ export default function AssessmentsPage({
           return;
         }
 
-        // Fetch candidate info
+        // Fetch candidate info + team branding
         const candidateRes = await fetch(`/api/assessments/candidate?candidate_id=${candidateId}`);
         if (candidateRes.ok) {
           const cData = await candidateRes.json();
-          if (!cancelled) setCandidate(cData.data);
+          if (!cancelled) {
+            setCandidate(cData.data);
+            if (cData.team) setBranding(resolveTeamBranding(cData.team));
+          }
         }
 
         // Check all 3 submission statuses in parallel
@@ -168,9 +174,20 @@ export default function AssessmentsPage({
   }, []);
 
   /* ── Loading / Error / Invalid states ── */
+  /* ── Brand CSS vars (injected for loading/error/done screens too) ── */
+  const brandStyle = `
+    :root {
+      --brand-primary: ${branding.primaryColor};
+      --brand-primary-dark: ${branding.primaryDark};
+      --brand-primary-light: ${branding.primaryLight};
+      --brand-secondary: ${branding.secondaryColor};
+    }
+  `;
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B6CA8] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center">
+        <style>{brandStyle}</style>
         <div className="animate-spin w-8 h-8 border-4 border-white/30 border-t-white rounded-full" />
       </div>
     );
@@ -178,7 +195,8 @@ export default function AssessmentsPage({
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B6CA8] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+        <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
           <div className="text-4xl mb-4">⚠️</div>
           <h1 className="text-xl font-bold text-[#272727] mb-2">Invalid Link</h1>
@@ -191,10 +209,11 @@ export default function AssessmentsPage({
   /* ── All Complete — Thank You screen ── */
   if (allDone) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B6CA8] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+        <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg text-center">
-          <div className="w-20 h-20 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-20 h-20 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
@@ -203,6 +222,7 @@ export default function AssessmentsPage({
             We&apos;ve received everything — we&apos;ll be in touch soon!
           </p>
           <p className="text-sm text-[#a59494] mt-4">You can safely close this page.</p>
+          <p className="text-xs text-[#a59494]/60 mt-6">{getBrandingFooter(branding)}</p>
         </div>
       </div>
     );
@@ -216,16 +236,25 @@ export default function AssessmentsPage({
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B6CA8]">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)]">
+      {/* Dynamic brand CSS variables */}
+      <style>{brandStyle}</style>
+      {/* Dynamic page title */}
+      <title>{branding.name} — Application</title>
+
       {/* Header */}
-      <header className="bg-[#0D1B2A] border-b border-white/10 px-6 py-4">
+      <header className="bg-[var(--brand-secondary)] border-b border-white/10 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#1B6CA8] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">VW</span>
-            </div>
+            {branding.logoUrl ? (
+              <img src={branding.logoUrl} alt={branding.name} className="h-10 w-auto max-w-[160px] object-contain" />
+            ) : (
+              <div className="w-10 h-10 bg-[var(--brand-primary)] rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-sm">{branding.initials}</span>
+              </div>
+            )}
             <div>
-              <h1 className="text-white font-bold text-lg tracking-tight">Vantage West Realty</h1>
+              <h1 className="text-white font-bold text-lg tracking-tight">{branding.name}</h1>
               <p className="text-white/50 text-xs">
                 {candidate ? `Hi ${candidate.first_name}! Complete your assessment below.` : "Candidate Assessment"}
               </p>
@@ -238,11 +267,11 @@ export default function AssessmentsPage({
       </header>
 
       {/* Progress Bar */}
-      <div className="bg-[#0D1B2A]/50">
+      <div className="bg-[var(--brand-secondary)]/50">
         <div className="max-w-4xl mx-auto px-6">
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-[#1B6CA8] rounded-full transition-all duration-500"
+              className="h-full bg-[var(--brand-primary)] rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / 3) * 100}%` }}
             />
           </div>
@@ -263,7 +292,7 @@ export default function AssessmentsPage({
               }`}
             >
               {completed[tab.key] ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : (
@@ -302,6 +331,11 @@ export default function AssessmentsPage({
             />
           )}
         </div>
+
+        {/* Footer */}
+        <p className="text-center text-white/40 text-xs mt-8 pb-4">
+          {getBrandingFooter(branding)}
+        </p>
       </div>
     </div>
   );
@@ -423,8 +457,8 @@ function ApplicationForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">Application Submitted</h2>
         <p className="text-[#a59494]">Your application has been received. Move on to the next assessment.</p>
@@ -435,7 +469,7 @@ function ApplicationForm({
   if (configLoading) {
     return (
       <div className="p-12 text-center">
-        <div className="animate-spin w-6 h-6 border-3 border-[#1B6CA8]/30 border-t-[#1B6CA8] rounded-full mx-auto" />
+        <div className="animate-spin w-6 h-6 border-3 border-[var(--brand-primary)]/30 border-t-[var(--brand-primary)] rounded-full mx-auto" />
         <p className="text-sm text-[#a59494] mt-3">Loading form...</p>
       </div>
     );
@@ -535,7 +569,7 @@ function ApplicationForm({
           return parent && parent.type !== "boolean" && isFieldVisible(c, form);
         })
         .map((c) => (
-          <div key={c.id} className="mb-4 ml-4 pl-4 border-l-2 border-[#1B6CA8]/20">
+          <div key={c.id} className="mb-4 ml-4 pl-4 border-l-2 border-[var(--brand-primary)]/20">
             <DynamicField
               field={c}
               value={form[c.id] ?? ""}
@@ -554,7 +588,7 @@ function ApplicationForm({
           <div key={f.id} className="mb-6 p-4 bg-[#f5f0f0] rounded-xl">
             <label className="flex items-center gap-3 cursor-pointer">
               <div
-                className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[#1B6CA8]" : "bg-[#a59494]/40"}`}
+                className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[var(--brand-primary)]" : "bg-[#a59494]/40"}`}
                 onClick={() => {
                   const newVal = !form[f.id];
                   update(f.id, newVal);
@@ -609,8 +643,8 @@ function ApplicationForm({
                   }}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
                     selected
-                      ? "bg-[#1B6CA8] text-white"
-                      : "bg-[#f5f0f0] text-[#272727] hover:bg-[#1B6CA8]/10"
+                      ? "bg-[var(--brand-primary)] text-white"
+                      : "bg-[#f5f0f0] text-[#272727] hover:bg-[var(--brand-primary)]/10"
                   }`}
                 >
                   {opt.label}
@@ -638,7 +672,7 @@ function ApplicationForm({
       <button
         type="submit"
         disabled={saving}
-        className="w-full py-3.5 bg-[#1B6CA8] text-white font-semibold rounded-xl hover:bg-[#155a8a] transition disabled:opacity-50"
+        className="w-full py-3.5 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
         {saving ? "Submitting..." : "Submit Application"}
       </button>
@@ -696,8 +730,8 @@ function AQForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">AQ Assessment Complete</h2>
         <p className="text-[#a59494]">Your Adversity Quotient assessment has been recorded.</p>
@@ -750,7 +784,7 @@ function AQForm({
       <div className="space-y-2">
         {(["C", "O", "R", "E"] as const).map((cat) => (
           <div key={cat}>
-            <h3 className="text-sm font-bold text-[#1B6CA8] uppercase tracking-wider mb-3 mt-6">
+            <h3 className="text-sm font-bold text-[var(--brand-primary)] uppercase tracking-wider mb-3 mt-6">
               {CATEGORIES[cat]}
             </h3>
             {AQ_QUESTIONS.filter((q) => q.category === cat).map((q, qi) => (
@@ -766,8 +800,8 @@ function AQForm({
                       onClick={() => setResponses((p) => ({ ...p, [q.id]: val }))}
                       className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all min-w-[70px] ${
                         responses[q.id] === val
-                          ? "bg-[#1B6CA8] text-white shadow-md"
-                          : "bg-white text-[#272727] hover:bg-[#1B6CA8]/10 border border-[#a59494]/20"
+                          ? "bg-[var(--brand-primary)] text-white shadow-md"
+                          : "bg-white text-[#272727] hover:bg-[var(--brand-primary)]/10 border border-[#a59494]/20"
                       }`}
                     >
                       <span className="text-base font-bold">{val}</span>
@@ -784,7 +818,7 @@ function AQForm({
       <button
         type="submit"
         disabled={saving || answeredCount < 20}
-        className="w-full py-3.5 mt-6 bg-[#1B6CA8] text-white font-semibold rounded-xl hover:bg-[#155a8a] transition disabled:opacity-50"
+        className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
         {saving ? "Submitting..." : `Submit AQ Assessment (${answeredCount}/20)`}
       </button>
@@ -814,8 +848,8 @@ function DISCForm({
   if (alreadyDone) {
     return (
       <div className="p-12 text-center">
-        <div className="w-16 h-16 bg-[#1B6CA8]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1B6CA8" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <div className="w-16 h-16 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <h2 className="text-xl font-bold text-[#272727] mb-2">DISC Assessment Complete</h2>
         <p className="text-[#a59494]">Your DISC personality profile has been recorded.</p>
@@ -896,10 +930,10 @@ function DISCForm({
       </p>
       <div className="flex gap-4 items-center text-xs text-[#a59494] mb-6">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#1B6CA8]" /> MOST like me
+          <span className="w-3 h-3 rounded-full bg-[var(--brand-primary)]" /> MOST like me
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#0D1B2A]" /> LEAST like me
+          <span className="w-3 h-3 rounded-full bg-[var(--brand-secondary)]" /> LEAST like me
         </span>
         <span className="ml-auto">{totalAnswered}/28 complete</span>
       </div>
@@ -911,7 +945,7 @@ function DISCForm({
           const key = `g${group.id}`;
           const groupComplete = mostResponses[key] && leastResponses[key];
           return (
-            <div key={group.id} className={`p-4 rounded-xl transition ${groupComplete ? "bg-[#1B6CA8]/5 ring-1 ring-[#1B6CA8]/20" : "bg-[#f5f0f0]"}`}>
+            <div key={group.id} className={`p-4 rounded-xl transition ${groupComplete ? "bg-[var(--brand-primary)]/5 ring-1 ring-[var(--brand-primary)]/20" : "bg-[#f5f0f0]"}`}>
               <p className="text-xs font-bold text-[#a59494] uppercase mb-3">Group {group.id}</p>
               <div className="space-y-2">
                 {group.words.map((w) => {
@@ -922,9 +956,9 @@ function DISCForm({
                       key={w.letter}
                       className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-all ${
                         isMost
-                          ? "bg-[#1B6CA8] text-white shadow-md"
+                          ? "bg-[var(--brand-primary)] text-white shadow-md"
                           : isLeast
-                            ? "bg-[#0D1B2A] text-white shadow-md"
+                            ? "bg-[var(--brand-secondary)] text-white shadow-md"
                             : "bg-white text-[#272727] border border-transparent"
                       }`}
                     >
@@ -936,8 +970,8 @@ function DISCForm({
                           title="Most like me"
                           className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
                             isMost
-                              ? "bg-white text-[#1B6CA8] shadow"
-                              : "border-2 border-[#1B6CA8]/30 text-[#1B6CA8] hover:bg-[#1B6CA8]/10"
+                              ? "bg-white text-[var(--brand-primary)] shadow"
+                              : "border-2 border-[var(--brand-primary)]/30 text-[var(--brand-primary)] hover:bg-[var(--brand-primary)]/10"
                           }`}
                         >
                           M
@@ -948,8 +982,8 @@ function DISCForm({
                           title="Least like me"
                           className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
                             isLeast
-                              ? "bg-white text-[#0D1B2A] shadow"
-                              : "border-2 border-[#0D1B2A]/30 text-[#0D1B2A] hover:bg-[#0D1B2A]/10"
+                              ? "bg-white text-[var(--brand-secondary)] shadow"
+                              : "border-2 border-[var(--brand-secondary)]/30 text-[var(--brand-secondary)] hover:bg-[var(--brand-secondary)]/10"
                           }`}
                         >
                           L
@@ -967,7 +1001,7 @@ function DISCForm({
       <button
         type="submit"
         disabled={saving || totalAnswered < 28}
-        className="w-full py-3.5 mt-6 bg-[#1B6CA8] text-white font-semibold rounded-xl hover:bg-[#155a8a] transition disabled:opacity-50"
+        className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
         {saving ? "Submitting..." : `Submit DISC Assessment (${totalAnswered}/28)`}
       </button>
@@ -996,7 +1030,7 @@ function Input({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1B6CA8]/40 focus:border-transparent transition"
+        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition"
       />
     </div>
   );
@@ -1019,7 +1053,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[#1B6CA8]/40 focus:border-transparent transition bg-white"
+        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition bg-white"
       >
         <option value="">Select...</option>
         {options.map((o) => (
@@ -1046,7 +1080,7 @@ function Textarea({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[#1B6CA8]/40 focus:border-transparent transition resize-none"
+        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition resize-none"
       />
     </div>
   );

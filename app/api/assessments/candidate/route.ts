@@ -24,5 +24,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ data });
+  // Fetch team branding for the candidate's team
+  const { data: team } = await supabase
+    .from("teams")
+    .select("name, brand_name, brand_logo_url, brand_primary_color, brand_secondary_color, branding_mode, brand_show_powered_by")
+    .eq("id", data.team_id)
+    .single();
+
+  return NextResponse.json({ data, team: team ?? null });
 }

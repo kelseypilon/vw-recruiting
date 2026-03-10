@@ -10,11 +10,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 
-  /* Brand colors — Vantage teal/navy theme */
-  --color-brand: #1B6CA8;
-  --color-brand-dark: #155a8a;
-  --color-brand-light: #2080c0;
-  --color-navy: #0D1B2A;
+  /* Brand colors — dynamic via BrandStyleInjector */
+  --color-brand: var(--brand-primary, #1B6CA8);
+  --color-brand-dark: var(--brand-primary-dark, #155a8a);
+  --color-brand-light: var(--brand-primary-light, #2080c0);
+  --color-navy: var(--brand-secondary, #0D1B2A);
 
   /* Neutral colors — stay hardcoded */
   --color-velvet: #272727;

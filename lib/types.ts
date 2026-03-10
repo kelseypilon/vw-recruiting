@@ -13,6 +13,7 @@ export interface Team {
   brand_primary_color: string;
   brand_secondary_color: string;
   brand_show_powered_by: boolean;
+  favicon_url: string | null;
   office_address: string | null;
   threshold_stuck_days: number;
   threshold_scorecard_hours: number;

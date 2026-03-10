@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function SendAssessmentModal({ onClose }: Props) {
-  const { teamId } = useTeam();
+  const { teamId, branding } = useTeam();
   const [step, setStep] = useState<Step>("info");
 
   // Step 1 fields
@@ -60,9 +60,9 @@ export default function SendAssessmentModal({ onClose }: Props) {
 
       // Pre-fill email
       const name = firstName.trim() || "there";
-      setEmailSubject(`Complete Your Assessment — Vantage West Realty`);
+      setEmailSubject(`Complete Your Assessment — ${branding.name}`);
       setEmailBody(
-        `Hi ${name},\n\nWe'd love to learn more about you! Please take a few minutes to complete our assessment:\n\nComplete Assessment → ${url}\n\nThe link above will take you through a short application form and two assessments. It should take about 15–20 minutes.\n\nLooking forward to connecting!\n\nVantage West Realty`
+        `Hi ${name},\n\nWe'd love to learn more about you! Please take a few minutes to complete our assessment:\n\nComplete Assessment → ${url}\n\nThe link above will take you through a short application form and two assessments. It should take about 15–20 minutes.\n\nLooking forward to connecting!\n\n${branding.name}`
       );
       setStep("email");
     } catch {
@@ -83,7 +83,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
         .replace(/\n/g, "<br>")
         .replace(
           `Complete Assessment → ${assessmentUrl}`,
-          `<a href="${assessmentUrl}" style="display:inline-block;padding:10px 24px;background-color:#1c759e;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;margin:8px 0;">Complete Assessment →</a>`
+          `<a href="${assessmentUrl}" style="display:inline-block;padding:10px 24px;background-color:${branding.primaryColor};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;margin:8px 0;">Complete Assessment →</a>`
         );
 
       const res = await fetch("/api/send-email", {

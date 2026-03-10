@@ -315,6 +315,15 @@ function TeamTab({
   const [isSavingThresholds, setIsSavingThresholds] = useState(false);
   const [thresholdStatus, setThresholdStatus] = useState("");
 
+  // Branding state
+  const [brandPrimary, setBrandPrimary] = useState(team?.brand_primary_color ?? "#1c759e");
+  const [brandSecondary, setBrandSecondary] = useState(team?.brand_secondary_color ?? "#272727");
+  const [brandLogoUrl, setBrandLogoUrl] = useState(team?.brand_logo_url ?? "");
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [brandingStatus, setBrandingStatus] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
   async function handleSave() {
     if (!team) return;
     setIsSaving(true);
@@ -399,6 +408,78 @@ function TeamTab({
       setTimeout(() => setSlugSaveStatus(""), 2000);
     }
     setIsSavingSlug(false);
+  }
+
+  async function handleSaveBranding() {
+    if (!team) return;
+    setIsSavingBranding(true);
+    setBrandingStatus("");
+
+    const result = await saveSettings("update_team", {
+      id: team.id,
+      brand_primary_color: brandPrimary,
+      brand_secondary_color: brandSecondary,
+      brand_logo_url: brandLogoUrl || null,
+    });
+
+    if (result.error) {
+      setBrandingStatus(`Error: ${result.error}`);
+    } else if (result.data) {
+      onTeamUpdated(result.data as Team);
+      setBrandingStatus("Saved! Reload to see changes.");
+      setTimeout(() => setBrandingStatus(""), 3000);
+    }
+    setIsSavingBranding(false);
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !team) return;
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/svg+xml"];
+    if (!allowedTypes.includes(file.type)) {
+      setBrandingStatus("Error: Please upload a JPG, PNG, WebP, or SVG");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setBrandingStatus("Error: Logo must be under 2MB");
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setBrandingStatus("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("teamId", team.id);
+
+      const res = await fetch("/api/logo-upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setBrandingStatus(`Error: ${data.error}`);
+        return;
+      }
+
+      setBrandLogoUrl(data.url);
+      setBrandingStatus("Logo uploaded!");
+      setTimeout(() => setBrandingStatus(""), 2000);
+    } catch {
+      setBrandingStatus("Error: Failed to upload logo");
+    } finally {
+      setIsUploadingLogo(false);
+      // Reset file input
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  }
+
+  function isValidHex(hex: string): boolean {
+    return /^#[0-9A-Fa-f]{6}$/.test(hex);
   }
 
   if (!team) return <p className="text-[#a59494]">No team found</p>;
@@ -551,6 +632,202 @@ function TeamTab({
         >
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
+      </div>
+
+      {/* Branding */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6">
+        <h3 className="text-sm font-semibold text-[#272727] mb-1">Branding</h3>
+        <p className="text-xs text-[#a59494] mb-4">
+          Customize how your team appears to candidates on the application form and emails.
+        </p>
+
+        <div className="space-y-5 max-w-lg">
+          {/* Logo Upload */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-2">
+              Team Logo
+            </label>
+            <div className="flex items-center gap-4">
+              {/* Preview */}
+              <div className="w-16 h-16 rounded-xl border border-[#a59494]/20 bg-[#f5f0f0] flex items-center justify-center overflow-hidden shrink-0">
+                {brandLogoUrl ? (
+                  <img
+                    src={brandLogoUrl}
+                    alt="Team logo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#a59494] text-xs">No logo</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={isUploadingLogo}
+                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#a59494]/5 transition disabled:opacity-50"
+                >
+                  {isUploadingLogo ? "Uploading..." : "Upload Logo"}
+                </button>
+                {brandLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setBrandLogoUrl("")}
+                    className="px-3 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 transition"
+                  >
+                    Remove
+                  </button>
+                )}
+                <p className="text-xs text-[#a59494]">
+                  JPG, PNG, WebP, or SVG — max 2MB
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Color */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Primary Color
+            </label>
+            <p className="text-xs text-[#a59494] mb-2">
+              Used for buttons, links, and accent elements.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={brandPrimary}
+                onChange={(e) => setBrandPrimary(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-[#a59494]/20 cursor-pointer p-0.5"
+              />
+              <input
+                type="text"
+                value={brandPrimary}
+                onChange={(e) => {
+                  let v = e.target.value;
+                  if (!v.startsWith("#")) v = "#" + v;
+                  if (v.length <= 7) setBrandPrimary(v);
+                }}
+                placeholder="#1c759e"
+                className={`w-28 px-3 py-2 rounded-lg border text-sm font-mono text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition ${
+                  isValidHex(brandPrimary) ? "border-[#a59494]/40" : "border-red-400"
+                }`}
+              />
+              <div
+                className="w-10 h-10 rounded-lg border border-[#a59494]/20"
+                style={{ backgroundColor: isValidHex(brandPrimary) ? brandPrimary : "#ccc" }}
+                title="Preview"
+              />
+            </div>
+          </div>
+
+          {/* Secondary Color */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1">
+              Secondary Color
+            </label>
+            <p className="text-xs text-[#a59494] mb-2">
+              Used for the sidebar, header backgrounds, and dark accents.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={brandSecondary}
+                onChange={(e) => setBrandSecondary(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-[#a59494]/20 cursor-pointer p-0.5"
+              />
+              <input
+                type="text"
+                value={brandSecondary}
+                onChange={(e) => {
+                  let v = e.target.value;
+                  if (!v.startsWith("#")) v = "#" + v;
+                  if (v.length <= 7) setBrandSecondary(v);
+                }}
+                placeholder="#272727"
+                className={`w-28 px-3 py-2 rounded-lg border text-sm font-mono text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition ${
+                  isValidHex(brandSecondary) ? "border-[#a59494]/40" : "border-red-400"
+                }`}
+              />
+              <div
+                className="w-10 h-10 rounded-lg border border-[#a59494]/20"
+                style={{ backgroundColor: isValidHex(brandSecondary) ? brandSecondary : "#ccc" }}
+                title="Preview"
+              />
+            </div>
+          </div>
+
+          {/* Brand Preview Panel */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-2">
+              Preview
+            </label>
+            <div className="rounded-xl border border-[#a59494]/20 overflow-hidden">
+              {/* Mini header */}
+              <div
+                className="px-4 py-3 flex items-center gap-2"
+                style={{ backgroundColor: isValidHex(brandSecondary) ? brandSecondary : "#0D1B2A" }}
+              >
+                {brandLogoUrl ? (
+                  <img src={brandLogoUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                    style={{ backgroundColor: isValidHex(brandPrimary) ? brandPrimary : "#1c759e" }}
+                  >
+                    {(team?.name ?? "T").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="text-white text-xs font-semibold">{team?.name ?? "Team"}</span>
+              </div>
+              {/* Mini body */}
+              <div className="bg-[#f5f0f0] p-4 space-y-3">
+                <div className="bg-white rounded-lg p-3 space-y-2">
+                  <div className="h-2 w-24 bg-[#a59494]/20 rounded" />
+                  <div className="h-2 w-40 bg-[#a59494]/10 rounded" />
+                </div>
+                <button
+                  type="button"
+                  className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold"
+                  style={{ backgroundColor: isValidHex(brandPrimary) ? brandPrimary : "#1c759e" }}
+                >
+                  Sample Button
+                </button>
+                <div className="flex gap-2">
+                  <div
+                    className="h-1 w-20 rounded-full"
+                    style={{ backgroundColor: isValidHex(brandPrimary) ? brandPrimary : "#1c759e" }}
+                  />
+                  <div className="h-1 w-20 rounded-full bg-[#a59494]/20" />
+                  <div className="h-1 w-20 rounded-full bg-[#a59494]/20" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Save branding */}
+        <div className="flex items-center justify-end gap-3 mt-5">
+          {brandingStatus && (
+            <span className={`text-sm ${brandingStatus.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+              {brandingStatus}
+            </span>
+          )}
+          <button
+            onClick={handleSaveBranding}
+            disabled={isSavingBranding || !isValidHex(brandPrimary) || !isValidHex(brandSecondary)}
+            className="px-6 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+          >
+            {isSavingBranding ? "Saving..." : "Save Branding"}
+          </button>
+        </div>
       </div>
 
       {/* Notification Thresholds */}

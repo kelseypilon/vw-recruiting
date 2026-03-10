@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface TeamRow {
   id: string;
@@ -291,10 +291,39 @@ function EditBrandingModal({
   const [secondary, setSecondary] = useState(team.brand_secondary_color);
   const [powered, setPowered] = useState(team.brand_show_powered_by);
   const [slug, setSlug] = useState(team.slug || "");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("admin");
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingLogo(true);
+    setUploadStatus("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("teamId", team.id);
+      const res = await fetch("/api/logo-upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadStatus(`Error: ${data.error}`);
+      } else {
+        setLogoUrl(data.url);
+        setUploadStatus("Uploaded!");
+        setTimeout(() => setUploadStatus(""), 2000);
+      }
+    } catch {
+      setUploadStatus("Failed to upload");
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -346,17 +375,53 @@ function EditBrandingModal({
             />
           </div>
 
-          {/* Logo URL */}
+          {/* Logo Upload */}
           <div>
             <label className="block text-sm font-semibold text-[#272727] mb-1">
-              Logo URL
+              Team Logo
             </label>
-            <input
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://example.com/logo.png"
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand"
-            />
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg border border-[#a59494]/20 bg-[#f5f0f0] flex items-center justify-center overflow-hidden shrink-0">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[#a59494] text-[10px]">No logo</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={isUploadingLogo}
+                    className="px-3 py-1.5 rounded-lg border border-[#a59494]/40 text-xs font-medium text-[#272727] hover:bg-[#a59494]/5 transition disabled:opacity-50"
+                  >
+                    {isUploadingLogo ? "Uploading..." : "Upload"}
+                  </button>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl("")}
+                      className="text-xs text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {uploadStatus && (
+                  <p className={`text-xs ${uploadStatus.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+                    {uploadStatus}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Colors */}
@@ -517,6 +582,8 @@ function CreateTeamModal({
   const [name, setName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [mode, setMode] = useState("custom");
+  const [primary, setPrimary] = useState("#1c759e");
+  const [secondary, setSecondary] = useState("#272727");
 
   const slug = name
     .toLowerCase()
@@ -573,6 +640,46 @@ function CreateTeamModal({
               <option value="custom">Custom (Powered by VW)</option>
             </select>
           </div>
+
+          {/* Colors */}
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-[#272727] mb-1">
+                Primary Color
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  className="w-9 h-9 rounded border border-[#a59494]/30 cursor-pointer"
+                />
+                <input
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] font-mono focus:outline-none focus:ring-2 focus:ring-brand"
+                />
+              </div>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-[#272727] mb-1">
+                Secondary Color
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={secondary}
+                  onChange={(e) => setSecondary(e.target.value)}
+                  className="w-9 h-9 rounded border border-[#a59494]/30 cursor-pointer"
+                />
+                <input
+                  value={secondary}
+                  onChange={(e) => setSecondary(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] font-mono focus:outline-none focus:ring-2 focus:ring-brand"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 mt-6">
@@ -590,6 +697,8 @@ function CreateTeamModal({
                 slug,
                 admin_email: adminEmail,
                 branding_mode: mode,
+                brand_primary_color: primary,
+                brand_secondary_color: secondary,
               })
             }
             className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-60"

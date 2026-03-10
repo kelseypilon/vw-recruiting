@@ -110,7 +110,7 @@ export default function DashboardLayout({
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-60 py-6 shrink-0 flex flex-col" style={{ backgroundColor: "#0D1B2A" }}>
+        <aside className="w-60 py-6 shrink-0 flex flex-col bg-navy">
           <nav className="flex flex-col gap-1 px-3 flex-1">
             {visibleNavItems.map((item) => {
               const active =
@@ -123,7 +123,7 @@ export default function DashboardLayout({
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     active
-                      ? "text-white bg-[#1B6CA8]"
+                      ? "text-white bg-brand"
                       : "text-[#a5b4c4] hover:text-white hover:bg-white/10"
                   }`}
                 >
