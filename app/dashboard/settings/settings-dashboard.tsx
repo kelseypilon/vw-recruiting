@@ -2651,14 +2651,15 @@ function RolesPermissionsTab({
   // Manage Roles state
   const [showAddRole, setShowAddRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
+  const [addRoleError, setAddRoleError] = useState("");
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editRoleName, setEditRoleName] = useState("");
   const [deleteRole, setDeleteRole] = useState<string | null>(null);
-  const [deleteRoleUserCount, setDeleteRoleUserCount] = useState(0);
+  const [deleteRoleUsers, setDeleteRoleUsers] = useState<TeamUser[]>([]);
   const [reassignTo, setReassignTo] = useState<string>("");
   const [roleActionLoading, setRoleActionLoading] = useState(false);
 
-  const protectedRoles = new Set(["Admin", "Team Lead", "Leader", "Agent", "Employee"]);
+  const protectedRoles = new Set(["Admin", "Super Admin"]);
   const defaultRoleSet = new Set<string>(DEFAULT_ROLES as unknown as string[]);
 
   function updateTeamState(newSettings: Record<string, unknown>) {
@@ -2668,31 +2669,47 @@ function RolesPermissionsTab({
   }
 
   async function handleAddRole() {
-    if (!newRoleName.trim()) return;
+    const trimmed = newRoleName.trim();
+    if (!trimmed) {
+      setAddRoleError("Role name cannot be blank.");
+      return;
+    }
+    if (trimmed.length > 30) {
+      setAddRoleError("Role name must be 30 characters or fewer.");
+      return;
+    }
+    const duplicate = roles.some(
+      (r) => r.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      setAddRoleError("A role with this name already exists.");
+      return;
+    }
+    setAddRoleError("");
     setRoleActionLoading(true);
     const result = await saveSettings("add_custom_role", {
       team_id: teamId,
-      role_name: newRoleName.trim(),
+      role_name: trimmed,
     });
     if (result.error) {
-      setSaveStatus(`Error: ${result.error}`);
+      setAddRoleError(result.error);
     } else {
       const newSettings = (result as { settings: Record<string, unknown> }).settings;
       updateTeamState(newSettings);
       // Add to local permissions state
       setPermissions((prev) => {
         const updated = { ...prev };
-        updated[newRoleName.trim()] = {} as Record<string, boolean> as TeamRolePermissions[string];
+        updated[trimmed] = {} as Record<string, boolean> as TeamRolePermissions[string];
         for (const key of PERMISSION_KEYS) {
-          (updated[newRoleName.trim()] as Record<string, boolean>)[key] = false;
+          (updated[trimmed] as Record<string, boolean>)[key] = false;
         }
         return updated;
       });
       setSaveStatus("Role added!");
       setTimeout(() => setSaveStatus(""), 2000);
+      setNewRoleName("");
+      setShowAddRole(false);
     }
-    setNewRoleName("");
-    setShowAddRole(false);
     setRoleActionLoading(false);
   }
 
@@ -2735,8 +2752,9 @@ function RolesPermissionsTab({
       ...(forceReassignTo ? { reassign_to: forceReassignTo } : {}),
     }) as { error?: string; needs_reassignment?: boolean; user_count?: number; settings?: Record<string, unknown> };
     if (result.needs_reassignment) {
-      // API says users need reassignment — show the reassignment UI
-      setDeleteRoleUserCount(result.user_count ?? 0);
+      // API says users need reassignment — populate user list for the modal
+      const affected = users.filter((u) => u.role === deleteRole);
+      setDeleteRoleUsers(affected);
       setRoleActionLoading(false);
       return; // keep modal open with reassignment dropdown
     }
@@ -2754,7 +2772,7 @@ function RolesPermissionsTab({
       setTimeout(() => setSaveStatus(""), 2000);
     }
     setDeleteRole(null);
-    setDeleteRoleUserCount(0);
+    setDeleteRoleUsers([]);
     setReassignTo("");
     setRoleActionLoading(false);
   }
@@ -2914,7 +2932,7 @@ function RolesPermissionsTab({
                       <button
                         onClick={() => {
                           setDeleteRole(role);
-                          setDeleteRoleUserCount(count);
+                          setDeleteRoleUsers(count > 0 ? users.filter((u) => u.role === role) : []);
                           setReassignTo("");
                         }}
                         className="text-[#a59494] hover:text-red-500"
@@ -2933,58 +2951,69 @@ function RolesPermissionsTab({
 
             {/* Add Role */}
             {showAddRole ? (
-              <div className="flex items-center gap-1 bg-white border border-brand/30 rounded-full px-3 py-1.5">
-                <input
-                  type="text"
-                  value={newRoleName}
-                  onChange={(e) => setNewRoleName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddRole();
-                    if (e.key === "Escape") {
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1 bg-white border border-brand/30 rounded-full px-3 py-1.5">
+                  <input
+                    type="text"
+                    value={newRoleName}
+                    onChange={(e) => {
+                      setNewRoleName(e.target.value);
+                      setAddRoleError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddRole();
+                      if (e.key === "Escape") {
+                        setShowAddRole(false);
+                        setNewRoleName("");
+                        setAddRoleError("");
+                      }
+                    }}
+                    maxLength={30}
+                    placeholder="Role name..."
+                    className="text-xs border-none bg-transparent outline-none w-28"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleAddRole}
+                    disabled={roleActionLoading || !newRoleName.trim()}
+                    className="text-brand hover:text-brand-dark disabled:opacity-40"
+                    title="Add"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
                       setShowAddRole(false);
                       setNewRoleName("");
-                    }
-                  }}
-                  placeholder="Role name..."
-                  className="text-xs border-none bg-transparent outline-none w-24"
-                  autoFocus
-                />
-                <button
-                  onClick={handleAddRole}
-                  disabled={roleActionLoading || !newRoleName.trim()}
-                  className="text-brand hover:text-brand-dark disabled:opacity-40"
-                  title="Add"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+                      setAddRoleError("");
+                    }}
+                    className="text-[#a59494] hover:text-[#272727]"
                   >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAddRole(false);
-                    setNewRoleName("");
-                  }}
-                  className="text-[#a59494] hover:text-[#272727]"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+                {addRoleError && (
+                  <p className="text-[10px] text-red-600 mt-1 ml-3">{addRoleError}</p>
+                )}
               </div>
             ) : (
               <button
@@ -3012,9 +3041,9 @@ function RolesPermissionsTab({
       {/* ── Delete / Reassign Role Modal ────────────────────────── */}
       {deleteRole && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <button
-              onClick={() => { setDeleteRole(null); setDeleteRoleUserCount(0); setReassignTo(""); }}
+              onClick={() => { setDeleteRole(null); setDeleteRoleUsers([]); setReassignTo(""); }}
               className="absolute top-4 right-4 text-[#a59494] hover:text-[#272727] transition"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -3026,13 +3055,29 @@ function RolesPermissionsTab({
               Delete &ldquo;{deleteRole}&rdquo;?
             </h3>
 
-            {deleteRoleUserCount > 0 ? (
+            {deleteRoleUsers.length > 0 ? (
               <>
                 <p className="text-xs text-[#a59494] mb-3">
-                  {deleteRoleUserCount} user{deleteRoleUserCount !== 1 ? "s" : ""} currently
-                  {deleteRoleUserCount !== 1 ? " have " : " has "} this role. Choose a role to
-                  reassign them to before deleting.
+                  {deleteRoleUsers.length} {deleteRoleUsers.length === 1 ? "person is" : "people are"} assigned
+                  to &ldquo;{deleteRole}&rdquo;. Reassign them before deleting.
                 </p>
+
+                {/* Affected user list */}
+                <div className="border border-[#a59494]/15 rounded-lg mb-3 max-h-40 overflow-y-auto divide-y divide-[#a59494]/10">
+                  {deleteRoleUsers.map((u) => (
+                    <div key={u.id} className="px-3 py-2 flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-brand/10 text-brand text-[10px] font-bold flex items-center justify-center shrink-0">
+                        {(u.name?.[0] ?? u.email?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#272727] truncate">{u.name || "Unnamed"}</p>
+                        <p className="text-[10px] text-[#a59494] truncate">{u.email}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="block text-xs font-medium text-[#272727] mb-1">Reassign all to:</label>
                 <select
                   value={reassignTo}
                   onChange={(e) => setReassignTo(e.target.value)}
@@ -3050,7 +3095,7 @@ function RolesPermissionsTab({
               </>
             ) : (
               <p className="text-xs text-[#a59494] mb-4">
-                This role and its permissions will be permanently removed.
+                This role has no users assigned. It will be permanently removed.
               </p>
             )}
 
@@ -3058,7 +3103,7 @@ function RolesPermissionsTab({
               <button
                 onClick={() => {
                   setDeleteRole(null);
-                  setDeleteRoleUserCount(0);
+                  setDeleteRoleUsers([]);
                   setReassignTo("");
                 }}
                 className="px-4 py-2 rounded-lg text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
@@ -3067,18 +3112,18 @@ function RolesPermissionsTab({
               </button>
               <button
                 onClick={() => {
-                  if (deleteRoleUserCount > 0) {
+                  if (deleteRoleUsers.length > 0) {
                     handleDeleteRole(reassignTo);
                   } else {
                     handleDeleteRole();
                   }
                 }}
-                disabled={roleActionLoading || (deleteRoleUserCount > 0 && !reassignTo)}
+                disabled={roleActionLoading || (deleteRoleUsers.length > 0 && !reassignTo)}
                 className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition disabled:opacity-50"
               >
                 {roleActionLoading
                   ? "Deleting..."
-                  : deleteRoleUserCount > 0
+                  : deleteRoleUsers.length > 0
                     ? "Reassign & Delete"
                     : "Delete Role"}
               </button>
@@ -3106,12 +3151,33 @@ function RolesPermissionsTab({
                 <th className="text-left px-6 py-3 text-xs font-semibold text-[#272727] w-52">
                   Permission
                 </th>
-                {roles.map((role) => (
+                {roles.map((role) => {
+                  const isProtectedRole = protectedRoles.has(role);
+                  const roleUserCount = usersPerRole(role);
+                  return (
                   <th
                     key={role}
-                    className="px-3 py-3 text-xs font-semibold text-[#272727] text-center min-w-[100px]"
+                    className="px-3 py-3 text-xs font-semibold text-[#272727] text-center min-w-[100px] group/col"
                   >
-                    <div>{role}</div>
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{role}</span>
+                      {isTeamLead && !isProtectedRole && (
+                        <button
+                          onClick={() => {
+                            setDeleteRole(role);
+                            setDeleteRoleUsers(roleUserCount > 0 ? users.filter((u) => u.role === role) : []);
+                            setReassignTo("");
+                          }}
+                          className="opacity-0 group-hover/col:opacity-100 text-[#a59494] hover:text-red-500 transition"
+                          title={roleUserCount > 0 ? `Delete role (${roleUserCount} user${roleUserCount !== 1 ? "s" : ""} will need reassignment)` : "Delete role"}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                     <div className="flex justify-center gap-1 mt-1.5">
                       <button
                         onClick={() => toggleAllForRole(role, true)}
@@ -3130,7 +3196,8 @@ function RolesPermissionsTab({
                       </button>
                     </div>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#a59494]/10">

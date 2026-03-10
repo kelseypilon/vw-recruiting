@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyAuth } from "@/lib/api-auth";
+import { DEFAULT_ROLES } from "@/lib/permissions";
 
 /**
  * POST /api/settings
@@ -163,7 +164,7 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.old_name || !payload?.new_name) {
         return NextResponse.json({ error: "team_id, old_name, and new_name are required" }, { status: 400 });
       }
-      const protectedRoleNames = ["Admin", "Team Lead", "Leader", "Agent", "Employee"];
+      const protectedRoleNames = ["Admin", "Super Admin"];
       if (protectedRoleNames.includes(payload.old_name as string)) {
         return NextResponse.json({ error: "Cannot rename a protected role" }, { status: 400 });
       }
@@ -176,8 +177,8 @@ export async function POST(req: NextRequest) {
       const customRoles = (settings.custom_roles as string[]) ?? [];
       const rolePerms = (settings.role_permissions ?? {}) as Record<string, Record<string, boolean>>;
 
-      // Check for duplicate name
-      const allRoleNames = [...protectedRoleNames, ...customRoles];
+      // Check for duplicate name (check default roles, protected roles, and custom roles)
+      const allRoleNames = [...new Set([...DEFAULT_ROLES, ...protectedRoleNames, ...customRoles])];
       if (allRoleNames.includes(payload.new_name as string) && payload.new_name !== payload.old_name) {
         return NextResponse.json({ error: "A role with that name already exists" }, { status: 400 });
       }
@@ -202,7 +203,7 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.role_name) {
         return NextResponse.json({ error: "team_id and role_name are required" }, { status: 400 });
       }
-      const protectedRoles = ["Admin", "Team Lead", "Leader", "Agent", "Employee"];
+      const protectedRoles = ["Admin", "Super Admin"];
       if (protectedRoles.includes(payload.role_name)) {
         return NextResponse.json({ error: "Cannot delete a protected role" }, { status: 400 });
       }
