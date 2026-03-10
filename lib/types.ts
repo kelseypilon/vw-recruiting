@@ -306,6 +306,8 @@ export interface InterviewScorecard {
   overall_score: number | null;
   recommendation: string | null;
   summary_notes: string | null;
+  private_notes: string | null;
+  is_submitted: boolean;
   submitted_at: string | null;
   created_at: string;
   updated_at: string;

@@ -21,6 +21,7 @@ export const PERMISSION_KEYS = [
   "manage_scorecards",
   "manage_onboarding",
   "view_onboarding",
+  "view_interview_notes",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -77,6 +78,10 @@ export const PERMISSION_LABELS: Record<PermissionKey, { label: string; descripti
     label: "View Onboarding",
     description: "View onboarding task lists and progress",
   },
+  view_interview_notes: {
+    label: "View Interview Notes",
+    description: "View shared interview guide notes from other interviewers",
+  },
 };
 
 /* ── Default roles the app ships with ─────────────────────────────── */
@@ -105,6 +110,7 @@ const ALL_TRUE: RolePermissions = {
   manage_scorecards: true,
   manage_onboarding: true,
   view_onboarding: true,
+  view_interview_notes: true,
 };
 
 export const DEFAULT_ROLE_PERMISSIONS: TeamRolePermissions = {
@@ -128,6 +134,7 @@ export const DEFAULT_ROLE_PERMISSIONS: TeamRolePermissions = {
     manage_scorecards: false,
     manage_onboarding: false,
     view_onboarding: true,
+    view_interview_notes: false,
   },
   "VP Ops": { ...ALL_TRUE },
   Interviewer: {
@@ -142,6 +149,7 @@ export const DEFAULT_ROLE_PERMISSIONS: TeamRolePermissions = {
     manage_scorecards: true,
     manage_onboarding: false,
     view_onboarding: true,
+    view_interview_notes: true,
   },
   "View Only": {
     view_candidates: true,
@@ -155,6 +163,7 @@ export const DEFAULT_ROLE_PERMISSIONS: TeamRolePermissions = {
     manage_scorecards: false,
     manage_onboarding: false,
     view_onboarding: true,
+    view_interview_notes: false,
   },
 };
 
@@ -270,4 +279,8 @@ export function canEditScoringCriteria(rp: TeamRolePermissions | undefined | nul
 
 export function canManageRoles(rp: TeamRolePermissions | undefined | null, role: string): boolean {
   return hasPermission(rp, role, "manage_members");
+}
+
+export function canViewInterviewNotes(rp: TeamRolePermissions | undefined | null, role: string): boolean {
+  return hasPermission(rp, role, "view_interview_notes");
 }

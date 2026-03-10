@@ -409,17 +409,67 @@ function GroupInterviewFlow({
           </>
         )}
 
-        {/* ─── Step 2: Email Editor ───────────────────────── */}
+        {/* ─── Step 2: Editable Email Preview ────────────── */}
         {step === "email" && (
           <>
             <h3 className="text-base font-bold text-[#272727] mb-1">
               Send Interview Invitation to {firstName}
             </h3>
             <p className="text-xs text-[#a59494] mb-5">
-              Review and send the invitation email.
+              Review and edit the invitation email before sending.
             </p>
 
             <div className="space-y-4">
+              {/* Template Selector */}
+              {templates.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-[#272727] mb-1">Template</label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const t = templates.find((t) => t.id === e.target.value);
+                      if (t && selectedSession) {
+                        const dateStr = selectedSession.session_date
+                          ? new Date(selectedSession.session_date).toLocaleDateString("en-US", {
+                              weekday: "long", month: "long", day: "numeric", year: "numeric",
+                              hour: "numeric", minute: "2-digit",
+                            })
+                          : "TBD";
+                        const zoomLink = selectedSession.zoom_link || teamZoomLink || "";
+                        const replacements: Record<string, string> = {
+                          "{{first_name}}": firstName,
+                          "{{last_name}}": candidateName.split(" ").slice(1).join(" ") || "",
+                          "{{candidate_name}}": candidateName,
+                          "{{team_name}}": "Vantage West Realty",
+                          "{{group_interview_date}}": dateStr,
+                          "{{zoom_link}}": zoomLink,
+                          "{{sender_name}}": "",
+                          "{{session_title}}": selectedSession.title,
+                        };
+                        let subject = t.subject;
+                        let body = t.body;
+                        for (const [tag, value] of Object.entries(replacements)) {
+                          subject = subject.replaceAll(tag, value);
+                          body = body.replaceAll(tag, value);
+                        }
+                        setEmailSubject(subject);
+                        setEmailBody(body);
+                      }
+                    }}
+                    className={inputClasses}
+                  >
+                    <option value="" disabled>
+                      Load a different template...
+                    </option>
+                    {templates.filter((t) => t.is_active).map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* To */}
               <div>
                 <label className="block text-sm font-medium text-[#272727] mb-1">To</label>

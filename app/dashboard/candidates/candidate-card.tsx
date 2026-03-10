@@ -82,8 +82,17 @@ export default function CandidateCardComponent({
         <p className="text-xs text-[#a59494] mt-0.5">{candidate.phone}</p>
       )}
 
+      {/* Role Applied pill */}
+      {candidate.role_applied && (
+        <p className="text-[10px] font-medium text-gray-500 mt-1 truncate">
+          {(() => {
+            try { const parsed = JSON.parse(candidate.role_applied); return Array.isArray(parsed) ? parsed.join(", ") : candidate.role_applied; } catch { return candidate.role_applied; }
+          })()}
+        </p>
+      )}
+
       {/* Tags row */}
-      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 mt-2">
         <span
           className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}
         >

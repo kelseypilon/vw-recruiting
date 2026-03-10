@@ -48,7 +48,7 @@ export default async function GroupInterviewsPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("teams")
-      .select("group_interview_date")
+      .select("group_interview_date, settings")
       .eq("id", TEAM_ID)
       .single(),
   ]);
@@ -58,6 +58,9 @@ export default async function GroupInterviewsPage() {
   const leaders: TeamUser[] = (usersResult.data ?? []) as TeamUser[];
   const currentUserId: string = profileResult.data?.id ?? "";
 
+  const teamSettings = (teamResult.data?.settings ?? {}) as Record<string, unknown>;
+  const teamDefaultMeetingLink = (teamSettings.default_meeting_link as string) ?? null;
+
   return (
     <GroupInterviewsDashboard
       eligibleCandidates={eligibleCandidates}
@@ -65,6 +68,7 @@ export default async function GroupInterviewsPage() {
       teamId={TEAM_ID}
       currentUserId={currentUserId}
       teamInterviewDate={teamResult.data?.group_interview_date ?? null}
+      teamDefaultMeetingLink={teamDefaultMeetingLink}
     />
   );
 }

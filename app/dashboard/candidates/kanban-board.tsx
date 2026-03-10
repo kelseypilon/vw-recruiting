@@ -58,6 +58,7 @@ export default function KanbanBoard({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("");
   const [filterTrack, setFilterTrack] = useState("");
+  const [filterType, setFilterType] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [pendingInterviewMove, setPendingInterviewMove] =
     useState<PendingInterviewMove | null>(null);
@@ -73,6 +74,22 @@ export default function KanbanBoard({
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => { setIsMounted(true); }, []);
 
+  // Compute unique role_applied values for the filter dropdown
+  const uniqueRoleTypes = [...new Set(
+    candidates
+      .map((c) => {
+        if (!c.role_applied) return null;
+        try {
+          const parsed = JSON.parse(c.role_applied);
+          return Array.isArray(parsed) ? parsed : [c.role_applied];
+        } catch {
+          return [c.role_applied];
+        }
+      })
+      .filter(Boolean)
+      .flat()
+  )].filter(Boolean).sort() as string[];
+
   const filtered = candidates.filter((c) => {
     const matchesSearch =
       !searchQuery ||
@@ -83,7 +100,16 @@ export default function KanbanBoard({
       (c.phone && c.phone.includes(searchQuery));
     const matchesStage = !filterStage || c.stage === filterStage;
     const matchesTrack = !filterTrack || c.hire_track === filterTrack;
-    return matchesSearch && matchesStage && matchesTrack;
+    const matchesType = !filterType || (() => {
+      if (!c.role_applied) return false;
+      try {
+        const parsed = JSON.parse(c.role_applied);
+        return Array.isArray(parsed) ? parsed.includes(filterType) : c.role_applied === filterType;
+      } catch {
+        return c.role_applied === filterType;
+      }
+    })();
+    return matchesSearch && matchesStage && matchesTrack && matchesType;
   });
 
   const grouped = stages.reduce(
@@ -309,6 +335,20 @@ export default function KanbanBoard({
               </option>
             ))}
           </select>
+          {uniqueRoleTypes.length > 0 && (
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition bg-white"
+            >
+              <option value="">All Types</option>
+              {uniqueRoleTypes.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition whitespace-nowrap"

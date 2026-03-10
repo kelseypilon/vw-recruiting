@@ -989,7 +989,7 @@ export async function POST(req: NextRequest) {
 
     // Whitelist allowed fields per action to prevent arbitrary field injection
     const allowedFields: Record<string, string[]> = {
-      update_team: ["name", "admin_email", "admin_cc", "group_interview_zoom_link", "group_interview_date", "plan", "slug", "office_address"],
+      update_team: ["name", "admin_email", "admin_cc", "group_interview_zoom_link", "group_interview_date", "plan", "slug", "office_address", "default_meeting_link"],
       update_user: ["name", "role", "from_email", "google_booking_url", "virtual_booking_url", "inperson_booking_url", "virtual_meeting_link", "meeting_link", "title"],
       update_stage: ["name", "color", "is_active", "order_index", "ghl_tag"],
       update_template: ["name", "subject", "body", "merge_tags", "is_active", "trigger", "folder_id"],
@@ -1007,6 +1007,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "update_team") {
+      // Handle default_meeting_link by merging into settings JSONB
+      // (it lives in settings, not as a direct column)
+      if ("default_meeting_link" in updates) {
+        const { data: currentTeam } = await supabase
+          .from("teams")
+          .select("settings")
+          .eq("id", id)
+          .single();
+        const currentSettings = (currentTeam?.settings ?? {}) as Record<string, unknown>;
+        const mergedSettings = { ...currentSettings, default_meeting_link: updates.default_meeting_link ?? null };
+        updates.settings = mergedSettings;
+        delete updates.default_meeting_link; // not a real column
+      }
+
       const { data, error } = await supabase
         .from("teams")
         .update(updates)

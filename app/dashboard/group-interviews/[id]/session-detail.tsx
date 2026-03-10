@@ -593,7 +593,10 @@ export default function SessionDetail({
                     onClick={() => setEditingZoom(true)}
                     className="px-2 py-1 rounded-lg text-xs font-medium text-[#a59494] hover:text-brand hover:bg-brand/5 transition"
                   >
-                    {session.zoom_link ? "Edit Link" : "+ Zoom Link"}
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
                   </button>
                 </div>
               )}
@@ -700,30 +703,6 @@ export default function SessionDetail({
         </div>
       )}
 
-      {/* General Session Notes — auto-saving shared notepad */}
-      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">
-            General Session Notes
-          </span>
-          {!isCompleted && (
-            <span className="text-[10px] text-[#a59494]">
-              {generalNotesStatus === "saving" && "Saving..."}
-              {generalNotesStatus === "saved" && "Saved"}
-              {generalNotesStatus === "idle" && "Auto-saves"}
-            </span>
-          )}
-        </div>
-        <textarea
-          value={generalNotes}
-          onChange={(e) => !isCompleted && handleGeneralNotesChange(e.target.value)}
-          readOnly={isCompleted}
-          rows={3}
-          className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none"
-          placeholder="Shared notes visible to all interviewers — observations about the group, logistics, etc."
-        />
-      </div>
-
       {/* Session Guide — combined guidelines + prompts */}
       {(guidelines.length > 0 || prompts.length > 0) && (
         <div className="bg-brand/5 border border-brand/10 rounded-xl shadow-sm overflow-hidden">
@@ -789,14 +768,6 @@ export default function SessionDetail({
             <h3 className="text-sm font-bold text-[#272727]">
               Candidates ({session.candidates.length})
             </h3>
-            {!isCompleted && (
-              <button
-                onClick={() => setAddingCandidate(true)}
-                className="text-xs font-medium text-brand hover:text-brand-dark transition"
-              >
-                + Add
-              </button>
-            )}
           </div>
           <div className="divide-y divide-[#a59494]/10">
             {session.candidates.length === 0 ? (

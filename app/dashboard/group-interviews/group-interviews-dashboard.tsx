@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Candidate, TeamUser, GroupInterviewSession } from "@/lib/types";
 import { usePermissions } from "@/lib/user-permissions-context";
+import DateTimePicker from "@/components/date-time-picker";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -13,6 +14,7 @@ interface Props {
   teamId: string;
   currentUserId: string;
   teamInterviewDate: string | null;
+  teamDefaultMeetingLink?: string | null;
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -23,6 +25,7 @@ export default function GroupInterviewsDashboard({
   teamId,
   currentUserId,
   teamInterviewDate,
+  teamDefaultMeetingLink,
 }: Props) {
   const router = useRouter();
   const { can } = usePermissions();
@@ -124,7 +127,7 @@ export default function GroupInterviewsDashboard({
               onClick={() => setShowCreate(true)}
               className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition whitespace-nowrap"
             >
-              + New Group Interview
+              Schedule New Group Interview
             </button>
           )}
         </div>
@@ -135,6 +138,7 @@ export default function GroupInterviewsDashboard({
         <SessionSettingsPanel
           teamId={teamId}
           initialInterviewDate={teamInterviewDate}
+          initialMeetingLink={teamDefaultMeetingLink ?? null}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -313,6 +317,7 @@ export default function GroupInterviewsDashboard({
           eligibleCandidates={eligibleCandidates}
           teamId={teamId}
           currentUserId={currentUserId}
+          defaultMeetingLink={teamDefaultMeetingLink ?? null}
           onClose={() => setShowCreate(false)}
           onCreated={(session) => {
             setSessions((prev) => [session, ...prev]);
@@ -413,22 +418,29 @@ function StatCard({
 function SessionSettingsPanel({
   teamId,
   initialInterviewDate,
+  initialMeetingLink,
   onClose,
 }: {
   teamId: string;
   initialInterviewDate: string | null;
+  initialMeetingLink: string | null;
   onClose: () => void;
 }) {
-  // Split initialInterviewDate into date + time parts
-  const parsed = initialInterviewDate ? new Date(initialInterviewDate) : null;
-  const [dateVal, setDateVal] = useState(
-    parsed ? parsed.toISOString().slice(0, 10) : ""
-  );
-  const [timeVal, setTimeVal] = useState(
-    parsed
-      ? parsed.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })
-      : ""
-  );
+  // DateTimePicker expects "YYYY-MM-DDTHH:MM" format
+  function toDateTimeLocal(iso: string | null): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  }
+
+  const [dateTimeVal, setDateTimeVal] = useState(toDateTimeLocal(initialInterviewDate));
+  const [meetingLink, setMeetingLink] = useState(initialMeetingLink ?? "");
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
 
@@ -437,9 +449,8 @@ function SessionSettingsPanel({
     setSaveStatus("");
     try {
       let isoDate: string | null = null;
-      if (dateVal) {
-        const combined = timeVal ? `${dateVal}T${timeVal}` : `${dateVal}T09:00`;
-        isoDate = new Date(combined).toISOString();
+      if (dateTimeVal) {
+        isoDate = new Date(dateTimeVal).toISOString();
       }
       const res = await fetch("/api/settings", {
         method: "POST",
@@ -449,6 +460,7 @@ function SessionSettingsPanel({
           payload: {
             id: teamId,
             group_interview_date: isoDate,
+            default_meeting_link: meetingLink.trim() || null,
           },
         }),
       });
@@ -467,7 +479,7 @@ function SessionSettingsPanel({
   }
 
   const inputClasses =
-    "px-3 py-2 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 transition";
+    "w-full px-3 py-2 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 transition";
 
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5 mb-6">
@@ -477,7 +489,7 @@ function SessionSettingsPanel({
             Session Settings
           </h3>
           <p className="text-xs text-[#a59494] mt-0.5">
-            Next scheduled group interview date
+            Default date and meeting link for group interviews
           </p>
         </div>
         <button
@@ -490,29 +502,31 @@ function SessionSettingsPanel({
           </svg>
         </button>
       </div>
-      <div className="max-w-sm">
-        <label className="block text-sm font-medium text-[#272727] mb-1.5">
-          Next Group Interview Date
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-[#a59494] mb-1">Date</label>
-            <input
-              type="date"
-              value={dateVal}
-              onChange={(e) => setDateVal(e.target.value)}
-              className={`w-full ${inputClasses}`}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[#a59494] mb-1">Time</label>
-            <input
-              type="time"
-              value={timeVal}
-              onChange={(e) => setTimeVal(e.target.value)}
-              className={`w-full ${inputClasses}`}
-            />
-          </div>
+      <div className="max-w-sm space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-[#272727] mb-1.5">
+            Next Group Interview Date
+          </label>
+          <DateTimePicker
+            value={dateTimeVal}
+            onChange={setDateTimeVal}
+            placeholder="Select date &amp; time"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-[#272727] mb-1.5">
+            Default Meeting Link
+          </label>
+          <input
+            type="url"
+            value={meetingLink}
+            onChange={(e) => setMeetingLink(e.target.value)}
+            placeholder="https://zoom.us/j/... or meeting URL"
+            className={inputClasses}
+          />
+          <p className="text-[10px] text-[#a59494] mt-1">
+            Pre-filled when creating new sessions
+          </p>
         </div>
       </div>
       <div className="flex items-center gap-3 mt-4">
@@ -545,21 +559,22 @@ function CreateSessionModal({
   eligibleCandidates,
   teamId,
   currentUserId,
+  defaultMeetingLink,
   onClose,
   onCreated,
 }: {
   eligibleCandidates: Candidate[];
   teamId: string;
   currentUserId: string;
+  defaultMeetingLink: string | null;
   onClose: () => void;
   onCreated: (session: GroupInterviewSession & { _candidate_count?: number }) => void;
 }) {
   const [title, setTitle] = useState(
     `Group Interview — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
   );
-  const [dateVal, setDateVal] = useState("");
-  const [timeVal, setTimeVal] = useState("");
-  const [zoomLink, setZoomLink] = useState("");
+  const [dateTimeVal, setDateTimeVal] = useState("");
+  const [zoomLink, setZoomLink] = useState(defaultMeetingLink ?? "");
   const [notes, setNotes] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -573,12 +588,11 @@ function CreateSessionModal({
 
   async function handleCreate() {
     if (!title.trim()) return;
-    if (!dateVal) { setError("Date is required"); return; }
-    if (!timeVal) { setError("Time is required"); return; }
+    if (!dateTimeVal) { setError("Date and time are required"); return; }
     setError("");
     setSaving(true);
     try {
-      const sessionDate = new Date(`${dateVal}T${timeVal}`).toISOString();
+      const sessionDate = new Date(dateTimeVal).toISOString();
       const res = await fetch("/api/group-interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -626,7 +640,7 @@ function CreateSessionModal({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#a59494]/10">
           <h3 className="text-lg font-bold text-[#272727]">
-            New Group Interview
+            Schedule New Group Interview
           </h3>
           <button
             onClick={onClose}
@@ -667,36 +681,22 @@ function CreateSessionModal({
             />
           </div>
 
-          {/* Date + Time (native inputs side by side) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1.5">
-                Date <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="date"
-                value={dateVal}
-                onChange={(e) => setDateVal(e.target.value)}
-                className={inputClasses}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1.5">
-                Time <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="time"
-                value={timeVal}
-                onChange={(e) => setTimeVal(e.target.value)}
-                className={inputClasses}
-              />
-            </div>
-          </div>
-
-          {/* Zoom / Location Link */}
+          {/* Date & Time — DateTimePicker */}
           <div>
             <label className="block text-sm font-medium text-[#272727] mb-1.5">
-              Zoom / Location Link
+              Date &amp; Time <span className="text-red-400">*</span>
+            </label>
+            <DateTimePicker
+              value={dateTimeVal}
+              onChange={setDateTimeVal}
+              placeholder="Select date &amp; time"
+            />
+          </div>
+
+          {/* Meeting Link */}
+          <div>
+            <label className="block text-sm font-medium text-[#272727] mb-1.5">
+              Meeting Link
             </label>
             <input
               type="text"
@@ -787,7 +787,7 @@ function CreateSessionModal({
             disabled={saving || !title.trim()}
             className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
           >
-            {saving ? "Creating..." : "Create Session"}
+            {saving ? "Creating..." : "Schedule Session"}
           </button>
         </div>
       </div>

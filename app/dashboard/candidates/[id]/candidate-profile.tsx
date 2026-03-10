@@ -143,31 +143,12 @@ export default function CandidateProfile({
                   {candidate.stage}
                 </span>
                 {candidate.role_applied && (
-                  <span className="text-sm text-[#a59494]">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                     {(() => {
                       try { const parsed = JSON.parse(candidate.role_applied); return Array.isArray(parsed) ? parsed.join(", ") : candidate.role_applied; } catch { return candidate.role_applied; }
                     })()}
                   </span>
                 )}
-                <button
-                  onClick={async () => {
-                    const newVal = !candidate.is_isa;
-                    setCandidate((prev) => ({ ...prev, is_isa: newVal }));
-                    const supabase = (await import("@/lib/supabase/client")).createClient();
-                    await supabase
-                      .from("candidates")
-                      .update({ is_isa: newVal })
-                      .eq("id", candidate.id);
-                  }}
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition cursor-pointer ${
-                    candidate.is_isa
-                      ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                      : "bg-[#f5f0f0] text-[#a59494] hover:bg-[#e8e0e0]"
-                  }`}
-                  title={candidate.is_isa ? "Remove ISA status" : "Mark as ISA"}
-                >
-                  {candidate.is_isa ? "ISA" : "+ ISA"}
-                </button>
               </div>
             </div>
           </div>
@@ -303,6 +284,19 @@ export default function CandidateProfile({
               <AQCard candidate={candidate} />
               <CompositeCard candidate={candidate} />
             </div>
+
+            {/* Interview Score */}
+            {candidate.interview_score != null && (
+              <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-5 py-3 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">Interview Score</h4>
+                  <p className="text-xs text-[#a59494] mt-0.5">Average across submitted scorecards</p>
+                </div>
+                <span className={`text-lg font-bold px-3 py-1 rounded ${scoreColor(candidate.interview_score)}`}>
+                  {candidate.interview_score.toFixed(1)}/10
+                </span>
+              </div>
+            )}
 
             {/* Notes */}
             <NotesSection
@@ -2042,8 +2036,8 @@ const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = 
 };
 
 function scoreColor(score: number) {
-  if (score >= 4) return "text-green-700 bg-green-50";
-  if (score >= 3) return "text-amber-700 bg-amber-50";
+  if (score >= 8) return "text-green-700 bg-green-50";
+  if (score >= 6) return "text-amber-700 bg-amber-50";
   return "text-red-700 bg-red-50";
 }
 
@@ -2070,12 +2064,13 @@ function InterviewsTab({
   emailTemplates?: EmailTemplate[];
   leaders?: TeamUser[];
 }) {
-  const [subTab, setSubTab] = useState<"scheduled" | "guide" | "scorecard">("scheduled");
+  const [subTab, setSubTab] = useState<"scheduled" | "guide" | "scorecard" | "results">("scheduled");
 
   const subTabs = [
     { key: "scheduled" as const, label: "Scheduled" },
     { key: "guide" as const, label: "Interview Guide" },
     { key: "scorecard" as const, label: "Scorecard" },
+    { key: "results" as const, label: "Results Summary" },
   ];
 
   return (
@@ -2129,6 +2124,261 @@ function InterviewsTab({
           teamId={teamId}
         />
       )}
+
+      {subTab === "results" && (
+        <ResultsSummarySubTab
+          candidate={candidate}
+          scorecards={scorecards}
+          currentUserId={currentUserId}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Results Summary Sub-Tab ─────────────────────────────────── */
+
+function ResultsSummarySubTab({
+  candidate,
+  scorecards,
+  currentUserId,
+}: {
+  candidate: Candidate;
+  scorecards: InterviewScorecard[];
+  currentUserId: string;
+}) {
+  const { userRole, userEmail } = usePermissions();
+  const SUPER_ADMIN_EMAILS = ["kelsey@kelseypilon.com", "kelseylpilon@gmail.com"];
+  const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmail);
+  const FULL_ACCESS_ROLES = ["Team Lead", "Admin", "VP Ops"];
+  const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
+
+  const viewerHasSubmitted = scorecards.some(
+    (sc) => sc.interviewer_user_id === currentUserId && sc.submitted_at
+  );
+
+  // Filter scorecards the user can see
+  const visibleScorecards = scorecards
+    .filter((sc) => sc.submitted_at)
+    .filter((sc) => {
+      if (sc.interviewer_user_id === currentUserId) return true;
+      if (isFullAccess) return true;
+      const vis = (sc.evaluator as Record<string, unknown> | null)?.scorecard_visibility as string | undefined;
+      if (vis === "never") return false;
+      if (vis === "after_submit") return viewerHasSubmitted;
+      return true;
+    });
+
+  // Draft scorecards for labeling
+  const draftScorecards = scorecards.filter((sc) => !sc.submitted_at);
+
+  // Category aggregation
+  const allCategories = new Set<string>();
+  visibleScorecards.forEach((sc) => {
+    Object.keys(sc.category_scores).forEach((cat) => allCategories.add(cat));
+  });
+  const sortedCategories = [...allCategories].sort((a, b) => {
+    const ai = INTERVIEW_CATEGORY_ORDER.indexOf(a);
+    const bi = INTERVIEW_CATEGORY_ORDER.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  // Category averages
+  function categoryAverage(cat: string) {
+    const scores = visibleScorecards
+      .map((sc) => sc.category_scores[cat])
+      .filter((s) => s !== undefined && s !== null);
+    if (scores.length === 0) return null;
+    return Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2));
+  }
+
+  const combinedOverall =
+    visibleScorecards.length > 0
+      ? Number(
+          (visibleScorecards.reduce((sum, sc) => sum + (sc.overall_score ?? 0), 0) /
+            visibleScorecards.length
+          ).toFixed(2)
+        )
+      : null;
+
+  if (visibleScorecards.length === 0 && draftScorecards.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-8 text-center">
+        <p className="text-sm text-[#a59494]">No scorecards submitted yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Combined score header */}
+      {combinedOverall !== null && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-6 py-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-[#272727]">Interview Score</h3>
+            <p className="text-xs text-[#a59494] mt-0.5">
+              Based on {visibleScorecards.length} submitted scorecard{visibleScorecards.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <span className={`text-lg font-bold px-3 py-1 rounded ${scoreColor(combinedOverall)}`}>
+            {combinedOverall.toFixed(1)}/10
+          </span>
+        </div>
+      )}
+
+      {/* Score table */}
+      {visibleScorecards.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+          <div className="px-6 py-3 border-b border-[#a59494]/10">
+            <h3 className="text-sm font-semibold text-[#272727]">Score Breakdown</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#a59494]/10">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[140px]">
+                    Category
+                  </th>
+                  {visibleScorecards.map((sc) => (
+                    <th key={sc.id} className="text-center px-2 py-2 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[70px]">
+                      {sc.evaluator?.name ?? "Evaluator"}
+                    </th>
+                  ))}
+                  <th className="text-center px-2 py-2 text-xs font-semibold text-brand uppercase tracking-wider min-w-[70px]">
+                    Average
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#a59494]/5">
+                {sortedCategories.map((cat) => {
+                  const avg = categoryAverage(cat);
+                  return (
+                    <tr key={cat} className="hover:bg-[#f5f0f0]/30 transition">
+                      <td className="px-4 py-1.5 text-xs font-medium text-[#272727]">{cat}</td>
+                      {visibleScorecards.map((sc) => {
+                        const s = sc.category_scores[cat];
+                        return (
+                          <td key={sc.id} className="text-center px-2 py-1.5">
+                            {s !== undefined ? (
+                              <span className={`inline-block text-xs font-semibold px-1.5 py-0.5 rounded ${scoreColor(s)}`}>
+                                {s.toFixed(1)}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-[#a59494]">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="text-center px-2 py-1.5">
+                        {avg !== null ? (
+                          <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(avg)}`}>
+                            {avg.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[#a59494]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="border-t-2 border-[#a59494]/20 bg-[#f5f0f0]/30">
+                  <td className="px-4 py-2 text-xs font-bold text-[#272727]">Overall</td>
+                  {visibleScorecards.map((sc) => (
+                    <td key={sc.id} className="text-center px-2 py-2">
+                      {sc.overall_score !== null ? (
+                        <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
+                          {sc.overall_score.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#a59494]">—</span>
+                      )}
+                    </td>
+                  ))}
+                  <td className="text-center px-2 py-2">
+                    {combinedOverall !== null ? (
+                      <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(combinedOverall)}`}>
+                        {combinedOverall.toFixed(1)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[#a59494]">—</span>
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Recommendation badges */}
+          <div className="px-6 py-2 border-t border-[#a59494]/10 flex flex-wrap gap-3">
+            {visibleScorecards.map((sc) => {
+              const rec = sc.recommendation ? RECOMMENDATION_LABELS[sc.recommendation] : null;
+              return (
+                <div key={sc.id} className="flex items-center gap-2">
+                  <span className="text-xs text-[#a59494]">{sc.evaluator?.name ?? "Evaluator"}:</span>
+                  {rec ? (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rec.color}`}>
+                      {rec.label}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[#a59494]">No recommendation</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Draft labels */}
+      {draftScorecards.length > 0 && isFullAccess && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-6 py-3">
+          <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">Drafts In Progress</h4>
+          <div className="flex flex-wrap gap-2">
+            {draftScorecards.map((sc) => (
+              <span key={sc.id} className="text-xs font-medium px-2 py-1 rounded-full bg-amber-50 text-amber-700">
+                {sc.evaluator?.name ?? "Evaluator"} — Draft
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Private Notes Section */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-3 border-b border-[#a59494]/10">
+          <h3 className="text-sm font-semibold text-[#272727]">Private Notes</h3>
+          <p className="text-xs text-[#a59494] mt-0.5">
+            {isSuperAdmin ? "All private notes from all interviewers" : "Your private notes only"}
+          </p>
+        </div>
+        <div className="divide-y divide-[#a59494]/5">
+          {(() => {
+            const notesToShow = isSuperAdmin
+              ? scorecards.filter((sc) => sc.private_notes)
+              : scorecards.filter((sc) => sc.interviewer_user_id === currentUserId && sc.private_notes);
+            if (notesToShow.length === 0) {
+              return (
+                <div className="px-6 py-4 text-center">
+                  <p className="text-xs text-[#a59494]">No private notes recorded</p>
+                </div>
+              );
+            }
+            return notesToShow.map((sc) => (
+              <div key={sc.id} className="px-6 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-[#272727]">
+                    {sc.evaluator?.name ?? "You"}
+                  </span>
+                  {!sc.submitted_at && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">Draft</span>
+                  )}
+                </div>
+                <p className="text-sm text-[#272727] whitespace-pre-wrap">{sc.private_notes}</p>
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2404,7 +2654,22 @@ function InterviewGuideSubTab({
   currentUserId: string;
 }) {
   const [guideNotes, setGuideNotes] = useState<Record<string, string>>({});
-  const debounceTimers = useState<Record<string, ReturnType<typeof setTimeout>>>({})[0];
+  const [privateNotes, setPrivateNotes] = useState<Record<string, string>>({});
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [isDirty, setIsDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dirtyRef = useRef(false);
+  const guideNotesRef = useRef(guideNotes);
+  const privateNotesRef = useRef(privateNotes);
+
+  const { can } = usePermissions();
+  const canViewSharedNotes = can("view_interview_notes");
+
+  // Keep refs in sync
+  useEffect(() => { guideNotesRef.current = guideNotes; }, [guideNotes]);
+  useEffect(() => { privateNotesRef.current = privateNotes; }, [privateNotes]);
 
   // Load existing guide notes on mount
   useEffect(() => {
@@ -2421,10 +2686,13 @@ function InterviewGuideSubTab({
         const json = await res.json();
         if (json.data && Array.isArray(json.data)) {
           const notes: Record<string, string> = {};
+          const privNotes: Record<string, string> = {};
           for (const n of json.data) {
             if (n.note_text) notes[n.question_id] = n.note_text;
+            if (n.private_notes) privNotes[n.question_id] = n.private_notes;
           }
           setGuideNotes(notes);
+          setPrivateNotes(privNotes);
         }
       } catch {}
     }
@@ -2443,28 +2711,90 @@ function InterviewGuideSubTab({
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 
+  // Initialize first category expanded
+  useEffect(() => {
+    if (sortedCategoryKeys.length > 0 && expandedCategories.size === 0) {
+      setExpandedCategories(new Set([sortedCategoryKeys[0]]));
+    }
+  }, [sortedCategoryKeys.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleCategory(cat: string) {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+
+  // Silent auto-save every 30 seconds
+  const saveAllNotes = useRef(async () => {
+    if (!dirtyRef.current) return;
+    const notes = guideNotesRef.current;
+    const privNotes = privateNotesRef.current;
+    const allQuestionIds = new Set([...Object.keys(notes), ...Object.keys(privNotes)]);
+    const promises: Promise<unknown>[] = [];
+    for (const qid of allQuestionIds) {
+      promises.push(
+        fetch("/api/interview-scorecards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_guide_note",
+            payload: {
+              candidate_id: candidateId,
+              question_id: qid,
+              team_id: teamId,
+              author_user_id: currentUserId,
+              note_text: notes[qid] ?? "",
+              private_notes: privNotes[qid] ?? "",
+            },
+          }),
+        }).catch(() => {})
+      );
+    }
+    await Promise.all(promises);
+    dirtyRef.current = false;
+    setIsDirty(false);
+    setLastSaved(new Date());
+  });
+
+  useEffect(() => {
+    autoSaveTimer.current = setInterval(() => {
+      saveAllNotes.current();
+    }, 30000);
+    return () => {
+      if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+    };
+  }, []);
+
+  // Browser unsaved-changes warning
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirtyRef.current) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
   function handleNoteChange(questionId: string, text: string) {
     setGuideNotes((prev) => ({ ...prev, [questionId]: text }));
+    setIsDirty(true);
+    dirtyRef.current = true;
+  }
 
-    // Debounced auto-save (2s)
-    if (debounceTimers[questionId]) clearTimeout(debounceTimers[questionId]);
-    debounceTimers[questionId] = setTimeout(() => {
-      // Save note via API (fire-and-forget)
-      fetch("/api/interview-scorecards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save_guide_note",
-          payload: {
-            candidate_id: candidateId,
-            question_id: questionId,
-            team_id: teamId,
-            author_user_id: currentUserId,
-            note_text: text,
-          },
-        }),
-      }).catch(() => {});
-    }, 2000);
+  function handlePrivateNoteChange(questionId: string, text: string) {
+    setPrivateNotes((prev) => ({ ...prev, [questionId]: text }));
+    setIsDirty(true);
+    dirtyRef.current = true;
+  }
+
+  async function handleSubmitNotes() {
+    setSaving(true);
+    await saveAllNotes.current();
+    setSaving(false);
   }
 
   if (interviewQuestions.length === 0) {
@@ -2482,30 +2812,92 @@ function InterviewGuideSubTab({
   }
 
   return (
-    <div className="space-y-4">
-      {sortedCategoryKeys.map((category) => (
-        <div key={category} className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-          <div className="px-5 py-3 border-b border-[#a59494]/10">
-            <h4 className="text-xs font-bold text-brand uppercase tracking-wider">
-              {category}
-            </h4>
-          </div>
-          <div className="divide-y divide-[#a59494]/5">
-            {grouped[category].map((q) => (
-              <div key={q.id} className="px-5 py-3">
-                <p className="text-sm text-[#272727] mb-2">{q.question_text}</p>
-                <textarea
-                  placeholder="Notes..."
-                  value={guideNotes[q.id] ?? ""}
-                  onChange={(e) => handleNoteChange(q.id, e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
-                />
+    <div className="space-y-2">
+      {sortedCategoryKeys.map((category) => {
+        const isExpanded = expandedCategories.has(category);
+        return (
+          <div key={category} className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+            <button
+              type="button"
+              onClick={() => toggleCategory(category)}
+              className="w-full px-5 py-3 flex items-center justify-between hover:bg-[#f5f0f0]/30 transition rounded-t-xl"
+            >
+              <h4 className="text-xs font-bold text-brand uppercase tracking-wider">
+                {category}
+              </h4>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a59494"
+                strokeWidth="2"
+                className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {isExpanded && (
+              <div className="divide-y divide-[#a59494]/5 border-t border-[#a59494]/10">
+                {grouped[category].map((q) => (
+                  <div key={q.id} className="px-5 py-3">
+                    <p className="text-sm text-[#272727] mb-1.5">{q.question_text}</p>
+                    {q.interviewer_note && (
+                      <p className="text-xs text-[#a59494] italic mb-2">{q.interviewer_note}</p>
+                    )}
+                    {/* Shared notes — visible based on permission */}
+                    {canViewSharedNotes && (
+                      <div className="mb-2">
+                        <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
+                          Shared Notes
+                        </label>
+                        <textarea
+                          placeholder="Shared notes (visible to team)..."
+                          value={guideNotes[q.id] ?? ""}
+                          onChange={(e) => handleNoteChange(q.id, e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
+                        />
+                      </div>
+                    )}
+                    {/* Private notes — always visible to current user only */}
+                    <div>
+                      <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
+                        Private Notes
+                        <span className="font-normal ml-1">(only you can see)</span>
+                      </label>
+                      <textarea
+                        placeholder="Private notes..."
+                        value={privateNotes[q.id] ?? ""}
+                        onChange={(e) => handlePrivateNoteChange(q.id, e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 rounded-lg border border-purple-200 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition resize-none bg-purple-50/30"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
+        );
+      })}
+
+      {/* Submit Notes button + auto-save status */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="text-xs text-[#a59494]">
+          {lastSaved && !isDirty && (
+            <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
+          )}
+          {isDirty && <span className="text-amber-600">Unsaved changes</span>}
         </div>
-      ))}
+        <button
+          onClick={handleSubmitNotes}
+          disabled={saving || !isDirty}
+          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Submit Notes"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -2539,9 +2931,14 @@ function ScorecardSubTab({
   const [categoryRatings, setCategoryRatings] = useState<Record<string, number>>({});
   const [recommendation, setRecommendation] = useState<string>("");
   const [summaryNotes, setSummaryNotes] = useState("");
+  const [privateNotes, setPrivateNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [localScorecards, setLocalScorecards] = useState(scorecards);
+  const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dirtyRef = useRef(false);
 
   const { userRole } = usePermissions();
   const FULL_ACCESS_ROLES = ["Team Lead", "Admin", "VP Ops"];
@@ -2551,70 +2948,152 @@ function ScorecardSubTab({
   const candidateInterviews = interviews.filter((i) => i.candidate_id === candidate.id);
   const activeInterview = candidateInterviews.find((i) => i.status === "scheduled" || i.status === "completed");
 
+  // Check if current user has an existing submitted scorecard
+  const existingScorecard = localScorecards.find(
+    (sc) => sc.interviewer_user_id === currentUserId
+  );
+  const isAlreadySubmitted = existingScorecard?.submitted_at != null;
+
+  // Load existing draft on mount
+  useEffect(() => {
+    if (existingScorecard) {
+      const ratings: Record<string, number> = {};
+      for (const [cat, score] of Object.entries(existingScorecard.category_scores)) {
+        ratings[cat] = score;
+      }
+      setCategoryRatings(ratings);
+      setRecommendation(existingScorecard.recommendation ?? "");
+      setSummaryNotes(existingScorecard.summary_notes ?? "");
+      setPrivateNotes(existingScorecard.private_notes ?? "");
+      if (existingScorecard.submitted_at) setSubmitted(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Calculate overall score from rated categories
   const ratedValues = Object.values(categoryRatings).filter((v) => v > 0);
   const overallScore = ratedValues.length > 0
     ? Number((ratedValues.reduce((a, b) => a + b, 0) / ratedValues.length).toFixed(2))
     : null;
 
-  async function handleSaveOrSubmit(doSubmit: boolean) {
-    setSaving(true);
+  // Build payload helper
+  function buildPayload(interviewId: string) {
+    const category_scores: Record<string, number> = {};
+    const answers = categories
+      .filter((cat) => categoryRatings[cat] && categoryRatings[cat] > 0)
+      .map((cat) => {
+        category_scores[cat] = categoryRatings[cat];
+        return {
+          question_id: cat,
+          question_text: cat,
+          category: cat,
+          score: categoryRatings[cat],
+          notes: "",
+        };
+      });
+    return {
+      interview_id: interviewId,
+      interviewer_user_id: currentUserId,
+      candidate_id: candidate.id,
+      team_id: teamId,
+      answers,
+      category_scores,
+      overall_score: overallScore,
+      recommendation: recommendation || null,
+      summary_notes: summaryNotes || null,
+      private_notes: privateNotes || null,
+    };
+  }
 
+  async function getOrCreateInterviewId() {
+    let interviewId = activeInterview?.id;
+    if (!interviewId) {
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { data: newInterview, error: intErr } = await supabase
+        .from("interviews")
+        .insert({
+          team_id: teamId,
+          candidate_id: candidate.id,
+          interview_type: "1on1 Interview",
+          status: "completed",
+          notes: "Auto-created for scorecard entry",
+        })
+        .select("id")
+        .single();
+      if (intErr || !newInterview) return null;
+      interviewId = newInterview.id;
+    }
+    return interviewId;
+  }
+
+  // Auto-save every 30s (silent, no toast)
+  const autoSave = useRef(async () => {
+    if (!dirtyRef.current || submitted) return;
+    const interviewId = await getOrCreateInterviewId();
+    if (!interviewId) return;
     try {
-      // If no active interview, auto-create one so we have an interview_id for the scorecard
-      let interviewId = activeInterview?.id;
-      if (!interviewId) {
-        const supabase = (await import("@/lib/supabase/client")).createClient();
-        const { data: newInterview, error: intErr } = await supabase
-          .from("interviews")
-          .insert({
-            team_id: teamId,
-            candidate_id: candidate.id,
-            interview_type: "1on1 Interview",
-            status: "completed",
-            notes: "Auto-created for scorecard entry",
-          })
-          .select("id")
-          .single();
-        if (intErr || !newInterview) {
-          console.error("Failed to create interview for scorecard:", intErr);
-          setSaving(false);
-          return;
-        }
-        interviewId = newInterview.id;
-      }
-
-      // Build category_scores and answers
-      const category_scores: Record<string, number> = {};
-      const answers = categories
-        .filter((cat) => categoryRatings[cat] && categoryRatings[cat] > 0)
-        .map((cat) => {
-          category_scores[cat] = categoryRatings[cat];
-          return {
-            question_id: cat,
-            question_text: cat,
-            category: cat,
-            score: categoryRatings[cat],
-            notes: "",
-          };
+      const res = await fetch("/api/interview-scorecards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_draft",
+          payload: buildPayload(interviewId),
+        }),
+      });
+      const result = await res.json();
+      if (result.data) {
+        setLocalScorecards((prev) => {
+          const idx = prev.findIndex((sc) => sc.id === result.data.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = result.data;
+            return next;
+          }
+          return [...prev, result.data];
         });
+        dirtyRef.current = false;
+        setIsDirty(false);
+        setLastSaved(new Date());
+      }
+    } catch {}
+  });
+
+  useEffect(() => {
+    autoSaveTimer.current = setInterval(() => {
+      autoSave.current();
+    }, 30000);
+    return () => {
+      if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+    };
+  }, []);
+
+  // Browser unsaved-changes warning
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirtyRef.current) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  function markDirty() {
+    setIsDirty(true);
+    dirtyRef.current = true;
+  }
+
+  async function handleSubmit() {
+    setSaving(true);
+    try {
+      const interviewId = await getOrCreateInterviewId();
+      if (!interviewId) { setSaving(false); return; }
 
       const res = await fetch("/api/interview-scorecards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: doSubmit ? "submit" : "save_draft",
-          payload: {
-            interview_id: interviewId,
-            interviewer_user_id: currentUserId,
-            candidate_id: candidate.id,
-            team_id: teamId,
-            answers,
-            category_scores,
-            overall_score: overallScore,
-            recommendation: recommendation || null,
-            summary_notes: summaryNotes || null,
-          },
+          action: "submit",
+          payload: buildPayload(interviewId),
         }),
       });
       const result = await res.json();
@@ -2629,10 +3108,12 @@ function ScorecardSubTab({
           }
           return [...prev, result.data];
         });
-        if (doSubmit) setSubmitted(true);
+        setSubmitted(true);
+        dirtyRef.current = false;
+        setIsDirty(false);
       }
     } catch (err) {
-      console.error("Failed to save scorecard:", err);
+      console.error("Failed to submit scorecard:", err);
     }
     setSaving(false);
   }
@@ -2671,146 +3152,164 @@ function ScorecardSubTab({
         )
       : null;
 
+  // Read-only submitted state
+  const isReadOnly = submitted || isAlreadySubmitted;
+
   return (
     <div className="space-y-4">
       {/* Scorecard Form */}
-      {!submitted ? (
-        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-          <div className="px-6 py-4 border-b border-[#a59494]/10 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-[#272727]">Rate by Category</h3>
-              {activeInterview && (
-                <p className="text-xs text-[#a59494] mt-0.5">
-                  For: {activeInterview.interview_type}
-                </p>
-              )}
-            </div>
-            {overallScore !== null && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#a59494]">Overall</span>
-                <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(overallScore)}`}>
-                  {overallScore.toFixed(1)}/5
-                </span>
-              </div>
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
+        <div className="px-6 py-3 border-b border-[#a59494]/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-[#272727]">Rate by Category</h3>
+            {isReadOnly && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                Submitted
+              </span>
             )}
           </div>
+          {overallScore !== null && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#a59494]">Overall</span>
+              <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(overallScore)}`}>
+                {overallScore.toFixed(1)}/10
+              </span>
+            </div>
+          )}
+        </div>
 
-          <div className="divide-y divide-[#a59494]/5">
-            {categories.map((cat) => (
-              <div key={cat} className="px-6 py-3 flex items-center justify-between">
-                <span className="text-sm text-[#272727] font-medium">{cat}</span>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() =>
-                        setCategoryRatings((prev) => ({ ...prev, [cat]: star }))
-                      }
-                      className="transition"
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "none"}
-                        stroke={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "#a59494"}
-                        strokeWidth="2"
-                      >
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                      </svg>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="px-6 py-4 border-t border-[#a59494]/10 space-y-3">
-            {/* Recommendation */}
-            <div>
-              <label className="block text-xs font-semibold text-[#272727] mb-1.5">
-                Recommendation
-              </label>
-              <div className="flex gap-2">
-                {[
-                  { value: "strong_yes", label: "Strong Yes", color: "bg-green-600" },
-                  { value: "yes", label: "Yes", color: "bg-green-500" },
-                  { value: "hold", label: "Hold", color: "bg-amber-500" },
-                  { value: "no", label: "No", color: "bg-red-500" },
-                ].map((opt) => (
+        <div className="divide-y divide-[#a59494]/5">
+          {categories.map((cat) => (
+            <div key={cat} className="px-6 py-2 flex items-center justify-between">
+              <span className="text-xs text-[#272727] font-medium">{cat}</span>
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
                   <button
-                    key={opt.value}
+                    key={star}
                     type="button"
-                    onClick={() => setRecommendation(opt.value)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                      recommendation === opt.value
-                        ? `${opt.color} text-white`
-                        : "border border-[#a59494]/30 text-[#272727] hover:bg-[#f5f0f0]"
-                    }`}
+                    disabled={isReadOnly}
+                    onClick={() => {
+                      setCategoryRatings((prev) => ({ ...prev, [cat]: star }));
+                      markDirty();
+                    }}
+                    className="transition disabled:cursor-default"
                   >
-                    {opt.label}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "none"}
+                      stroke={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "#d1d5db"}
+                      strokeWidth="2"
+                    >
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
                   </button>
                 ))}
+                {categoryRatings[cat] > 0 && (
+                  <span className="text-xs font-semibold text-[#272727] ml-1 w-6 text-right">
+                    {categoryRatings[cat]}
+                  </span>
+                )}
               </div>
             </div>
+          ))}
+        </div>
 
-            {/* Summary notes */}
-            <div>
-              <label className="block text-xs font-semibold text-[#272727] mb-1">
-                General Notes
-              </label>
-              <textarea
-                value={summaryNotes}
-                onChange={(e) => setSummaryNotes(e.target.value)}
-                rows={3}
-                placeholder="Overall thoughts about this candidate..."
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
-              />
+        <div className="px-6 py-3 border-t border-[#a59494]/10 space-y-3">
+          {/* Recommendation */}
+          <div>
+            <label className="block text-xs font-semibold text-[#272727] mb-1.5">
+              Recommendation
+            </label>
+            <div className="flex gap-2">
+              {[
+                { value: "strong_yes", label: "Strong Yes", color: "bg-green-600" },
+                { value: "yes", label: "Yes", color: "bg-green-500" },
+                { value: "hold", label: "Hold", color: "bg-amber-500" },
+                { value: "no", label: "No", color: "bg-red-500" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={isReadOnly}
+                  onClick={() => { setRecommendation(opt.value); markDirty(); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    recommendation === opt.value
+                      ? `${opt.color} text-white`
+                      : "border border-[#a59494]/30 text-[#272727] hover:bg-[#f5f0f0]"
+                  } disabled:cursor-default`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-2 pt-1">
+          {/* Summary notes */}
+          <div>
+            <label className="block text-xs font-semibold text-[#272727] mb-1">
+              General Notes
+            </label>
+            <textarea
+              value={summaryNotes}
+              onChange={(e) => { setSummaryNotes(e.target.value); markDirty(); }}
+              rows={2}
+              readOnly={isReadOnly}
+              placeholder="Overall thoughts about this candidate..."
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none read-only:bg-gray-50"
+            />
+          </div>
+
+          {/* Private notes */}
+          <div>
+            <label className="block text-xs font-semibold text-[#272727] mb-1">
+              Private Notes
+              <span className="font-normal text-[#a59494] ml-1">(only you can see)</span>
+            </label>
+            <textarea
+              value={privateNotes}
+              onChange={(e) => { setPrivateNotes(e.target.value); markDirty(); }}
+              rows={2}
+              readOnly={isReadOnly}
+              placeholder="Private notes..."
+              className="w-full px-3 py-2 rounded-lg border border-purple-200 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition resize-none bg-purple-50/30 read-only:bg-gray-50"
+            />
+          </div>
+
+          {/* Actions — only Submit button, no Save Draft */}
+          {!isReadOnly && (
+            <div className="flex items-center justify-between pt-1">
+              <div className="text-xs text-[#a59494]">
+                {lastSaved && !isDirty && (
+                  <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
+                )}
+                {isDirty && <span className="text-amber-600">Unsaved changes</span>}
+              </div>
               <button
-                onClick={() => handleSaveOrSubmit(false)}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg border border-[#a59494]/30 text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Draft"}
-              </button>
-              <button
-                onClick={() => handleSaveOrSubmit(true)}
+                onClick={handleSubmit}
                 disabled={saving || ratedValues.length === 0}
                 className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
               >
                 {saving ? "Submitting..." : "Submit Scorecard"}
               </button>
             </div>
-          </div>
+          )}
         </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-6 text-center">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </div>
-          <p className="text-sm font-semibold text-[#272727]">Scorecard Submitted</p>
-          <p className="text-xs text-[#a59494] mt-1">Your evaluation has been recorded.</p>
-        </div>
-      )}
+      </div>
 
       {/* Score Comparison Grid */}
       {submittedScorecards.length > 0 && (
         <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-          <div className="px-6 py-4 border-b border-[#a59494]/10">
+          <div className="px-6 py-3 border-b border-[#a59494]/10">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[#272727]">Score Comparison</h3>
               {combinedOverall !== null && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#a59494]">Combined</span>
                   <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(combinedOverall)}`}>
-                    {combinedOverall.toFixed(1)}/5
+                    {combinedOverall.toFixed(1)}/10
                   </span>
                 </div>
               )}
@@ -2820,11 +3319,11 @@ function ScorecardSubTab({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#a59494]/10">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[160px]">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[140px]">
                     Category
                   </th>
                   {submittedScorecards.map((sc) => (
-                    <th key={sc.id} className="text-center px-3 py-2.5 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[80px]">
+                    <th key={sc.id} className="text-center px-2 py-2 text-xs font-semibold text-[#a59494] uppercase tracking-wider min-w-[70px]">
                       {sc.evaluator?.name ?? "Evaluator"}
                     </th>
                   ))}
@@ -2833,13 +3332,13 @@ function ScorecardSubTab({
               <tbody className="divide-y divide-[#a59494]/5">
                 {sortedCategories.map((cat) => (
                   <tr key={cat} className="hover:bg-[#f5f0f0]/30 transition">
-                    <td className="px-4 py-2 text-xs font-medium text-[#272727]">{cat}</td>
+                    <td className="px-4 py-1.5 text-xs font-medium text-[#272727]">{cat}</td>
                     {submittedScorecards.map((sc) => {
                       const s = sc.category_scores[cat];
                       return (
-                        <td key={sc.id} className="text-center px-3 py-2">
+                        <td key={sc.id} className="text-center px-2 py-1.5">
                           {s !== undefined ? (
-                            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${scoreColor(s)}`}>
+                            <span className={`inline-block text-xs font-semibold px-1.5 py-0.5 rounded ${scoreColor(s)}`}>
                               {s.toFixed(1)}
                             </span>
                           ) : (
@@ -2851,11 +3350,11 @@ function ScorecardSubTab({
                   </tr>
                 ))}
                 <tr className="border-t-2 border-[#a59494]/20 bg-[#f5f0f0]/30">
-                  <td className="px-4 py-2.5 text-xs font-bold text-[#272727]">Overall</td>
+                  <td className="px-4 py-2 text-xs font-bold text-[#272727]">Overall</td>
                   {submittedScorecards.map((sc) => (
-                    <td key={sc.id} className="text-center px-3 py-2.5">
+                    <td key={sc.id} className="text-center px-2 py-2">
                       {sc.overall_score !== null ? (
-                        <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
+                        <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
                           {sc.overall_score.toFixed(1)}
                         </span>
                       ) : (
@@ -2869,7 +3368,7 @@ function ScorecardSubTab({
           </div>
 
           {/* Recommendation badges */}
-          <div className="px-6 py-3 border-t border-[#a59494]/10 flex flex-wrap gap-3">
+          <div className="px-6 py-2 border-t border-[#a59494]/10 flex flex-wrap gap-3">
             {submittedScorecards.map((sc) => {
               const rec = sc.recommendation ? RECOMMENDATION_LABELS[sc.recommendation] : null;
               return (

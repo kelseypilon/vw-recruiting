@@ -80,7 +80,10 @@ export async function POST(req: NextRequest) {
         overall_score: overallScore,
         recommendation: sc.recommendation ?? null,
         summary_notes: sc.summary_notes ?? null,
-        ...(action === "submit" ? { submitted_at: new Date().toISOString() } : {}),
+        private_notes: sc.private_notes ?? null,
+        ...(action === "submit"
+          ? { submitted_at: new Date().toISOString(), is_submitted: true }
+          : {}),
         updated_at: new Date().toISOString(),
       };
 
@@ -152,7 +155,7 @@ export async function POST(req: NextRequest) {
 
     /* ── save_guide_note ────────────────────────────────────────── */
     if (action === "save_guide_note") {
-      const { candidate_id, question_id, team_id, author_user_id, note_text } =
+      const { candidate_id, question_id, team_id, author_user_id, note_text, private_notes } =
         payload ?? {};
       if (!candidate_id || !question_id || !team_id || !author_user_id) {
         return NextResponse.json(
@@ -173,6 +176,7 @@ export async function POST(req: NextRequest) {
             team_id,
             author_user_id,
             note_text: note_text ?? "",
+            private_notes: private_notes ?? "",
             updated_at: new Date().toISOString(),
           },
           { onConflict: "candidate_id,question_id,author_user_id" }
