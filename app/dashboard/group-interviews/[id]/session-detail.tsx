@@ -1558,13 +1558,13 @@ export default function SessionDetail({
                             {[1,2,3,4,5].map((score) => (
                               <button
                                 key={score}
-                                disabled={isCompleted}
+                                disabled={isCompleted || evaluation?.is_locked}
                                 onClick={() => selectedCandidate && saveCriteriaScore(selectedCandidate.id, criterion, score)}
                                 className={`w-7 h-7 rounded text-xs font-medium transition ${
                                   criteriaScores[`${selectedCandidate?.id}__${criterion}`] === score
                                     ? "bg-brand text-white"
                                     : "bg-gray-100 text-gray-500 hover:bg-brand/20"
-                                }`}
+                                } ${(isCompleted || evaluation?.is_locked) ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                               >
                                 {score}
                               </button>
