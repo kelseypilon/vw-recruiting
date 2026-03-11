@@ -412,6 +412,8 @@ export default function CandidateProfile({
           teamId={teamId}
           team={team}
           groupSessions={groupSessions}
+          groupScores={groupScores}
+          groupEvaluations={groupEvaluations}
           emailTemplates={emailTemplates}
           leaders={leaders}
         />
@@ -2299,6 +2301,8 @@ function InterviewsTab({
   teamId,
   team,
   groupSessions = [],
+  groupScores = [],
+  groupEvaluations = [],
   emailTemplates = [],
   leaders = [],
 }: {
@@ -2310,6 +2314,28 @@ function InterviewsTab({
   teamId: string;
   team: Team | null;
   groupSessions?: CandidateGroupSession[];
+  groupScores?: Array<{
+    id: string;
+    session_id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    criterion: string;
+    score: number;
+    created_at: string;
+  }>;
+  groupEvaluations?: Array<{
+    id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    team_id: string;
+    overall_score: number | null;
+    recommendation: string | null;
+    summary_notes: string | null;
+    is_locked: boolean;
+    locked_at: string | null;
+    created_at: string;
+    evaluator?: { name: string } | null;
+  }>;
   emailTemplates?: EmailTemplate[];
   leaders?: TeamUser[];
 }) {
@@ -2371,6 +2397,8 @@ function InterviewsTab({
           interviewQuestions={interviewQuestions}
           currentUserId={currentUserId}
           teamId={teamId}
+          groupScores={groupScores}
+          groupEvaluations={groupEvaluations}
         />
       )}
 
@@ -3147,6 +3175,8 @@ function ScorecardSubTab({
   interviewQuestions,
   currentUserId,
   teamId,
+  groupScores = [],
+  groupEvaluations = [],
 }: {
   candidate: Candidate;
   interviews: Interview[];
@@ -3154,255 +3184,38 @@ function ScorecardSubTab({
   interviewQuestions: InterviewQuestion[];
   currentUserId: string;
   teamId: string;
+  groupScores?: Array<{
+    id: string;
+    session_id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    criterion: string;
+    score: number;
+    created_at: string;
+  }>;
+  groupEvaluations?: Array<{
+    id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    team_id: string;
+    overall_score: number | null;
+    recommendation: string | null;
+    summary_notes: string | null;
+    is_locked: boolean;
+    locked_at: string | null;
+    created_at: string;
+    evaluator?: { name: string } | null;
+  }>;
 }) {
-  // Get unique categories from questions
-  const categories = [...new Set(interviewQuestions.map((q) => q.category))].sort(
-    (a, b) => {
-      const ai = INTERVIEW_CATEGORY_ORDER.indexOf(a);
-      const bi = INTERVIEW_CATEGORY_ORDER.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    }
-  );
-
-  const [categoryRatings, setCategoryRatings] = useState<Record<string, number>>({});
-  const [recommendation, setRecommendation] = useState<string>("");
-  const [summaryNotes, setSummaryNotes] = useState("");
-  const [privateNotes, setPrivateNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [localScorecards, setLocalScorecards] = useState(scorecards);
-  const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const dirtyRef = useRef(false);
-
   const { userRole } = usePermissions();
   const FULL_ACCESS_ROLES = ["Team Lead", "Admin", "VP Ops"];
   const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
 
-  // Pick the first scheduled/completed interview for this candidate to attach scorecard to
-  const candidateInterviews = interviews.filter((i) => i.candidate_id === candidate.id);
-  const activeInterview = candidateInterviews.find((i) => i.status === "scheduled" || i.status === "completed");
-
-  // Check if current user has an existing submitted scorecard
-  const existingScorecard = localScorecards.find(
-    (sc) => sc.interviewer_user_id === currentUserId
-  );
-  const isAlreadySubmitted = existingScorecard?.submitted_at != null;
-
-  // Load existing draft on mount
-  useEffect(() => {
-    if (existingScorecard) {
-      const ratings: Record<string, number> = {};
-      for (const [cat, score] of Object.entries(existingScorecard.category_scores)) {
-        ratings[cat] = score;
-      }
-      setCategoryRatings(ratings);
-      setRecommendation(existingScorecard.recommendation ?? "");
-      setSummaryNotes(existingScorecard.summary_notes ?? "");
-      setPrivateNotes(existingScorecard.private_notes ?? "");
-      if (existingScorecard.submitted_at) setSubmitted(true);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Calculate overall score from rated categories
-  const ratedValues = Object.values(categoryRatings).filter((v) => v > 0);
-  const overallScore = ratedValues.length > 0
-    ? Number((ratedValues.reduce((a, b) => a + b, 0) / ratedValues.length).toFixed(2))
-    : null;
-
-  // Build payload helper
-  function buildPayload(interviewId: string) {
-    const category_scores: Record<string, number> = {};
-    const answers = categories
-      .filter((cat) => categoryRatings[cat] && categoryRatings[cat] > 0)
-      .map((cat) => {
-        category_scores[cat] = categoryRatings[cat];
-        return {
-          question_id: cat,
-          question_text: cat,
-          category: cat,
-          score: categoryRatings[cat],
-          notes: "",
-        };
-      });
-    return {
-      interview_id: interviewId,
-      interviewer_user_id: currentUserId,
-      candidate_id: candidate.id,
-      team_id: teamId,
-      answers,
-      category_scores,
-      overall_score: overallScore,
-      recommendation: recommendation || null,
-      summary_notes: summaryNotes || null,
-      private_notes: privateNotes || null,
-    };
-  }
-
-  async function getOrCreateInterviewId() {
-    let interviewId = activeInterview?.id;
-    if (!interviewId) {
-      const supabase = (await import("@/lib/supabase/client")).createClient();
-      const { data: newInterview, error: intErr } = await supabase
-        .from("interviews")
-        .insert({
-          team_id: teamId,
-          candidate_id: candidate.id,
-          interview_type: "1on1 Interview",
-          status: "completed",
-          notes: "Auto-created for scorecard entry",
-        })
-        .select("id")
-        .single();
-      if (intErr || !newInterview) return null;
-      interviewId = newInterview.id;
-    }
-    return interviewId;
-  }
-
-  // Auto-save ref — updated every render to capture fresh state
-  const autoSave = useRef<() => Promise<void>>(async () => {});
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  autoSave.current = async () => {
-    if (!dirtyRef.current || submitted) return;
-    const interviewId = await getOrCreateInterviewId();
-    if (!interviewId) return;
-    try {
-      const res = await fetch("/api/interview-scorecards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save_draft",
-          payload: buildPayload(interviewId),
-        }),
-      });
-      const result = await res.json();
-      if (result.data) {
-        setLocalScorecards((prev) => {
-          const idx = prev.findIndex((sc) => sc.id === result.data.id);
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = result.data;
-            return next;
-          }
-          return [...prev, result.data];
-        });
-        dirtyRef.current = false;
-        setIsDirty(false);
-        setLastSaved(new Date());
-      }
-    } catch {}
-  };
-
-  useEffect(() => {
-    autoSaveTimer.current = setInterval(() => {
-      autoSave.current?.();
-    }, 30000);
-    return () => {
-      if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, []);
-
-  // Browser unsaved-changes warning
-  useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (dirtyRef.current) {
-        e.preventDefault();
-      }
-    }
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  function markDirty() {
-    setIsDirty(true);
-    dirtyRef.current = true;
-    // Debounced auto-save after 2s of inactivity
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      autoSave.current?.();
-    }, 2000);
-  }
-
-  async function handleSubmit() {
-    setSaving(true);
-    try {
-      const interviewId = await getOrCreateInterviewId();
-      if (!interviewId) { setSaving(false); return; }
-
-      const res = await fetch("/api/interview-scorecards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submit",
-          payload: buildPayload(interviewId),
-        }),
-      });
-      const result = await res.json();
-
-      if (result.data) {
-        setLocalScorecards((prev) => {
-          const idx = prev.findIndex((sc) => sc.id === result.data.id);
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = result.data;
-            return next;
-          }
-          return [...prev, result.data];
-        });
-        setSubmitted(true);
-        dirtyRef.current = false;
-        setIsDirty(false);
-      }
-    } catch (err) {
-      console.error("Failed to submit scorecard:", err);
-    }
-    setSaving(false);
-  }
-
-  async function handleUnlock() {
-    setSaving(true);
-    try {
-      const interviewId = existingScorecard?.interview_id ?? activeInterview?.id;
-      if (!interviewId) { setSaving(false); return; }
-
-      const res = await fetch("/api/interview-scorecards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "unlock",
-          payload: {
-            interview_id: interviewId,
-            interviewer_user_id: currentUserId,
-          },
-        }),
-      });
-      const result = await res.json();
-      if (result.data) {
-        setLocalScorecards((prev) => {
-          const idx = prev.findIndex((sc) => sc.id === result.data.id);
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = result.data;
-            return next;
-          }
-          return prev;
-        });
-        setSubmitted(false);
-      }
-    } catch (err) {
-      console.error("Failed to unlock scorecard:", err);
-    }
-    setSaving(false);
-  }
-
-  // Visibility filtering for submitted scorecards
-  const viewerHasSubmitted = localScorecards.some(
+  // Visibility filtering for submitted 1:1 scorecards (Score Comparison Grid)
+  const viewerHasSubmitted = scorecards.some(
     (sc) => sc.interviewer_user_id === currentUserId && sc.submitted_at
   );
-  const submittedScorecards = localScorecards
+  const submittedScorecards = scorecards
     .filter((sc) => sc.submitted_at)
     .filter((sc) => {
       if (sc.interviewer_user_id === currentUserId) return true;
@@ -3432,170 +3245,23 @@ function ScorecardSubTab({
         )
       : null;
 
-  // Read-only when locked (submitted); can be unlocked
-  const isReadOnly = submitted;
-
   return (
     <div className="space-y-4">
-      {/* Scorecard Form */}
-      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
-        <div className="px-6 py-3 border-b border-[#a59494]/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-[#272727]">Rate by Category</h3>
-            {isReadOnly && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                Locked
-              </span>
-            )}
-          </div>
-          {overallScore !== null && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#a59494]">Overall</span>
-              <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(overallScore)}`}>
-                {Math.round((overallScore / 10) * 100)}%
-              </span>
-            </div>
-          )}
+      {/* Group Interview Scorecard */}
+      {groupScores.length > 0 || groupEvaluations.length > 0 ? (
+        <GroupInterviewScorecard scores={groupScores} evaluations={groupEvaluations} />
+      ) : (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-6 py-8 text-center">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto mb-3 text-[#a59494]">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+            <line x1="9" y1="12" x2="15" y2="12" />
+            <line x1="9" y1="16" x2="13" y2="16" />
+          </svg>
+          <p className="text-sm font-medium text-[#272727] mb-1">No group interview scorecard yet</p>
+          <p className="text-xs text-[#a59494]">Scores will appear here after a group interview session is completed.</p>
         </div>
-
-        <div className="divide-y divide-[#a59494]/5">
-          {categories.map((cat) => (
-            <div key={cat} className="px-6 py-2 flex items-center justify-between">
-              <span className="text-xs text-[#272727] font-medium">{cat}</span>
-              <div className="flex items-center gap-1.5">
-                {isReadOnly ? (
-                  <span className="text-sm font-semibold text-[#272727]">
-                    {categoryRatings[cat] > 0 ? `${categoryRatings[cat]} / 10` : "— / 10"}
-                  </span>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={categoryRatings[cat] ?? ""}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/[^0-9]/g, "");
-                        if (raw === "") {
-                          setCategoryRatings((prev) => {
-                            const next = { ...prev };
-                            delete next[cat];
-                            return next;
-                          });
-                        } else {
-                          const val = parseInt(raw, 10);
-                          if (!isNaN(val)) {
-                            setCategoryRatings((prev) => ({ ...prev, [cat]: val }));
-                          }
-                        }
-                        markDirty();
-                      }}
-                      onBlur={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val)) {
-                          const clamped = Math.min(10, Math.max(0, val));
-                          setCategoryRatings((prev) => ({ ...prev, [cat]: clamped }));
-                        }
-                      }}
-                      className="w-[60px] px-2 py-1 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] text-center focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition"
-                    />
-                    <span className="text-xs text-[#a59494]">/ 10</span>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="px-6 py-3 border-t border-[#a59494]/10 space-y-3">
-          {/* Recommendation */}
-          <div>
-            <label className="block text-xs font-semibold text-[#272727] mb-1.5">
-              Recommendation
-            </label>
-            <div className="flex gap-2">
-              {[
-                { value: "strong_yes", label: "Strong Yes", color: "bg-green-600" },
-                { value: "yes", label: "Yes", color: "bg-green-500" },
-                { value: "hold", label: "Hold", color: "bg-amber-500" },
-                { value: "no", label: "No", color: "bg-red-500" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  disabled={isReadOnly}
-                  onClick={() => { setRecommendation(opt.value); markDirty(); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    recommendation === opt.value
-                      ? `${opt.color} text-white`
-                      : "border border-[#a59494]/30 text-[#272727] hover:bg-[#f5f0f0]"
-                  } disabled:cursor-default`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Summary notes */}
-          <div>
-            <label className="block text-xs font-semibold text-[#272727] mb-1">
-              General Notes
-            </label>
-            <textarea
-              value={summaryNotes}
-              onChange={(e) => { setSummaryNotes(e.target.value); markDirty(); }}
-              rows={2}
-              readOnly={isReadOnly}
-              placeholder="Overall thoughts about this candidate..."
-              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none read-only:bg-gray-50"
-            />
-          </div>
-
-          {/* Private notes */}
-          <div>
-            <label className="block text-xs font-semibold text-[#272727] mb-1">
-              Private Notes
-              <span className="font-normal text-[#a59494] ml-1">(only you can see)</span>
-            </label>
-            <textarea
-              value={privateNotes}
-              onChange={(e) => { setPrivateNotes(e.target.value); markDirty(); }}
-              rows={2}
-              readOnly={isReadOnly}
-              placeholder="Private notes..."
-              className="w-full px-3 py-2 rounded-lg border border-purple-200 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition resize-none bg-purple-50/30 read-only:bg-gray-50"
-            />
-          </div>
-
-          {/* Actions — Lock / Unlock scorecard */}
-          <div className="flex items-center justify-between pt-1">
-            <div className="text-xs text-[#a59494]">
-              {lastSaved && !isDirty && (
-                <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
-              )}
-              {isDirty && <span className="text-amber-600">Unsaved changes</span>}
-            </div>
-            {isReadOnly ? (
-              <button
-                onClick={handleUnlock}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg border border-brand text-brand hover:bg-brand/5 text-sm font-semibold transition disabled:opacity-50"
-              >
-                {saving ? "Unlocking..." : "Unlock Scorecard"}
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={saving || ratedValues.length === 0}
-                className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-              >
-                {saving ? "Locking..." : "Lock Scorecard"}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Score Comparison Grid */}
       {submittedScorecards.length > 0 && (
