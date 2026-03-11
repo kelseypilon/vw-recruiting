@@ -51,6 +51,28 @@ interface Props {
   currentUserId: string;
   groupSessions?: CandidateGroupSession[];
   groupNotes?: GroupInterviewNote[];
+  groupScores?: Array<{
+    id: string;
+    session_id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    criterion: string;
+    score: number;
+    created_at: string;
+  }>;
+  groupEvaluations?: Array<{
+    id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    team_id: string;
+    overall_score: number | null;
+    recommendation: string | null;
+    summary_notes: string | null;
+    is_locked: boolean;
+    locked_at: string | null;
+    created_at: string;
+    evaluator?: { name: string } | null;
+  }>;
   upcomingSessions?: GroupInterviewSession[];
   teamZoomLink?: string | null;
 }
@@ -74,6 +96,8 @@ export default function CandidateProfile({
   currentUserId,
   groupSessions = [],
   groupNotes = [],
+  groupScores = [],
+  groupEvaluations = [],
   upcomingSessions = [],
   teamZoomLink = null,
 }: Props) {
@@ -346,6 +370,9 @@ export default function CandidateProfile({
                 </span>
               </div>
             )}
+
+            {/* Group Interview Scorecard */}
+            <GroupInterviewScorecard scores={groupScores} evaluations={groupEvaluations} />
 
             {/* Notes */}
             <NotesSection
@@ -4395,6 +4422,155 @@ function CompositePopover({ candidate, onClose }: { candidate: Candidate; onClos
         <p className="text-[10px] text-[#a59494] mt-2 leading-tight">
           Composite will update once interview scorecard is submitted.
         </p>
+      )}
+    </div>
+  );
+}
+
+/* ── Group Interview Scorecard (read-only) ────────────────────── */
+
+const GROUP_SCORECARD_CRITERIA = [
+  "Coachability", "Communication Skills", "Work Ethic & Drive",
+  "Integrity & Ethics", "Client Focus", "Resilience & Adaptability",
+  "Team Collaboration", "Problem Solving", "Professional Presentation",
+  "Market Knowledge", "Tech Savviness", "Business Development",
+  "Time Management", "Goal Orientation", "Cultural Fit",
+  "Leadership Potential", "Emotional Intelligence", "Self-Motivation",
+  "Long-term Vision",
+];
+
+function GroupInterviewScorecard({
+  scores,
+  evaluations,
+}: {
+  scores: Array<{
+    id: string;
+    session_id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    criterion: string;
+    score: number;
+    created_at: string;
+  }>;
+  evaluations: Array<{
+    id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    overall_score: number | null;
+    recommendation: string | null;
+    is_locked: boolean;
+    created_at: string;
+    evaluator?: { name: string } | null;
+  }>;
+}) {
+  if (scores.length === 0 && evaluations.length === 0) return null;
+
+  // Group scores by session_id, use the most recent session
+  const sessionIds = [...new Set(scores.map((s) => s.session_id))];
+  const latestSessionId = sessionIds.length > 0
+    ? sessionIds.reduce((latest, sid) => {
+        const latestDate = Math.max(...scores.filter((s) => s.session_id === latest).map((s) => new Date(s.created_at).getTime()));
+        const thisDate = Math.max(...scores.filter((s) => s.session_id === sid).map((s) => new Date(s.created_at).getTime()));
+        return thisDate > latestDate ? sid : latest;
+      })
+    : null;
+
+  // For the latest session, average scores per criterion across all evaluators
+  const sessionScores = latestSessionId
+    ? scores.filter((s) => s.session_id === latestSessionId)
+    : scores;
+
+  const criteriaAverages: Record<string, { avg: number; count: number }> = {};
+  for (const s of sessionScores) {
+    if (!criteriaAverages[s.criterion]) {
+      criteriaAverages[s.criterion] = { avg: 0, count: 0 };
+    }
+    criteriaAverages[s.criterion].count += 1;
+    criteriaAverages[s.criterion].avg +=
+      (s.score - criteriaAverages[s.criterion].avg) / criteriaAverages[s.criterion].count;
+  }
+
+  // Latest evaluation (most recent, prefer locked ones)
+  const sortedEvals = [...evaluations].sort((a, b) => {
+    if (a.is_locked && !b.is_locked) return -1;
+    if (!a.is_locked && b.is_locked) return 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+  const latestEval = sortedEvals[0] ?? null;
+
+  const scoredCriteria = GROUP_SCORECARD_CRITERIA.filter((c) => criteriaAverages[c]);
+  const unscoredCriteria = GROUP_SCORECARD_CRITERIA.filter((c) => !criteriaAverages[c]);
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-5 py-4">
+      <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-3">
+        Group Interview Scorecard
+      </h4>
+
+      {/* Criteria scores */}
+      {scoredCriteria.length > 0 && (
+        <div className="space-y-1.5">
+          {scoredCriteria.map((criterion) => {
+            const data = criteriaAverages[criterion];
+            const avg = data.avg;
+            return (
+              <div key={criterion} className="flex items-center justify-between gap-2">
+                <span className="text-sm text-[#272727] flex-1 truncate">{criterion}</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-brand rounded-full transition-all"
+                      style={{ width: `${(avg / 10) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-[#272727] w-6 text-right">
+                    {avg.toFixed(1)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {unscoredCriteria.length > 0 && scoredCriteria.length > 0 && (
+        <p className="text-[10px] text-[#a59494] mt-2">
+          {unscoredCriteria.length} criteria not yet scored
+        </p>
+      )}
+
+      {/* Overall Score & Recommendation */}
+      {latestEval && (
+        <div className="mt-3 pt-3 border-t border-[#a59494]/10 space-y-2">
+          {latestEval.overall_score != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#272727]">Overall Score</span>
+              <span className={`text-sm font-bold px-2 py-0.5 rounded ${
+                latestEval.overall_score >= 8 ? "text-green-700 bg-green-50" :
+                latestEval.overall_score >= 6 ? "text-amber-700 bg-amber-50" :
+                "text-red-700 bg-red-50"
+              }`}>
+                {latestEval.overall_score} / 10
+              </span>
+            </div>
+          )}
+          {latestEval.recommendation && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#272727]">Recommendation</span>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                RECOMMENDATION_LABELS[latestEval.recommendation]?.color ?? "text-gray-700 bg-gray-50"
+              }`}>
+                {RECOMMENDATION_LABELS[latestEval.recommendation]?.label ?? latestEval.recommendation}
+              </span>
+            </div>
+          )}
+          {latestEval.evaluator?.name && (
+            <p className="text-[10px] text-[#a59494]">
+              Evaluated by {latestEval.evaluator.name}
+              {latestEval.is_locked && " · Locked"}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

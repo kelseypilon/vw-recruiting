@@ -51,6 +51,8 @@ export default async function CandidateProfilePage({ params }: Props) {
     profileResult,
     groupSessionsResult,
     groupNotesResult,
+    groupScoresResult,
+    groupEvaluationsResult,
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -138,6 +140,18 @@ export default async function CandidateProfilePage({ params }: Props) {
       .select("*, author:users!group_interview_notes_author_user_id_fkey(name)")
       .eq("candidate_id", id)
       .order("updated_at", { ascending: false }),
+    // Group interview criteria scores for this candidate
+    supabase
+      .from("group_interview_scores")
+      .select("*")
+      .eq("candidate_id", id)
+      .not("criterion", "is", null),
+    // Group interview evaluations for this candidate
+    supabase
+      .from("group_interview_evaluations")
+      .select("*, evaluator:users!group_interview_evaluations_evaluator_user_id_fkey(name)")
+      .eq("candidate_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!candidateResult.data) {
@@ -182,6 +196,28 @@ export default async function CandidateProfilePage({ params }: Props) {
     (groupSessionsResult.data ?? []) as unknown as CandidateGroupSession[];
   const groupNotes: GroupInterviewNote[] =
     (groupNotesResult.data ?? []) as GroupInterviewNote[];
+  const groupScores = (groupScoresResult.data ?? []) as Array<{
+    id: string;
+    session_id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    criterion: string;
+    score: number;
+    created_at: string;
+  }>;
+  const groupEvaluations = (groupEvaluationsResult.data ?? []) as Array<{
+    id: string;
+    candidate_id: string;
+    evaluator_user_id: string;
+    team_id: string;
+    overall_score: number | null;
+    recommendation: string | null;
+    summary_notes: string | null;
+    is_locked: boolean;
+    locked_at: string | null;
+    created_at: string;
+    evaluator?: { name: string } | null;
+  }>;
 
   // Fetch upcoming group interview sessions and team zoom link for the InterviewStageModal
   const [upcomingSessionsResult] = await Promise.all([
@@ -212,6 +248,8 @@ export default async function CandidateProfilePage({ params }: Props) {
       currentUserId={currentUserId}
       groupSessions={groupSessions}
       groupNotes={groupNotes}
+      groupScores={groupScores}
+      groupEvaluations={groupEvaluations}
       upcomingSessions={upcomingSessions}
       teamZoomLink={teamZoomLink}
     />

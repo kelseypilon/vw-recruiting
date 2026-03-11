@@ -167,6 +167,8 @@ export default function SessionDetail({
 
   // Per-criteria scoring state (19-criteria rubric)
   const [criteriaScores, setCriteriaScores] = useState<Record<string, number>>({});
+  const [criteriaStatus, setCriteriaStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const criteriaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Universal evaluation state
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
@@ -308,6 +310,8 @@ export default function SessionDetail({
   async function saveCriteriaScore(candidateId: string, criterion: string, score: number) {
     const key = `${candidateId}__${criterion}`;
     setCriteriaScores((prev) => ({ ...prev, [key]: score }));
+    setCriteriaStatus("saving");
+    if (criteriaTimerRef.current) clearTimeout(criteriaTimerRef.current);
     try {
       await fetch("/api/group-interviews", {
         method: "POST",
@@ -323,8 +327,11 @@ export default function SessionDetail({
           },
         }),
       });
+      setCriteriaStatus("saved");
+      criteriaTimerRef.current = setTimeout(() => setCriteriaStatus("idle"), 2000);
     } catch {
       console.error("Failed to save criteria score");
+      setCriteriaStatus("idle");
     }
   }
 
@@ -1551,27 +1558,38 @@ export default function SessionDetail({
                     {/* Criteria Scoring */}
                     <div className="space-y-3 mb-6">
                       <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">Evaluation Criteria</h4>
-                      {SCORECARD_CRITERIA.map((criterion) => (
-                        <div key={criterion} className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-[#272727] flex-1">{criterion}</span>
-                          <div className="flex gap-1">
-                            {[1,2,3,4,5].map((score) => (
-                              <button
-                                key={score}
-                                disabled={isCompleted || evaluation?.is_locked}
-                                onClick={() => selectedCandidate && saveCriteriaScore(selectedCandidate.id, criterion, score)}
-                                className={`w-7 h-7 rounded text-xs font-medium transition ${
-                                  criteriaScores[`${selectedCandidate?.id}__${criterion}`] === score
-                                    ? "bg-brand text-white"
-                                    : "bg-gray-100 text-gray-500 hover:bg-brand/20"
-                                } ${(isCompleted || evaluation?.is_locked) ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-                              >
-                                {score}
-                              </button>
-                            ))}
+                      {SCORECARD_CRITERIA.map((criterion) => {
+                        const currentVal = criteriaScores[`${selectedCandidate.id}__${criterion}`] ?? 0;
+                        return (
+                          <div key={criterion} className="flex items-center justify-between gap-3">
+                            <span className="text-sm text-[#272727] flex-1">{criterion}</span>
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+                                <button
+                                  key={score}
+                                  type="button"
+                                  disabled={isCompleted || evaluation?.is_locked}
+                                  onClick={() => saveCriteriaScore(selectedCandidate.id, criterion, score)}
+                                  className={`w-6 h-7 rounded text-[10px] font-medium transition ${
+                                    currentVal === score
+                                      ? "bg-brand text-white"
+                                      : "bg-gray-100 text-gray-500 hover:bg-brand/20"
+                                  } ${(isCompleted || evaluation?.is_locked) ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                                >
+                                  {score}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
+                      {/* Autosave indicator */}
+                      {criteriaStatus === "saving" && (
+                        <p className="text-xs text-[#a59494]">Saving...</p>
+                      )}
+                      {criteriaStatus === "saved" && (
+                        <p className="text-xs text-green-600">Draft saved</p>
+                      )}
                     </div>
 
                     {/* Overall Score (1-10) */}
@@ -1624,21 +1642,6 @@ export default function SessionDetail({
                           </option>
                         ))}
                       </select>
-                    </div>
-
-                    {/* Summary Notes */}
-                    <div>
-                      <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
-                        Summary Notes
-                      </label>
-                      <textarea
-                        value={evaluation?.summary_notes ?? ""}
-                        onChange={(e) => handleEvalChange("summary_notes", e.target.value)}
-                        readOnly={isCompleted || evaluation?.is_locked}
-                        rows={5}
-                        className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-transparent resize-none ${(isCompleted || evaluation?.is_locked) ? "bg-gray-50 cursor-not-allowed" : ""}`}
-                        placeholder="Your overall assessment of this candidate..."
-                      />
                     </div>
 
                     {/* Lock / Unlock button */}
