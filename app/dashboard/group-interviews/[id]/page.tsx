@@ -27,8 +27,9 @@ interface SessionCandidateRow {
   aq_tier: string | null;
 }
 
-const CANDIDATE_SELECT =
-  "id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier";
+// Use select("*") so the query doesn't fail if a migration hasn't been applied
+// (e.g. current_brokerage added in 20260304000001). The TypeScript interface
+// still constrains what the component receives; missing columns → undefined.
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -96,9 +97,6 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
     ]);
 
   // ── 3. Fetch full candidate rows from linked IDs ──────────────
-  // DEBUG: log the full linksResult to diagnose empty candidates in production
-  console.log("[GI page] linksResult:", JSON.stringify(linksResult));
-
   if (linksResult.error) {
     console.error("[GI page] junction query error:", linksResult.error.message);
   }
@@ -107,16 +105,11 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
     .map((l) => l.candidate_id)
     .filter(Boolean);
 
-  console.log(
-    `[GI page] session=${id} → ${candidateIds.length} linked candidate IDs`,
-    candidateIds.length > 0 ? candidateIds : "(none)"
-  );
-
   let candidates: SessionCandidateRow[] = [];
   if (candidateIds.length > 0) {
     const { data: candidateRows, error: candErr } = await supabase
       .from("candidates")
-      .select(CANDIDATE_SELECT)
+      .select("*")
       .in("id", candidateIds);
 
     if (candErr) {
@@ -124,8 +117,6 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
     }
     candidates = (candidateRows ?? []) as SessionCandidateRow[];
   }
-
-  console.log(`[GI page] returning ${candidates.length} candidates for session ${id}`);
 
   // ── 4. Assemble the session object explicitly ─────────────────
   const session = {
