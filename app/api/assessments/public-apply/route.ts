@@ -217,6 +217,14 @@ export async function POST(req: NextRequest) {
     // Map role_interested_in → role_applied
     const roleInterestedIn = form_data.role_interested_in ?? "";
     if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
+    // Map how_did_you_hear → heard_about
+    const howDidYouHear = form_data.how_did_you_hear ?? form_data.heard_about ?? "";
+    if (howDidYouHear) candidateUpdate.heard_about = howDidYouHear;
+    // Map transactions_last_year → transactions_2024
+    if (transactionsLastYear) {
+      const parsed = parseInt(transactionsLastYear);
+      if (!isNaN(parsed)) candidateUpdate.transactions_2024 = parsed;
+    }
     if (Object.keys(customFields).length > 0) {
       candidateUpdate.custom_fields = customFields;
     }

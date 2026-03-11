@@ -1424,7 +1424,8 @@ function AQCard({ candidate, onClick }: { candidate: Candidate; onClick?: () => 
 
   const tier = candidate.aq_tier ?? "Unknown";
   const colors = tierColors[tier] ?? { bg: "bg-gray-100", text: "text-gray-600" };
-  const hasScore = candidate.aq_normalized !== null;
+  const normalizedVal = candidate.aq_normalized != null ? Number(candidate.aq_normalized) : null;
+  const hasScore = normalizedVal !== null && !isNaN(normalizedVal);
   const isClickable = hasScore;
 
   const coreScores = [
@@ -1467,13 +1468,13 @@ function AQCard({ candidate, onClick }: { candidate: Candidate; onClick?: () => 
                 fill="none"
                 stroke="var(--brand-primary)"
                 strokeWidth="3"
-                strokeDasharray={`${(candidate.aq_normalized! / 100) * 97.4} 97.4`}
+                strokeDasharray={`${(normalizedVal! / 100) * 97.4} 97.4`}
                 strokeLinecap="round"
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-lg font-bold text-[#272727]">
-                {Math.round(candidate.aq_normalized!)}
+                {Math.round(normalizedVal!)}
               </span>
             </div>
           </div>
@@ -3776,18 +3777,13 @@ function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClos
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("aq_submissions")
-      .select("responses")
-      .eq("candidate_id", candidate.id)
-      .order("submitted_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        setResponses((data?.responses as Record<string, number>) ?? null);
+    fetch(`/api/assessments/aq?candidate_id=${candidate.id}`)
+      .then((r) => r.json())
+      .then((json) => {
+        setResponses((json.data?.responses as Record<string, number>) ?? null);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, [candidate.id]);
 
   const tier = candidate.aq_tier ?? "Unknown";
@@ -3946,18 +3942,13 @@ function DISCResponsesPanel({ candidate, onClose }: { candidate: Candidate; onCl
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("disc_submissions")
-      .select("raw_responses")
-      .eq("candidate_id", candidate.id)
-      .order("submitted_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        setRawResponses((data?.raw_responses as Record<string, string>) ?? null);
+    fetch(`/api/assessments/disc?candidate_id=${candidate.id}`)
+      .then((r) => r.json())
+      .then((json) => {
+        setRawResponses((json.data?.raw_responses as Record<string, string>) ?? null);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, [candidate.id]);
 
   const discTag = candidate.disc_primary
@@ -4118,9 +4109,15 @@ function ApplicationResponsesPanel({
     if (!submission) return undefined;
     // Direct match on submission
     if (fieldId in submission) return submission[fieldId];
-    // Some field mappings
+    // Some field mappings (form field ID → application_submissions column)
     const mappings: Record<string, string> = {
       currently_licensed: "has_license",
+      licensed: "has_license",
+      how_did_you_hear: "why_real_estate",
+      what_stood_out: "why_vantage",
+      why_great_addition: "biggest_achievement",
+      most_important: "one_year_goal",
+      current_employment: "current_role",
     };
     if (mappings[fieldId] && mappings[fieldId] in submission) return submission[mappings[fieldId]];
     // Check custom_fields on submission (fields like role_interested_in, info_night_date stored there)

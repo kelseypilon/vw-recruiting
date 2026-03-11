@@ -171,8 +171,10 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("aq_submissions")
-    .select("id, submitted_at, score_c, score_o, score_r, score_e, total_score")
+    .select("id, submitted_at, score_c, score_o, score_r, score_e, total_score, responses")
     .eq("candidate_id", candidateId)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   return NextResponse.json({ submitted: !!data, data });
