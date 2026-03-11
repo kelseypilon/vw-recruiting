@@ -22,6 +22,7 @@ export default function SuperAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [editTeam, setEditTeam] = useState<TeamRow | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [copyTargetTeam, setCopyTargetTeam] = useState<TeamRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [runningNotifications, setRunningNotifications] = useState<string | null>(null);
@@ -195,6 +196,15 @@ export default function SuperAdminDashboard() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setCopyTargetTeam(team);
+                      }}
+                      className="text-purple-600 hover:text-purple-700 text-xs font-medium transition"
+                    >
+                      Copy Settings
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setEditTeam(team);
                       }}
                       className="text-brand hover:text-brand-dark text-sm font-medium transition"
@@ -265,6 +275,15 @@ export default function SuperAdminDashboard() {
             setSaving(false);
           }}
           onClose={() => setShowCreateModal(false)}
+        />
+      )}
+
+      {/* Copy Settings modal */}
+      {copyTargetTeam && (
+        <CopySettingsModal
+          targetTeam={copyTargetTeam}
+          teams={teams}
+          onClose={() => setCopyTargetTeam(null)}
         />
       )}
     </div>
@@ -563,6 +582,220 @@ function EditBrandingModal({
           >
             {saving ? "Saving…" : "Save Changes"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Copy Settings Modal ─────────────────────────────────────────── */
+
+interface CopyCounts {
+  application_form_fields: number;
+  pipeline_stages: number;
+  interview_questions: number;
+  onboarding_tasks: number;
+  scoring_criteria: number;
+  group_interview_prompts: number;
+  email_template_folders: number;
+  email_templates: number;
+}
+
+function CopySettingsModal({
+  targetTeam,
+  teams,
+  onClose,
+}: {
+  targetTeam: TeamRow;
+  teams: TeamRow[];
+  onClose: () => void;
+}) {
+  const [sourceTeamId, setSourceTeamId] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [preview, setPreview] = useState<CopyCounts | null>(null);
+  const [result, setResult] = useState<CopyCounts | null>(null);
+  const [error, setError] = useState("");
+
+  const sourceOptions = teams.filter((t) => t.id !== targetTeam.id);
+
+  async function handlePreview() {
+    if (!sourceTeamId) return;
+    setPreviewing(true);
+    setError("");
+    setPreview(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/super-admin/copy-team-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_team_id: sourceTeamId,
+          target_team_id: targetTeam.id,
+          dry_run: true,
+        }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        setError(json.error);
+      } else {
+        setPreview(json.counts);
+      }
+    } catch {
+      setError("Failed to preview");
+    }
+    setPreviewing(false);
+  }
+
+  async function handleCopy() {
+    if (!sourceTeamId) return;
+    setCopying(true);
+    setError("");
+    try {
+      const res = await fetch("/api/super-admin/copy-team-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_team_id: sourceTeamId,
+          target_team_id: targetTeam.id,
+          dry_run: false,
+        }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        setError(json.error);
+      } else {
+        setResult(json.copied);
+        setPreview(null);
+      }
+    } catch {
+      setError("Failed to copy settings");
+    }
+    setCopying(false);
+  }
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    application_form_fields: "Application Form Fields",
+    pipeline_stages: "Pipeline Stages",
+    interview_questions: "Interview Questions",
+    onboarding_tasks: "Onboarding Tasks",
+    scoring_criteria: "Scoring Criteria",
+    group_interview_prompts: "Group Interview Prompts",
+    email_template_folders: "Email Template Folders",
+    email_templates: "Email Templates",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
+        <h2 className="text-lg font-bold text-[#272727] mb-1">
+          Copy Settings To: {targetTeam.brand_name || targetTeam.name}
+        </h2>
+        <p className="text-[#a59494] text-sm mb-4">
+          Copy operational settings from another team. This replaces all
+          existing settings in the target team.
+        </p>
+
+        {/* Source selector */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-[#272727] mb-1">
+            Copy From
+          </label>
+          <select
+            value={sourceTeamId}
+            onChange={(e) => {
+              setSourceTeamId(e.target.value);
+              setPreview(null);
+              setResult(null);
+              setError("");
+            }}
+            className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            <option value="">Select source team…</option>
+            {sourceOptions.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.brand_name || t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Warning */}
+        <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <strong>⚠️ Warning:</strong> This will delete all existing
+          pipeline stages, interview questions, onboarding tasks, scoring
+          criteria, group interview prompts, email templates, and
+          application form fields in the target team and replace them with
+          copies from the source team.
+        </div>
+
+        {error && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Preview counts */}
+        {preview && (
+          <div className="mb-4 px-3 py-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-sm font-semibold text-blue-800 mb-2">
+              Preview — items to copy:
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-blue-700">
+              {Object.entries(preview).map(([key, count]) => (
+                <div key={key} className="flex justify-between">
+                  <span>{CATEGORY_LABELS[key] || key}</span>
+                  <span className="font-mono font-bold">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div className="mb-4 px-3 py-3 rounded-lg bg-green-50 border border-green-200">
+            <p className="text-sm font-semibold text-green-800 mb-2">
+              ✅ Settings copied successfully!
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-700">
+              {Object.entries(result).map(([key, count]) => (
+                <div key={key} className="flex justify-between">
+                  <span>{CATEGORY_LABELS[key] || key}</span>
+                  <span className="font-mono font-bold">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-[#272727] hover:bg-[#f5f0f0] transition"
+          >
+            {result ? "Done" : "Cancel"}
+          </button>
+
+          {!result && (
+            <>
+              <button
+                disabled={!sourceTeamId || previewing}
+                onClick={handlePreview}
+                className="px-4 py-2 rounded-lg border border-brand text-brand text-sm font-semibold hover:bg-brand/5 transition disabled:opacity-50"
+              >
+                {previewing ? "Loading…" : "Preview"}
+              </button>
+              <button
+                disabled={!sourceTeamId || copying || !preview}
+                onClick={handleCopy}
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-50"
+              >
+                {copying ? "Copying…" : "Copy Settings"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
