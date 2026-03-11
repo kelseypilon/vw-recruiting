@@ -2593,7 +2593,10 @@ function RolesPermissionsTab({
   currentUserId: string;
 }) {
   const currentUser = users.find((u) => u.id === currentUserId);
-  const isTeamLead = currentUser?.role === "Team Lead";
+
+  // Permission-based check: any role with manage_members can manage roles
+  const { can: canDo } = usePermissions();
+  const canManageRolesUI = canDo("manage_members");
 
   // Settings Tab Visibility
   const SETTINGS_TABS_CONFIG = [
@@ -2841,8 +2844,8 @@ function RolesPermissionsTab({
 
   return (
     <div className="space-y-6">
-      {/* ── Manage Roles Section (Team Lead only) ─────────────── */}
-      {isTeamLead && (<>
+      {/* ── Manage Roles Section ─────────────────────────────── */}
+      {canManageRolesUI && (<>
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
         <div className="px-6 py-4 border-b border-[#a59494]/10">
           <h3 className="text-sm font-semibold text-[#272727]">
@@ -3173,7 +3176,7 @@ function RolesPermissionsTab({
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>{role}</span>
-                      {isTeamLead && !isProtectedRole && (
+                      {canManageRolesUI && !isProtectedRole && (
                         <button
                           onClick={() => {
                             setDeleteRole(role);
@@ -3276,8 +3279,8 @@ function RolesPermissionsTab({
         </button>
       </div>
 
-      {/* ── Settings Tab Visibility (Team Lead only) ──────────── */}
-      {isTeamLead && (
+      {/* ── Settings Tab Visibility ────────────────────────────── */}
+      {canManageRolesUI && (
       <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm">
         <div className="px-6 py-4 border-b border-[#a59494]/10">
           <h3 className="text-sm font-semibold text-[#272727]">
