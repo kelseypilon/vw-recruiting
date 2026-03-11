@@ -13,7 +13,7 @@ function getGoogleClientSecret(): string {
   return process.env.GOOGLE_CLIENT_SECRET ?? "";
 }
 function getGoogleRedirectUri(): string {
-  return `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/auth/google/callback`;
+  return `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/auth/google/callback`;
 }
 
 const SCOPES = [
