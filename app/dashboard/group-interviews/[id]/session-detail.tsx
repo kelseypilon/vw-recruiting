@@ -17,6 +17,10 @@ interface SessionCandidate {
   current_brokerage: string | null;
   years_experience: number | null;
   is_licensed: boolean | null;
+  disc_primary: string | null;
+  disc_secondary: string | null;
+  aq_normalized: number | null;
+  aq_tier: string | null;
 }
 
 interface Session {
@@ -35,6 +39,15 @@ interface Session {
   notes: (GroupInterviewNote & { author?: { name: string } })[];
 }
 
+interface Evaluation {
+  id?: string;
+  overall_score: number | null;
+  recommendation: string | null;
+  summary_notes: string;
+  is_locked: boolean;
+  locked_at: string | null;
+}
+
 interface Props {
   session: Session;
   leaders: TeamUser[];
@@ -43,6 +56,47 @@ interface Props {
   currentUserName: string;
   prompts: GroupInterviewPrompt[];
   guidelines?: string[];
+}
+
+/* ── Badge helpers ─────────────────────────────────────────────── */
+
+function discColor(type: string | null): string {
+  switch (type?.toUpperCase()) {
+    case "D": return "bg-red-100 text-red-700";
+    case "I": return "bg-yellow-100 text-yellow-700";
+    case "S": return "bg-green-100 text-green-700";
+    case "C": return "bg-blue-100 text-blue-700";
+    default: return "bg-gray-100 text-gray-500";
+  }
+}
+
+function aqColor(tier: string | null): string {
+  switch (tier) {
+    case "A+": return "bg-green-100 text-green-700";
+    case "A": return "bg-blue-100 text-blue-700";
+    case "B+": return "bg-yellow-100 text-yellow-700";
+    case "B": return "bg-amber-100 text-amber-700";
+    case "C": return "bg-red-100 text-red-700";
+    default: return "bg-gray-100 text-gray-500";
+  }
+}
+
+const REC_OPTIONS = [
+  { value: "", label: "—" },
+  { value: "strong_yes", label: "Strong Yes" },
+  { value: "yes", label: "Yes" },
+  { value: "hold", label: "Hold" },
+  { value: "no", label: "No" },
+] as const;
+
+function recBadge(rec: string | null) {
+  switch (rec) {
+    case "strong_yes": return { label: "Strong Yes", cls: "bg-green-100 text-green-700" };
+    case "yes": return { label: "Yes", cls: "bg-blue-100 text-blue-700" };
+    case "hold": return { label: "Hold", cls: "bg-amber-100 text-amber-700" };
+    case "no": return { label: "No", cls: "bg-red-100 text-red-700" };
+    default: return null;
+  }
 }
 
 /* ── Main Component ────────────────────────────────────────────── */
@@ -72,6 +126,9 @@ export default function SessionDetail({
   const [editingZoom, setEditingZoom] = useState(false);
   const [zoomDraft, setZoomDraft] = useState(session.zoom_link ?? "");
 
+  // Right-panel active tab
+  const [activeTab, setActiveTab] = useState<"notes" | "prompts" | "scorecard">("notes");
+
   async function saveZoomLink() {
     const trimmed = zoomDraft.trim() || null;
     setEditingZoom(false);
@@ -90,9 +147,18 @@ export default function SessionDetail({
     }
   }
 
-  // Per-prompt scoring state
-  // Key: `${candidateId}__${promptId}` → score (1-5)
+  // Per-prompt scoring state (1-5)
   const [promptScores, setPromptScores] = useState<Record<string, number>>({});
+
+  // Per-prompt text responses
+  const [promptResponses, setPromptResponses] = useState<Record<string, string>>({});
+  const [promptResponseStatus, setPromptResponseStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const promptResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Universal evaluation state
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [evalStatus, setEvalStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const evalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load scores on mount
   useEffect(() => {
@@ -117,6 +183,69 @@ export default function SessionDetail({
       .catch(() => {});
   }, [session.id, prompts.length, currentUserId]);
 
+  // Load prompt responses on mount
+  useEffect(() => {
+    if (!session.id) return;
+    fetch("/api/group-interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_prompt_responses", payload: { session_id: session.id } }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) {
+          const map: Record<string, string> = {};
+          for (const r of json.data) {
+            if (r.evaluator_user_id === currentUserId) {
+              map[`${r.candidate_id}__${r.prompt_id}`] = r.response_text;
+            }
+          }
+          setPromptResponses(map);
+        }
+      })
+      .catch(() => {});
+  }, [session.id, currentUserId]);
+
+  // Load evaluation when selected candidate changes
+  useEffect(() => {
+    if (!selectedCandidate || !currentUserId) {
+      setEvaluation(null);
+      return;
+    }
+    fetch("/api/group-interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "get_evaluation",
+        payload: { candidate_id: selectedCandidate.id, evaluator_user_id: currentUserId },
+      }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) {
+          setEvaluation(json.data);
+        } else {
+          // No evaluation yet — start fresh
+          setEvaluation({
+            overall_score: null,
+            recommendation: null,
+            summary_notes: "",
+            is_locked: false,
+            locked_at: null,
+          });
+        }
+      })
+      .catch(() => {
+        setEvaluation({
+          overall_score: null,
+          recommendation: null,
+          summary_notes: "",
+          is_locked: false,
+          locked_at: null,
+        });
+      });
+  }, [selectedCandidate?.id, currentUserId]);
+
   async function savePromptScore(candidateId: string, promptId: string, score: number) {
     const key = `${candidateId}__${promptId}`;
     setPromptScores((prev) => ({ ...prev, [key]: score }));
@@ -137,6 +266,108 @@ export default function SessionDetail({
       });
     } catch {
       console.error("Failed to save prompt score");
+    }
+  }
+
+  /* ── Prompt response auto-save ─────────────────────────────── */
+
+  const savePromptResponse = useCallback(
+    async (candidateId: string, promptId: string, text: string) => {
+      setPromptResponseStatus("saving");
+      try {
+        await fetch("/api/group-interviews", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_prompt_response",
+            payload: {
+              session_id: session.id,
+              candidate_id: candidateId,
+              prompt_id: promptId,
+              evaluator_user_id: currentUserId,
+              response_text: text,
+            },
+          }),
+        });
+        setPromptResponseStatus("saved");
+        setTimeout(() => setPromptResponseStatus("idle"), 2000);
+      } catch {
+        setPromptResponseStatus("idle");
+      }
+    },
+    [session.id, currentUserId]
+  );
+
+  function handlePromptResponseChange(candidateId: string, promptId: string, text: string) {
+    const key = `${candidateId}__${promptId}`;
+    setPromptResponses((prev) => ({ ...prev, [key]: text }));
+    if (promptResponseTimerRef.current) clearTimeout(promptResponseTimerRef.current);
+    promptResponseTimerRef.current = setTimeout(
+      () => savePromptResponse(candidateId, promptId, text),
+      2000
+    );
+  }
+
+  /* ── Evaluation auto-save ──────────────────────────────────── */
+
+  const saveEvaluation = useCallback(
+    async (candidateId: string, updates: Partial<Evaluation>) => {
+      setEvalStatus("saving");
+      try {
+        await fetch("/api/group-interviews", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_evaluation",
+            payload: {
+              candidate_id: candidateId,
+              evaluator_user_id: currentUserId,
+              team_id: teamId,
+              ...updates,
+            },
+          }),
+        });
+        setEvalStatus("saved");
+        setTimeout(() => setEvalStatus("idle"), 2000);
+      } catch {
+        setEvalStatus("idle");
+      }
+    },
+    [currentUserId, teamId]
+  );
+
+  function handleEvalChange(field: keyof Evaluation, value: unknown) {
+    if (!selectedCandidate || evaluation?.is_locked) return;
+    setEvaluation((prev) => prev ? { ...prev, [field]: value } : prev);
+    if (evalTimerRef.current) clearTimeout(evalTimerRef.current);
+    evalTimerRef.current = setTimeout(() => {
+      saveEvaluation(selectedCandidate.id, { [field]: value });
+    }, 2000);
+  }
+
+  async function handleToggleLock() {
+    if (!selectedCandidate || !evaluation) return;
+    const newLocked = !evaluation.is_locked;
+    try {
+      await fetch("/api/group-interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_evaluation_lock",
+          payload: {
+            candidate_id: selectedCandidate.id,
+            evaluator_user_id: currentUserId,
+            is_locked: newLocked,
+          },
+        }),
+      });
+      setEvaluation((prev) =>
+        prev
+          ? { ...prev, is_locked: newLocked, locked_at: newLocked ? new Date().toISOString() : null }
+          : prev
+      );
+    } catch {
+      console.error("Failed to toggle lock");
     }
   }
 
@@ -760,6 +991,29 @@ export default function SessionDetail({
         </div>
       )}
 
+      {/* General Session Notes */}
+      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">
+            General Session Notes
+          </label>
+          {generalNotesStatus === "saving" && (
+            <span className="text-xs text-[#a59494]">Saving...</span>
+          )}
+          {generalNotesStatus === "saved" && (
+            <span className="text-xs text-green-600">Saved</span>
+          )}
+        </div>
+        <textarea
+          value={generalNotes}
+          onChange={(e) => !isCompleted && handleGeneralNotesChange(e.target.value)}
+          readOnly={isCompleted}
+          rows={3}
+          className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none ${isCompleted ? "bg-gray-50 cursor-not-allowed" : ""}`}
+          placeholder="Shared notes visible to all evaluators..."
+        />
+      </div>
+
       {/* Two-panel layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[500px]">
         {/* Left panel — Candidate list */}
@@ -768,6 +1022,14 @@ export default function SessionDetail({
             <h3 className="text-sm font-bold text-[#272727]">
               Candidates ({session.candidates.length})
             </h3>
+            {!isCompleted && (
+              <button
+                onClick={() => setAddingCandidate(true)}
+                className="text-xs font-medium text-brand hover:text-brand-dark transition"
+              >
+                + Add
+              </button>
+            )}
           </div>
           <div className="divide-y divide-[#a59494]/10">
             {session.candidates.length === 0 ? (
@@ -785,6 +1047,9 @@ export default function SessionDetail({
                     n.author_user_id !== currentUserId &&
                     n.note_text.trim()
                 ).length;
+                const discTag = candidate.disc_primary
+                  ? `${candidate.disc_primary}${candidate.disc_secondary ? "/" + candidate.disc_secondary : ""}`
+                  : null;
 
                 return (
                   <div
@@ -806,16 +1071,28 @@ export default function SessionDetail({
                       <p className="text-sm font-medium text-[#272727] truncate">
                         {candidate.first_name} {candidate.last_name}
                       </p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs text-[#a59494]">
-                          {candidate.stage}
+                          {candidate.role_applied ?? candidate.stage}
                         </span>
+                        {/* DISC badge */}
+                        {discTag && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${discColor(candidate.disc_primary)}`}>
+                            {discTag}
+                          </span>
+                        )}
+                        {/* AQ badge */}
+                        {candidate.aq_tier && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${aqColor(candidate.aq_tier)}`}>
+                            {candidate.aq_tier}
+                          </span>
+                        )}
                         {hasMyNote && (
                           <span className="w-1.5 h-1.5 rounded-full bg-brand" title="You have notes" />
                         )}
                         {otherNoteCount > 0 && (
                           <span className="text-[10px] text-[#a59494]">
-                            +{otherNoteCount} notes
+                            +{otherNoteCount}
                           </span>
                         )}
                       </div>
@@ -834,19 +1111,21 @@ export default function SessionDetail({
                           <circle cx="12" cy="12" r="3" />
                         </svg>
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeCandidate(candidate.id);
-                        }}
-                        className="text-[#a59494] hover:text-red-500 transition opacity-0 group-hover:opacity-100 p-1"
-                        title="Remove candidate"
-                      >
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
+                      {!isCompleted && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCandidate(candidate.id);
+                          }}
+                          className="text-[#a59494] hover:text-red-500 transition opacity-0 group-hover:opacity-100 p-1"
+                          title="Remove candidate"
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -855,7 +1134,7 @@ export default function SessionDetail({
           </div>
         </div>
 
-        {/* Right panel — Notes area */}
+        {/* Right panel — Tabbed candidate view */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-[#a59494]/10 shadow-sm overflow-hidden">
           {selectedCandidate ? (
             <div className="h-full flex flex-col">
@@ -869,10 +1148,33 @@ export default function SessionDetail({
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-[#272727]">
-                      {selectedCandidate.first_name}{" "}
-                      {selectedCandidate.last_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-[#272727]">
+                        {selectedCandidate.first_name}{" "}
+                        {selectedCandidate.last_name}
+                      </p>
+                      {/* DISC + AQ badges in header */}
+                      {selectedCandidate.disc_primary && (
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${discColor(selectedCandidate.disc_primary)}`}>
+                          {selectedCandidate.disc_primary}
+                          {selectedCandidate.disc_secondary ? `/${selectedCandidate.disc_secondary}` : ""}
+                        </span>
+                      )}
+                      {selectedCandidate.aq_tier && (
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${aqColor(selectedCandidate.aq_tier)}`}>
+                          AQ {selectedCandidate.aq_tier}
+                        </span>
+                      )}
+                      {/* Recommendation badge */}
+                      {evaluation?.recommendation && (() => {
+                        const rb = recBadge(evaluation.recommendation);
+                        return rb ? (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${rb.cls}`}>
+                            {rb.label}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
                     <p className="text-xs text-[#a59494]">
                       {selectedCandidate.role_applied ?? "—"} ·{" "}
                       {selectedCandidate.stage}
@@ -880,22 +1182,13 @@ export default function SessionDetail({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {saveStatus === "saving" && (
+                  {/* Save status indicator */}
+                  {(saveStatus === "saving" || promptResponseStatus === "saving" || evalStatus === "saving") && (
                     <span className="text-xs text-[#a59494]">Saving...</span>
                   )}
-                  {saveStatus === "saved" && (
+                  {(saveStatus === "saved" || promptResponseStatus === "saved" || evalStatus === "saved") && (
                     <span className="text-xs text-green-600">Saved</span>
                   )}
-                  <button
-                    onClick={() => setShowAllNotes(!showAllNotes)}
-                    className={`text-xs font-medium transition px-2 py-1 rounded ${
-                      showAllNotes
-                        ? "bg-brand/10 text-brand"
-                        : "text-[#a59494] hover:text-[#272727]"
-                    }`}
-                  >
-                    {showAllNotes ? "My Notes" : "View All Notes"}
-                  </button>
                   <button
                     onClick={() => setQuickViewCandidate(selectedCandidate)}
                     className="text-xs font-medium text-brand hover:text-brand-dark transition"
@@ -905,214 +1198,420 @@ export default function SessionDetail({
                 </div>
               </div>
 
-              {/* Notes content */}
-              <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-                {showAllNotes ? (
-                  /* ── View All Notes mode: side-by-side from all evaluators ── */
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">
-                      All Evaluator Notes for {selectedCandidate.first_name}
-                    </h4>
-                    {allNotesForCandidate.length === 0 ? (
-                      <p className="text-sm text-[#a59494] italic">No notes yet</p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {allNotesForCandidate.map((note) => {
-                          const isMe = note.author_user_id === currentUserId;
-                          return (
-                            <div
-                              key={note.id}
-                              className={`rounded-lg p-3 ${
-                                isMe ? "bg-brand/5 border border-brand/10" : "bg-[#f5f0f0]/50"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center">
-                                  <span className="text-[9px] font-bold text-brand">
-                                    {(note.author?.name ?? "?")
-                                      .split(" ")
-                                      .map((w) => w[0])
-                                      .join("")}
-                                  </span>
-                                </div>
-                                <span className="text-xs font-medium text-[#272727]">
-                                  {note.author?.name ?? "Unknown"}
-                                  {isMe && " (you)"}
-                                </span>
-                                <span className="text-xs text-[#a59494]">
-                                  {new Date(note.updated_at).toLocaleString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-sm text-[#272727] whitespace-pre-wrap">
-                                {renderMentions(note.note_text)}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
+              {/* Tab bar */}
+              <div className="flex border-b border-[#a59494]/10">
+                {(
+                  [
+                    { key: "notes", label: "Notes" },
+                    { key: "prompts", label: "Prompts" },
+                    { key: "scorecard", label: "Scorecard" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition border-b-2 ${
+                      activeTab === tab.key
+                        ? "border-brand text-brand"
+                        : "border-transparent text-[#a59494] hover:text-[#272727]"
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.key === "scorecard" && evaluation?.is_locked && (
+                      <span className="ml-1 text-[10px]">🔒</span>
                     )}
-                  </div>
-                ) : (
-                  /* ── Normal mode: my notes + others collapsed below ── */
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+                {/* ─── Notes Tab ─── */}
+                {activeTab === "notes" && (
                   <>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
-                        Your Notes{" "}
-                        <span className="font-normal normal-case">
-                          (type @ to mention a candidate)
-                        </span>
-                      </label>
-                      <div className="relative">
-                        <textarea
-                          ref={textareaRef}
-                          value={notesByCandidate[selectedCandidate.id] ?? ""}
-                          onChange={(e) =>
-                            !isCompleted && handleNoteChange(selectedCandidate.id, e.target.value)
-                          }
-                          onKeyDown={(e) =>
-                            !isCompleted && handleNoteKeyDown(e, selectedCandidate.id)
-                          }
-                          onInput={(e) =>
-                            !isCompleted && handleNoteInput(e, selectedCandidate.id)
-                          }
-                          readOnly={isCompleted}
-                          rows={8}
-                          className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none ${isCompleted ? "bg-gray-50 cursor-not-allowed" : ""}`}
-                          placeholder={`Notes about ${selectedCandidate.first_name}...`}
-                        />
-
-                        {/* @mention dropdown */}
-                        {mentionOpen &&
-                          mentionPos?.candidateId === selectedCandidate.id && (
-                            <div className="absolute left-0 top-full mt-1 bg-white border border-[#a59494]/20 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto min-w-[200px]">
-                              {mentionCandidates.length === 0 ? (
-                                <p className="text-xs text-[#a59494] p-2">
-                                  No matches
-                                </p>
-                              ) : (
-                                mentionCandidates.map((c) => (
-                                  <button
-                                    key={c.id}
-                                    onClick={() => insertMention(c)}
-                                    className="w-full text-left px-3 py-2 text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
-                                  >
-                                    {c.first_name} {c.last_name}
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          )}
-                      </div>
-                    </div>
-
-                    {/* Per-Prompt Scoring */}
-                    {prompts.length > 0 && selectedCandidate && (
-                      <div>
-                        <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
-                          Prompt Scores (1-5)
-                        </label>
-                        <div className="space-y-2">
-                          {prompts.filter((p) => p.is_active !== false).map((prompt) => {
-                            const key = `${selectedCandidate.id}__${prompt.id}`;
-                            const currentScore = promptScores[key] ?? 0;
-                            return (
-                              <div
-                                key={prompt.id}
-                                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f0f0]/50"
-                              >
-                                <p className="text-xs text-[#272727] flex-1 line-clamp-2">
-                                  {prompt.prompt_text}
-                                </p>
-                                <div className="flex gap-1 shrink-0">
-                                  {[1, 2, 3, 4, 5].map((val) => (
-                                    <button
-                                      key={val}
-                                      type="button"
-                                      disabled={isCompleted}
-                                      onClick={() => savePromptScore(selectedCandidate.id, prompt.id, val)}
-                                      className={`w-7 h-7 rounded-full text-xs font-bold transition ${
-                                        val <= currentScore
-                                          ? "bg-brand text-white"
-                                          : "bg-white border border-[#a59494]/30 text-[#a59494] hover:border-brand hover:text-brand"
-                                      } ${isCompleted ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-                                    >
-                                      {val}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
+                    {showAllNotes ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">
+                            All Evaluator Notes for {selectedCandidate.first_name}
+                          </h4>
+                          <button
+                            onClick={() => setShowAllNotes(false)}
+                            className="text-xs font-medium text-brand hover:text-brand-dark"
+                          >
+                            My Notes
+                          </button>
                         </div>
-                        {Object.keys(promptScores).filter((k) => k.startsWith(selectedCandidate.id)).length > 0 && (
-                          <div className="mt-2 text-right">
-                            <span className="text-xs text-[#a59494]">
-                              Avg:{" "}
-                              <span className="font-bold text-brand">
-                                {(
-                                  Object.entries(promptScores)
-                                    .filter(([k]) => k.startsWith(selectedCandidate.id))
-                                    .reduce((sum, [, v]) => sum + v, 0) /
-                                  Object.entries(promptScores).filter(([k]) => k.startsWith(selectedCandidate.id)).length
-                                ).toFixed(1)}
-                                /5
-                              </span>
-                            </span>
+                        {allNotesForCandidate.length === 0 ? (
+                          <p className="text-sm text-[#a59494] italic">No notes yet</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {allNotesForCandidate.map((note) => {
+                              const isMe = note.author_user_id === currentUserId;
+                              return (
+                                <div
+                                  key={note.id}
+                                  className={`rounded-lg p-3 ${
+                                    isMe ? "bg-brand/5 border border-brand/10" : "bg-[#f5f0f0]/50"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center">
+                                      <span className="text-[9px] font-bold text-brand">
+                                        {(note.author?.name ?? "?")
+                                          .split(" ")
+                                          .map((w) => w[0])
+                                          .join("")}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-medium text-[#272727]">
+                                      {note.author?.name ?? "Unknown"}
+                                      {isMe && " (you)"}
+                                    </span>
+                                    <span className="text-xs text-[#a59494]">
+                                      {new Date(note.updated_at).toLocaleString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "numeric",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-[#272727] whitespace-pre-wrap">
+                                    {renderMentions(note.note_text)}
+                                  </p>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
-                    )}
-
-                    {/* Other evaluators' notes */}
-                    {otherNotes.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-3">
-                          Other Evaluators&apos; Notes
-                        </h4>
-                        <div className="space-y-3">
-                          {otherNotes.map((note) => (
-                            <div
-                              key={note.id}
-                              className="bg-[#f5f0f0]/50 rounded-lg p-3"
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center">
-                                  <span className="text-[9px] font-bold text-brand">
-                                    {(note.author?.name ?? "?")
-                                      .split(" ")
-                                      .map((w) => w[0])
-                                      .join("")}
-                                  </span>
-                                </div>
-                                <span className="text-xs font-medium text-[#272727]">
-                                  {note.author?.name ?? "Unknown"}
-                                </span>
-                                <span className="text-xs text-[#a59494]">
-                                  {new Date(note.updated_at).toLocaleString(
-                                    "en-US",
-                                    {
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                    }
-                                  )}
-                                </span>
-                              </div>
-                              <p className="text-sm text-[#272727] whitespace-pre-wrap">
-                                {renderMentions(note.note_text)}
-                              </p>
-                            </div>
-                          ))}
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider">
+                            Your Notes{" "}
+                            <span className="font-normal normal-case">
+                              (type @ to mention a candidate)
+                            </span>
+                          </label>
+                          <button
+                            onClick={() => setShowAllNotes(true)}
+                            className="text-xs font-medium text-[#a59494] hover:text-[#272727]"
+                          >
+                            View All Notes
+                          </button>
                         </div>
-                      </div>
+                        <div className="relative">
+                          <textarea
+                            ref={textareaRef}
+                            value={notesByCandidate[selectedCandidate.id] ?? ""}
+                            onChange={(e) =>
+                              !isCompleted && handleNoteChange(selectedCandidate.id, e.target.value)
+                            }
+                            onKeyDown={(e) =>
+                              !isCompleted && handleNoteKeyDown(e, selectedCandidate.id)
+                            }
+                            onInput={(e) =>
+                              !isCompleted && handleNoteInput(e, selectedCandidate.id)
+                            }
+                            readOnly={isCompleted}
+                            rows={8}
+                            className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none ${isCompleted ? "bg-gray-50 cursor-not-allowed" : ""}`}
+                            placeholder={`Notes about ${selectedCandidate.first_name}...`}
+                          />
+
+                          {/* @mention dropdown */}
+                          {mentionOpen &&
+                            mentionPos?.candidateId === selectedCandidate.id && (
+                              <div className="absolute left-0 top-full mt-1 bg-white border border-[#a59494]/20 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto min-w-[200px]">
+                                {mentionCandidates.length === 0 ? (
+                                  <p className="text-xs text-[#a59494] p-2">
+                                    No matches
+                                  </p>
+                                ) : (
+                                  mentionCandidates.map((c) => (
+                                    <button
+                                      key={c.id}
+                                      onClick={() => insertMention(c)}
+                                      className="w-full text-left px-3 py-2 text-sm text-[#272727] hover:bg-[#f5f0f0] transition"
+                                    >
+                                      {c.first_name} {c.last_name}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                        </div>
+
+                        {/* Other evaluators' notes */}
+                        {otherNotes.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-3">
+                              Other Evaluators&apos; Notes
+                            </h4>
+                            <div className="space-y-3">
+                              {otherNotes.map((note) => (
+                                <div
+                                  key={note.id}
+                                  className="bg-[#f5f0f0]/50 rounded-lg p-3"
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center">
+                                      <span className="text-[9px] font-bold text-brand">
+                                        {(note.author?.name ?? "?")
+                                          .split(" ")
+                                          .map((w) => w[0])
+                                          .join("")}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-medium text-[#272727]">
+                                      {note.author?.name ?? "Unknown"}
+                                    </span>
+                                    <span className="text-xs text-[#a59494]">
+                                      {new Date(note.updated_at).toLocaleString(
+                                        "en-US",
+                                        {
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        }
+                                      )}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-[#272727] whitespace-pre-wrap">
+                                    {renderMentions(note.note_text)}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
+                )}
+
+                {/* ─── Prompts Tab ─── */}
+                {activeTab === "prompts" && (
+                  <div className="space-y-4">
+                    {prompts.length === 0 ? (
+                      <p className="text-sm text-[#a59494] italic">
+                        No prompts configured. Add prompts in Settings → Group Interview.
+                      </p>
+                    ) : (
+                      prompts.filter((p) => p.is_active !== false).map((prompt) => {
+                        const scoreKey = `${selectedCandidate.id}__${prompt.id}`;
+                        const currentScore = promptScores[scoreKey] ?? 0;
+                        const responseKey = `${selectedCandidate.id}__${prompt.id}`;
+                        const responseText = promptResponses[responseKey] ?? "";
+
+                        return (
+                          <div
+                            key={prompt.id}
+                            className="rounded-lg border border-[#a59494]/10 p-4 space-y-3"
+                          >
+                            {/* Prompt text + score */}
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium text-[#272727] flex-1">
+                                {prompt.prompt_text}
+                              </p>
+                              <div className="flex gap-1 shrink-0">
+                                {[1, 2, 3, 4, 5].map((val) => (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    disabled={isCompleted}
+                                    onClick={() => savePromptScore(selectedCandidate.id, prompt.id, val)}
+                                    className={`w-7 h-7 rounded-full text-xs font-bold transition ${
+                                      val <= currentScore
+                                        ? "bg-brand text-white"
+                                        : "bg-white border border-[#a59494]/30 text-[#a59494] hover:border-brand hover:text-brand"
+                                    } ${isCompleted ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                                  >
+                                    {val}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {/* Text response */}
+                            <textarea
+                              value={responseText}
+                              onChange={(e) =>
+                                !isCompleted &&
+                                handlePromptResponseChange(
+                                  selectedCandidate.id,
+                                  prompt.id,
+                                  e.target.value
+                                )
+                              }
+                              readOnly={isCompleted}
+                              rows={3}
+                              className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-transparent resize-none ${isCompleted ? "bg-gray-50 cursor-not-allowed" : ""}`}
+                              placeholder={`Your response for this prompt...`}
+                            />
+                          </div>
+                        );
+                      })
+                    )}
+                    {/* Average score */}
+                    {prompts.length > 0 && Object.keys(promptScores).filter((k) => k.startsWith(selectedCandidate.id)).length > 0 && (
+                      <div className="text-right">
+                        <span className="text-xs text-[#a59494]">
+                          Avg Score:{" "}
+                          <span className="font-bold text-brand">
+                            {(
+                              Object.entries(promptScores)
+                                .filter(([k]) => k.startsWith(selectedCandidate.id))
+                                .reduce((sum, [, v]) => sum + v, 0) /
+                              Object.entries(promptScores).filter(([k]) => k.startsWith(selectedCandidate.id)).length
+                            ).toFixed(1)}
+                            /5
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ─── Scorecard Tab ─── */}
+                {activeTab === "scorecard" && (
+                  <div className="space-y-5">
+                    {/* Lock banner */}
+                    {evaluation?.is_locked && (
+                      <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" className="text-amber-600 shrink-0">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0110 0v4" />
+                        </svg>
+                        <span className="text-xs font-medium text-amber-800">
+                          This scorecard is locked.{" "}
+                          {evaluation.locked_at && (
+                            <>
+                              Locked{" "}
+                              {new Date(evaluation.locked_at).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </>
+                          )}
+                        </span>
+                        <button
+                          onClick={handleToggleLock}
+                          className="ml-auto text-xs font-medium text-amber-700 hover:text-amber-900 underline"
+                        >
+                          Unlock
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Overall Score (1-10) */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
+                        Overall Score (1–10)
+                      </label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            disabled={isCompleted || evaluation?.is_locked}
+                            onClick={() => handleEvalChange("overall_score", val)}
+                            className={`w-9 h-9 rounded-lg text-sm font-bold transition ${
+                              evaluation?.overall_score != null && val <= evaluation.overall_score
+                                ? val <= 3
+                                  ? "bg-red-500 text-white"
+                                  : val <= 6
+                                    ? "bg-amber-500 text-white"
+                                    : "bg-green-500 text-white"
+                                : "bg-white border border-[#a59494]/30 text-[#a59494] hover:border-brand hover:text-brand"
+                            } ${(isCompleted || evaluation?.is_locked) ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                          >
+                            {val}
+                          </button>
+                        ))}
+                      </div>
+                      {evaluation?.overall_score != null && (
+                        <p className="mt-1 text-xs text-[#a59494]">
+                          Score: <span className="font-bold text-[#272727]">{evaluation.overall_score}/10</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Recommendation */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
+                        Recommendation
+                      </label>
+                      <select
+                        value={evaluation?.recommendation ?? ""}
+                        onChange={(e) => handleEvalChange("recommendation", e.target.value || null)}
+                        disabled={isCompleted || evaluation?.is_locked}
+                        className={`px-3 py-2 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 ${(isCompleted || evaluation?.is_locked) ? "bg-gray-50 cursor-not-allowed" : ""}`}
+                      >
+                        {REC_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Summary Notes */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
+                        Summary Notes
+                      </label>
+                      <textarea
+                        value={evaluation?.summary_notes ?? ""}
+                        onChange={(e) => handleEvalChange("summary_notes", e.target.value)}
+                        readOnly={isCompleted || evaluation?.is_locked}
+                        rows={5}
+                        className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-transparent resize-none ${(isCompleted || evaluation?.is_locked) ? "bg-gray-50 cursor-not-allowed" : ""}`}
+                        placeholder="Your overall assessment of this candidate..."
+                      />
+                    </div>
+
+                    {/* Lock / Unlock button */}
+                    {!isCompleted && (
+                      <div className="flex items-center justify-between pt-2 border-t border-[#a59494]/10">
+                        <p className="text-xs text-[#a59494]">
+                          {evaluation?.is_locked
+                            ? "Unlock to make changes"
+                            : "Lock when your evaluation is final"}
+                        </p>
+                        <button
+                          onClick={handleToggleLock}
+                          className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+                            evaluation?.is_locked
+                              ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                              : "bg-brand/10 text-brand hover:bg-brand/20"
+                          }`}
+                        >
+                          {evaluation?.is_locked ? (
+                            <span className="flex items-center gap-1.5">
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0110 0v4" />
+                              </svg>
+                              Unlock Scorecard
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0110 0v4" />
+                              </svg>
+                              Lock Scorecard
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -1177,6 +1676,10 @@ function CandidateQuickView({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  const discTag = candidate.disc_primary
+    ? `${candidate.disc_primary}${candidate.disc_secondary ? "/" + candidate.disc_secondary : ""}`
+    : null;
+
   return (
     <>
       {/* Backdrop */}
@@ -1218,6 +1721,20 @@ function CandidateQuickView({
               <p className="text-sm text-[#a59494]">
                 {candidate.role_applied ?? "No role specified"} · {candidate.stage}
               </p>
+              {/* DISC + AQ badges */}
+              <div className="flex items-center gap-1.5 mt-1">
+                {discTag && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${discColor(candidate.disc_primary)}`}>
+                    DISC: {discTag}
+                  </span>
+                )}
+                {candidate.aq_tier && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${aqColor(candidate.aq_tier)}`}>
+                    AQ: {candidate.aq_tier}
+                    {candidate.aq_normalized != null && ` (${candidate.aq_normalized})`}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

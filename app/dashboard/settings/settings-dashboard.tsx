@@ -81,7 +81,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { id: "templates", label: "Email Templates", permission: "manage_templates", icon: "📧" },
       { id: "criteria", label: "Scoring Criteria", permission: "manage_settings", icon: "📏" },
       { id: "questions", label: "Interview Questions", icon: "❓" },
-      { id: "group-prompts", label: "Session Guide", permission: "manage_interviews", icon: "📋" },
+      { id: "group-prompts", label: "Group Interview", permission: "manage_interviews", icon: "📋" },
       { id: "interested-in", label: "Interested In Options", permission: "manage_settings", icon: "🏷️" },
     ],
   },

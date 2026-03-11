@@ -38,7 +38,7 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
       const { data: links } = await supabase
         .from("group_interview_candidates")
         .select(
-          "candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed)"
+          "candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier)"
         )
         .eq("session_id", id);
 

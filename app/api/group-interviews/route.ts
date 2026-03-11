@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
       // Get linked candidates (expanded fields for quick-view)
       const { data: links } = await supabase
         .from("group_interview_candidates")
-        .select("candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed)")
+        .select("candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier)")
         .eq("session_id", session_id);
 
       const candidates = (links ?? []).map(
@@ -305,7 +305,7 @@ export async function POST(req: NextRequest) {
       // Return the full candidate data so the client can optimistically update
       const { data: candidate } = await supabase
         .from("candidates")
-        .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed")
+        .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
         .eq("id", candidate_id)
         .single();
 
@@ -582,6 +582,157 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
 
       return NextResponse.json({ data: data ?? [] });
+    }
+
+    /* ── save_prompt_response ─────────────────────────────────── */
+    if (action === "save_prompt_response") {
+      const { session_id, candidate_id, prompt_id, evaluator_user_id, response_text } = payload ?? {};
+      if (!session_id || !candidate_id || !prompt_id || !evaluator_user_id) {
+        return NextResponse.json(
+          { error: "session_id, candidate_id, prompt_id, and evaluator_user_id are required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_prompt_responses")
+        .upsert(
+          {
+            session_id,
+            candidate_id,
+            prompt_id,
+            evaluator_user_id,
+            response_text: response_text ?? "",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "session_id,candidate_id,prompt_id,evaluator_user_id" }
+        )
+        .select()
+        .single();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data });
+    }
+
+    /* ── get_prompt_responses ──────────────────────────────────── */
+    if (action === "get_prompt_responses") {
+      const { session_id } = payload ?? {};
+      if (!session_id) {
+        return NextResponse.json(
+          { error: "session_id is required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_prompt_responses")
+        .select("*")
+        .eq("session_id", session_id);
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data: data ?? [] });
+    }
+
+    /* ── save_evaluation ──────────────────────────────────────── */
+    if (action === "save_evaluation") {
+      const { candidate_id, evaluator_user_id, team_id, overall_score, recommendation, summary_notes } = payload ?? {};
+      if (!candidate_id || !evaluator_user_id || !team_id) {
+        return NextResponse.json(
+          { error: "candidate_id, evaluator_user_id, and team_id are required" },
+          { status: 400 }
+        );
+      }
+
+      // Check if locked
+      const { data: existing } = await supabase
+        .from("group_interview_evaluations")
+        .select("is_locked")
+        .eq("candidate_id", candidate_id)
+        .eq("evaluator_user_id", evaluator_user_id)
+        .maybeSingle();
+
+      if (existing?.is_locked) {
+        return NextResponse.json(
+          { error: "Evaluation is locked. Unlock before making changes." },
+          { status: 403 }
+        );
+      }
+
+      const updateData: Record<string, unknown> = {
+        candidate_id,
+        evaluator_user_id,
+        team_id,
+        updated_at: new Date().toISOString(),
+      };
+      if (overall_score !== undefined) updateData.overall_score = overall_score;
+      if (recommendation !== undefined) updateData.recommendation = recommendation;
+      if (summary_notes !== undefined) updateData.summary_notes = summary_notes;
+
+      const { data, error } = await supabase
+        .from("group_interview_evaluations")
+        .upsert(updateData, { onConflict: "candidate_id,evaluator_user_id" })
+        .select()
+        .single();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data });
+    }
+
+    /* ── get_evaluation ───────────────────────────────────────── */
+    if (action === "get_evaluation") {
+      const { candidate_id, evaluator_user_id } = payload ?? {};
+      if (!candidate_id || !evaluator_user_id) {
+        return NextResponse.json(
+          { error: "candidate_id and evaluator_user_id are required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_evaluations")
+        .select("*")
+        .eq("candidate_id", candidate_id)
+        .eq("evaluator_user_id", evaluator_user_id)
+        .maybeSingle();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data: data ?? null });
+    }
+
+    /* ── toggle_evaluation_lock ───────────────────────────────── */
+    if (action === "toggle_evaluation_lock") {
+      const { candidate_id, evaluator_user_id, lock } = payload ?? {};
+      if (!candidate_id || !evaluator_user_id || lock === undefined) {
+        return NextResponse.json(
+          { error: "candidate_id, evaluator_user_id, and lock are required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_evaluations")
+        .update({
+          is_locked: lock,
+          locked_at: lock ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("candidate_id", candidate_id)
+        .eq("evaluator_user_id", evaluator_user_id)
+        .select()
+        .single();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data });
     }
 
     return NextResponse.json(
