@@ -17,7 +17,17 @@ const SCOPES = [
 
 /* ── OAuth2 Client ───────────────────────────────────────────── */
 
+/** Returns true if the required Google OAuth env vars are configured */
+export function isGoogleOAuthConfigured(): boolean {
+  return !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+}
+
 export function createOAuth2Client() {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error(
+      "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables."
+    );
+  }
   return new google.auth.OAuth2(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,

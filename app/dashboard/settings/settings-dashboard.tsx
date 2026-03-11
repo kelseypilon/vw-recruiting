@@ -264,10 +264,18 @@ export default function SettingsDashboard({
         />
       )}
       {activeTab === "group-prompts" && (
-        <GroupInterviewPromptsTab
-          prompts={groupPrompts}
-          teamId={teamId}
-        />
+        <>
+          <GroupInterviewPromptsTab
+            prompts={groupPrompts}
+            teamId={teamId}
+          />
+          <div className="mt-8">
+            <GroupInterviewGuidelinesSection
+              teamId={teamId}
+              initialGuidelines={((team?.settings as Record<string, unknown>)?.group_interview_guidelines as string[]) ?? []}
+            />
+          </div>
+        </>
       )}
       {activeTab === "interested-in" && (
         <InterestedInTab
@@ -3343,6 +3351,91 @@ function RolesPermissionsTab({
 }
 
 /* ── Group Interview Guidelines Section ───────────────────────── */
+
+function GroupInterviewGuidelinesSection({
+  teamId,
+  initialGuidelines,
+}: {
+  teamId: string;
+  initialGuidelines: string[];
+}) {
+  const [guidelines, setGuidelines] = useState<string[]>(initialGuidelines);
+  const [newGuideline, setNewGuideline] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function persist(updated: string[]) {
+    setSaving(true);
+    await saveSettings("update_group_guidelines", {
+      team_id: teamId,
+      guidelines: updated,
+    });
+    setSaving(false);
+  }
+
+  function addGuideline() {
+    if (!newGuideline.trim()) return;
+    const updated = [...guidelines, newGuideline.trim()];
+    setGuidelines(updated);
+    setNewGuideline("");
+    persist(updated);
+  }
+
+  function removeGuideline(index: number) {
+    const updated = guidelines.filter((_, i) => i !== index);
+    setGuidelines(updated);
+    persist(updated);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-[#272727]">Session Guidelines</h3>
+        <p className="text-sm text-[#a59494] mt-1">
+          Guidelines shown to interviewers at the start of each group interview session.
+        </p>
+      </div>
+
+      {guidelines.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm divide-y divide-[#a59494]/10">
+          {guidelines.map((g, idx) => (
+            <div key={idx} className="flex items-center gap-3 px-4 py-3 group">
+              <span className="text-xs font-semibold text-[#a59494] w-5">{idx + 1}</span>
+              <p className="flex-1 text-sm text-[#272727]">{g}</p>
+              <button
+                onClick={() => removeGuideline(idx)}
+                className="p-1 text-[#a59494] hover:text-red-500 transition opacity-0 group-hover:opacity-100"
+                title="Remove"
+              >
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Add a new guideline..."
+          value={newGuideline}
+          onChange={(e) => setNewGuideline(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") addGuideline(); }}
+          className="flex-1 border border-[#a59494]/30 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 bg-white"
+        />
+        <button
+          onClick={addGuideline}
+          disabled={!newGuideline.trim() || saving}
+          className="px-4 py-2.5 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark transition disabled:opacity-50"
+        >
+          {saving ? "..." : "Add"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ── Criteria Tab (Editable) ───────────────────────────────────── */
 

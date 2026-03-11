@@ -991,29 +991,6 @@ export default function SessionDetail({
         </div>
       )}
 
-      {/* General Session Notes */}
-      <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">
-            General Session Notes
-          </label>
-          {generalNotesStatus === "saving" && (
-            <span className="text-xs text-[#a59494]">Saving...</span>
-          )}
-          {generalNotesStatus === "saved" && (
-            <span className="text-xs text-green-600">Saved</span>
-          )}
-        </div>
-        <textarea
-          value={generalNotes}
-          onChange={(e) => !isCompleted && handleGeneralNotesChange(e.target.value)}
-          readOnly={isCompleted}
-          rows={3}
-          className={`w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none ${isCompleted ? "bg-gray-50 cursor-not-allowed" : ""}`}
-          placeholder="Shared notes visible to all evaluators..."
-        />
-      </div>
-
       {/* Two-panel layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[500px]">
         {/* Left panel — Candidate list */}

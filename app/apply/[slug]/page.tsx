@@ -140,16 +140,16 @@ export default function PublicApplyPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center">
         <style>{brandStyle}</style>
-        <div className="animate-spin w-8 h-8 border-4 border-white/30 border-t-white rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-[var(--brand-primary)]/20 border-t-[var(--brand-primary)] rounded-full" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
           <div className="text-4xl mb-4">&#x26A0;&#xFE0F;</div>
@@ -162,7 +162,7 @@ export default function PublicApplyPage({
 
   if (notAccepting) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <title>{branding.name} — Application</title>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
@@ -186,7 +186,7 @@ export default function PublicApplyPage({
   /* ── All Complete — Thank You screen ── */
   if (allDone) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <title>{branding.name} — Application Complete</title>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg text-center">
@@ -216,7 +216,7 @@ export default function PublicApplyPage({
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)]">
+    <div className="min-h-screen bg-[#f4f4f4]">
       <style>{brandStyle}</style>
       <title>{branding.name} — Application</title>
 
@@ -247,9 +247,9 @@ export default function PublicApplyPage({
       </header>
 
       {/* Progress Bar */}
-      <div className="bg-[var(--brand-secondary)]/50">
+      <div className="bg-[var(--brand-secondary)]/10">
         <div className="max-w-4xl mx-auto px-6">
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-[#272727]/10 rounded-full overflow-hidden">
             <div
               className="h-full bg-[var(--brand-primary)] rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / 3) * 100}%` }}
@@ -273,8 +273,8 @@ export default function PublicApplyPage({
                   activeTab === tab.key
                     ? "bg-white text-[#272727] shadow-lg"
                     : isLocked
-                      ? "bg-white/5 text-white/30 cursor-not-allowed"
-                      : "bg-white/10 text-white/70 hover:bg-white/20"
+                      ? "bg-[#e0e0e0] text-[#a59494]/50 cursor-not-allowed"
+                      : "bg-white/60 text-[#272727]/60 hover:bg-white/80"
                 }`}
               >
                 {completed[tab.key] ? (
@@ -322,7 +322,7 @@ export default function PublicApplyPage({
         </div>
 
         {/* Footer */}
-        <p className="text-center text-white/40 text-xs mt-8 pb-4">
+        <p className="text-center text-[#a59494]/60 text-xs mt-8 pb-4">
           {getBrandingFooter(branding)}
         </p>
       </div>
@@ -736,6 +736,9 @@ function AQForm({
   return (
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">Problem-Solving Assessment</h2>
+      <p className="text-sm text-[#a59494] italic mb-4">
+        Each scenario describes a situation you might encounter. Read the scenario, then answer the question that follows by selecting a number from 1 to 5.
+      </p>
       <p className="text-xs text-[#a59494] mb-6">{answeredCount}/20 answered</p>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
@@ -743,8 +746,11 @@ function AQForm({
       <div className="space-y-4">
         {AQ_QUESTIONS.map((q, idx) => (
           <div key={q.id} className="p-4 bg-[#f5f0f0] rounded-xl">
-            <p className="text-sm text-[#272727] font-medium mb-3">
+            <p className="text-sm text-[#272727] font-bold mb-1">
               {idx + 1}. {q.text}
+            </p>
+            <p className="text-sm text-[#272727]/70 italic mb-3">
+              {q.prompt}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-[#a59494] font-medium shrink-0 w-[100px] text-right hidden sm:block">{q.scaleLeft}</span>

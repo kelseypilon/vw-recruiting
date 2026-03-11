@@ -2579,61 +2579,12 @@ function ScheduledSubTab({
           <h3 className="text-sm font-semibold text-[#272727]">
             Interviews ({candidateInterviews.length})
           </h3>
-          <button
-            onClick={() => setShowNewInterviewForm(!showNewInterviewForm)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark transition"
-          >
-            {showNewInterviewForm ? "Cancel" : "+ Schedule Interview"}
-          </button>
+          {/* Schedule Interview button removed — interviews are created via group sessions */}
         </div>
 
-        {showNewInterviewForm && (
-          <div className="px-6 py-4 border-b border-[#a59494]/10 bg-[#f5f0f0]/30">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
-                  Type
-                </label>
-                <select
-                  value={newInterviewType}
-                  onChange={(e) => setNewInterviewType(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-                >
-                  <option value="1on1 Interview">1-on-1 Interview</option>
-                  <option value="Phone Screen">Phone Screen</option>
-                  <option value="Coffee Chat">Coffee Chat</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
-                  Date & Time
-                  <span className="font-normal ml-1">(optional)</span>
-                </label>
-                <DateTimePicker
-                  value={newInterviewDate}
-                  onChange={setNewInterviewDate}
-                />
-              </div>
-              <button
-                onClick={handleCreateInterview}
-                disabled={creatingInterview}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-50"
-              >
-                {creatingInterview ? "Creating..." : "Create"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {candidateInterviews.length === 0 && !showNewInterviewForm ? (
+        {candidateInterviews.length === 0 ? (
           <div className="p-6 text-center">
-            <p className="text-sm text-[#a59494] mb-3">No interviews scheduled yet</p>
-            <button
-              onClick={() => setShowNewInterviewForm(true)}
-              className="text-sm font-medium text-brand hover:text-brand-dark transition"
-            >
-              + Schedule first interview
-            </button>
+            <p className="text-sm text-[#a59494]">No interviews yet</p>
           </div>
         ) : (
           <div className="divide-y divide-[#a59494]/10">

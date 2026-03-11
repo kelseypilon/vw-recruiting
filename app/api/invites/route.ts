@@ -135,10 +135,16 @@ export async function POST(req: NextRequest) {
       const setupUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/setup/${invite.token}`;
 
       // Send invite email via Resend (if configured)
-      if (resend) {
+      let emailSent = false;
+      let emailError: string | null = null;
+
+      if (!resend) {
+        emailError = "RESEND_API_KEY is not configured — invite created but email not sent";
+        console.warn("[Invites]", emailError);
+      } else {
         try {
           await resend.emails.send({
-            from: "VW Recruiting <no-reply@vwrecruiting.com>",
+            from: `${teamName} <no-reply@vwrecruiting.com>`,
             to: email,
             subject: `You've been invited to join ${teamName}`,
             html: `
@@ -158,8 +164,10 @@ export async function POST(req: NextRequest) {
               </div>
             `,
           });
-        } catch {
-          // Email send failed — invite is still created, just not emailed
+          emailSent = true;
+        } catch (err) {
+          emailError = err instanceof Error ? err.message : "Unknown email error";
+          console.error("[Invites] Failed to send invite email:", emailError);
         }
       }
 
@@ -167,6 +175,8 @@ export async function POST(req: NextRequest) {
         success: true,
         invite: { id: invite.id, token: invite.token, email: invite.email },
         setup_url: setupUrl,
+        email_sent: emailSent,
+        ...(emailError ? { email_warning: emailError } : {}),
       });
     }
 

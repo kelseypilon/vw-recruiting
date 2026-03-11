@@ -161,16 +161,16 @@ export default function AssessmentsPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center">
         <style>{brandStyle}</style>
-        <div className="animate-spin w-8 h-8 border-4 border-white/30 border-t-white rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-[var(--brand-primary)]/20 border-t-[var(--brand-primary)] rounded-full" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md text-center">
           <div className="text-4xl mb-4">⚠️</div>
@@ -184,7 +184,7 @@ export default function AssessmentsPage({
   /* ── All Complete — Thank You screen ── */
   if (allDone) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#f4f4f4] flex items-center justify-center p-4">
         <style>{brandStyle}</style>
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg text-center">
           <div className="w-20 h-20 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -211,7 +211,7 @@ export default function AssessmentsPage({
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[var(--brand-secondary)] to-[var(--brand-primary)]">
+    <div className="min-h-screen bg-[#f4f4f4]">
       {/* Dynamic brand CSS variables */}
       <style>{brandStyle}</style>
       {/* Dynamic page title */}
@@ -242,9 +242,9 @@ export default function AssessmentsPage({
       </header>
 
       {/* Progress Bar */}
-      <div className="bg-[var(--brand-secondary)]/50">
+      <div className="bg-[var(--brand-secondary)]/10">
         <div className="max-w-4xl mx-auto px-6">
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-[#272727]/10 rounded-full overflow-hidden">
             <div
               className="h-full bg-[var(--brand-primary)] rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / 3) * 100}%` }}
@@ -263,7 +263,7 @@ export default function AssessmentsPage({
               className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === tab.key
                   ? "bg-white text-[#272727] shadow-lg"
-                  : "bg-white/10 text-white/70 hover:bg-white/20"
+                  : "bg-white/60 text-[#272727]/60 hover:bg-white/80"
               }`}
             >
               {completed[tab.key] ? (
@@ -308,7 +308,7 @@ export default function AssessmentsPage({
         </div>
 
         {/* Footer */}
-        <p className="text-center text-white/40 text-xs mt-8 pb-4">
+        <p className="text-center text-[#a59494]/60 text-xs mt-8 pb-4">
           {getBrandingFooter(branding)}
         </p>
       </div>

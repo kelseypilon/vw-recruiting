@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/api-auth";
-import { getGoogleAuthUrl } from "@/lib/google";
+import { getGoogleAuthUrl, isGoogleOAuthConfigured } from "@/lib/google";
 
 /**
  * GET /api/auth/google
@@ -12,6 +12,13 @@ export async function GET() {
   const auth = await verifyAuth();
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!isGoogleOAuthConfigured()) {
+    return NextResponse.json(
+      { error: "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables." },
+      { status: 503 }
+    );
   }
 
   // Encode userId in state so the callback can look up the right user

@@ -356,14 +356,25 @@ export async function POST(req: NextRequest) {
       if (!payload?.stages || !Array.isArray(payload.stages)) {
         return NextResponse.json({ error: "stages array is required" }, { status: 400 });
       }
-      // Update all stage order_indexes concurrently
-      const results = await Promise.all(
-        (payload.stages as { id: string; order_index: number }[]).map((s) =>
-          supabase.from("pipeline_stages").update({ order_index: s.order_index }).eq("id", s.id)
-        )
-      );
-      const failed = results.find((r) => r.error);
-      if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
+      const stages = payload.stages as { id: string; order_index: number }[];
+
+      // Two-step reorder to avoid unique-constraint violation on (team_id, order_index):
+      // Step 1 — shift all stages to negative temporary indexes
+      for (let i = 0; i < stages.length; i++) {
+        const { error } = await supabase
+          .from("pipeline_stages")
+          .update({ order_index: -(i + 1) })
+          .eq("id", stages[i].id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      // Step 2 — set the final indexes
+      for (const s of stages) {
+        const { error } = await supabase
+          .from("pipeline_stages")
+          .update({ order_index: s.order_index })
+          .eq("id", s.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
       return NextResponse.json({ success: true });
     }
 
