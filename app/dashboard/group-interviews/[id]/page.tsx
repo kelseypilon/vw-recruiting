@@ -96,6 +96,9 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
     ]);
 
   // ── 3. Fetch full candidate rows from linked IDs ──────────────
+  // DEBUG: log the full linksResult to diagnose empty candidates in production
+  console.log("[GI page] linksResult:", JSON.stringify(linksResult));
+
   if (linksResult.error) {
     console.error("[GI page] junction query error:", linksResult.error.message);
   }
