@@ -8,6 +8,7 @@ import {
   type DropResult,
 } from "@hello-pangea/dnd";
 import { createClient } from "@/lib/supabase/client";
+import { usePermissions } from "@/lib/user-permissions-context";
 import type { PipelineStage, CandidateCard, TeamUser, GroupInterviewSession } from "@/lib/types";
 import { getInterviewStageNames, stageNameByTag, STAGE_TAGS } from "@/lib/stage-utils";
 import CandidateCardComponent from "./candidate-card";
@@ -64,6 +65,45 @@ export default function KanbanBoard({
     useState<PendingInterviewMove | null>(null);
   const [pendingNotAFitMove, setPendingNotAFitMove] =
     useState<PendingNotAFitMove | null>(null);
+
+  // Bulk delete state
+  const { can } = usePermissions();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const isSelecting = can("edit_candidates") && selectedIds.size > 0;
+
+  function toggleSelect(candidateId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    setIsBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/candidates/${id}`, { method: "DELETE" }).then((r) => {
+          if (!r.ok) throw new Error(`Failed to delete ${id}`);
+          return id;
+        })
+      )
+    );
+    const deletedIds = results
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+      .map((r) => r.value);
+    setCandidates((prev) => prev.filter((c) => !deletedIds.includes(c.id)));
+    setSelectedIds(new Set());
+    setShowBulkDeleteConfirm(false);
+    setIsBulkDeleting(false);
+    if (deletedIds.length < ids.length) {
+      alert(`Deleted ${deletedIds.length} of ${ids.length} candidates. Some deletions failed.`);
+    }
+  }
 
   // Dynamic stage names from ghl_tag (allows teams to rename stages)
   const INTERVIEW_STAGES = getInterviewStageNames(stages);
@@ -358,6 +398,27 @@ export default function KanbanBoard({
         </div>
       </div>
 
+      {/* Bulk delete bar — visible when candidates are selected */}
+      {can("edit_candidates") && selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <span className="text-sm font-medium text-red-800">
+            {selectedIds.size} candidate{selectedIds.size > 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-red-600 hover:text-red-800 underline transition"
+          >
+            Deselect All
+          </button>
+          <button
+            onClick={() => setShowBulkDeleteConfirm(true)}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition"
+          >
+            Delete Selected
+          </button>
+        </div>
+      )}
+
       {/* Kanban columns with DnD — only render DnD after client hydration */}
       {isMounted ? (
         <DragDropContext onDragEnd={handleDragEnd}>
@@ -417,6 +478,9 @@ export default function KanbanBoard({
                                   stages={stages}
                                   onStageChange={handleStageChange}
                                   thresholdStuckDays={thresholdStuckDays}
+                                  canDelete={can("edit_candidates")}
+                                  isSelected={selectedIds.has(candidate.id)}
+                                  onToggleSelect={toggleSelect}
                                 />
                               </div>
                             )}
@@ -452,7 +516,7 @@ export default function KanbanBoard({
                 </div>
                 <div className="flex flex-col gap-3 flex-1 min-h-[80px] p-1">
                   {stageCards.map((candidate) => (
-                    <CandidateCardComponent key={candidate.id} candidate={candidate} stages={stages} onStageChange={handleStageChange} thresholdStuckDays={thresholdStuckDays} />
+                    <CandidateCardComponent key={candidate.id} candidate={candidate} stages={stages} onStageChange={handleStageChange} thresholdStuckDays={thresholdStuckDays} canDelete={can("edit_candidates")} isSelected={selectedIds.has(candidate.id)} onToggleSelect={toggleSelect} />
                   ))}
                 </div>
               </div>
@@ -498,6 +562,36 @@ export default function KanbanBoard({
           onMoveWithout={handleNotAFitMoveWithout}
           onCancel={handleNotAFitCancel}
         />
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-bold text-[#272727] mb-2">Delete {selectedIds.size} Candidate{selectedIds.size > 1 ? "s" : ""}</h3>
+            <p className="text-sm text-[#a59494] mb-6">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-[#272727]">{selectedIds.size} candidate{selectedIds.size > 1 ? "s" : ""}</span>?
+              This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-sm rounded-lg border border-[#a59494]/30 text-[#272727] hover:bg-gray-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+              >
+                {isBulkDeleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

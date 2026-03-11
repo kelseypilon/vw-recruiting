@@ -9,6 +9,9 @@ interface Props {
   stages: PipelineStage[];
   onStageChange: (candidateId: string, newStage: string) => void | Promise<void>;
   thresholdStuckDays?: number;
+  canDelete?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (candidateId: string) => void;
 }
 
 function scoreBadge(score: number | null) {
@@ -26,6 +29,9 @@ export default function CandidateCardComponent({
   stages,
   onStageChange,
   thresholdStuckDays = 7,
+  canDelete = false,
+  isSelected = false,
+  onToggleSelect,
 }: Props) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
@@ -64,6 +70,26 @@ export default function CandidateCardComponent({
       href={`/dashboard/candidates/${candidate.id}`}
       className={`block bg-white rounded-xl shadow-sm p-4 hover:border-brand/30 hover:shadow-md transition relative ${borderClass}`}
     >
+      {/* Bulk-select checkbox — Admin+ only */}
+      {canDelete && (
+        <label
+          className="absolute top-2 left-2 z-10 cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onToggleSelect?.(candidate.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-4 h-4 rounded border-[#a59494]/40 text-brand focus:ring-brand cursor-pointer"
+          />
+        </label>
+      )}
+
       {/* Hold warning icon */}
       {isOnHold && (
         <span className="absolute top-2 right-2 text-amber-500 text-sm" title={candidate.kanban_hold_reason ?? "On hold"}>
@@ -72,7 +98,7 @@ export default function CandidateCardComponent({
       )}
 
       {/* Name and phone */}
-      <h4 className="text-sm font-semibold text-[#272727]">
+      <h4 className={`text-sm font-semibold text-[#272727] ${canDelete ? "pl-6" : ""}`}>
         {candidate.first_name} {candidate.last_name}
       </h4>
       {isOnHold && candidate.kanban_hold_reason && (

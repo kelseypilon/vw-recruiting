@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/user-permissions-context";
 import type {
@@ -112,6 +112,12 @@ export default function CandidateProfile({
   const [pendingNotAFitStage, setPendingNotAFitStage] = useState<string | null>(null);
   const [pendingInterviewMove, setPendingInterviewMove] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "onboarding" | "interviews" | "emails">("profile");
+
+  // Delete candidate
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
+  const { can } = usePermissions();
 
   // Assessment response panels
   const [showAQPanel, setShowAQPanel] = useState(false);
@@ -385,6 +391,18 @@ export default function CandidateProfile({
 
             {/* Stage History */}
             <StageTimeline history={history} stages={stages} />
+
+            {/* Delete Candidate — Admin+ only */}
+            {can("edit_candidates") && (
+              <div className="pt-4 border-t border-[#a59494]/10 mt-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-xs text-red-400 hover:text-red-600 transition"
+                >
+                  Delete Candidate
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -560,6 +578,55 @@ export default function CandidateProfile({
           }}
           onCancel={() => setPendingInterviewMove(null)}
         />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-bold text-[#272727] mb-2">Delete Candidate</h3>
+            <p className="text-sm text-[#a59494] mb-6">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-[#272727]">
+                {candidate.first_name} {candidate.last_name}
+              </span>
+              ? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm rounded-lg border border-[#a59494]/30 text-[#272727] hover:bg-gray-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setIsDeleting(true);
+                  try {
+                    const res = await fetch(`/api/candidates/${candidate.id}`, {
+                      method: "DELETE",
+                    });
+                    if (res.ok) {
+                      router.push("/dashboard/candidates");
+                    } else {
+                      const data = await res.json();
+                      alert(data.error || "Failed to delete candidate");
+                      setIsDeleting(false);
+                    }
+                  } catch {
+                    alert("Failed to delete candidate");
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Assessment Response Panels */}
