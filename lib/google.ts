@@ -32,9 +32,6 @@ const SCOPES = [
 export function isGoogleOAuthConfigured(): boolean {
   const hasClientId = !!getGoogleClientId();
   const hasClientSecret = !!getGoogleClientSecret();
-  console.log(
-    `[Google OAuth] client_id: ${hasClientId}, client_secret: ${hasClientSecret}, redirect: ${getGoogleRedirectUri()}`
-  );
   return hasClientId && hasClientSecret;
 }
 
