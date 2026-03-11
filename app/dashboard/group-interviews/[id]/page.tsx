@@ -3,10 +3,32 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getTeamId } from "@/lib/get-team-id";
 import SessionDetail from "./session-detail";
-import type { TeamUser, GroupInterviewPrompt } from "@/lib/types";
+import type { TeamUser, GroupInterviewPrompt, GroupInterviewNote } from "@/lib/types";
 
 // Ensure this page is never served from cache
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+/** Shape returned by the candidates query */
+interface SessionCandidateRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  stage: string;
+  role_applied: string | null;
+  email: string | null;
+  phone: string | null;
+  current_brokerage: string | null;
+  years_experience: number | null;
+  is_licensed: boolean | null;
+  disc_primary: string | null;
+  disc_secondary: string | null;
+  aq_normalized: number | null;
+  aq_tier: string | null;
+}
+
+const CANDIDATE_SELECT =
+  "id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -23,95 +45,102 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
     data: { user: authUser },
   } = await authClient.auth.getUser();
 
-  const [sessionResult, usersResult, profileResult, promptsResult, teamResult] = await Promise.all([
-    // Fetch session + candidates + notes via API-style query
-    (async () => {
-      const { data: session, error: sessErr } = await supabase
-        .from("group_interview_sessions")
-        .select(
-          "*, creator:users!group_interview_sessions_created_by_fkey(name)"
-        )
-        .eq("id", id)
-        .eq("team_id", TEAM_ID)
-        .single();
+  // ── 1. Fetch the session row ──────────────────────────────────
+  const { data: sessionRow, error: sessErr } = await supabase
+    .from("group_interview_sessions")
+    .select("*, creator:users!group_interview_sessions_created_by_fkey(name)")
+    .eq("id", id)
+    .eq("team_id", TEAM_ID)
+    .single();
 
-      if (sessErr || !session) {
-        console.error("[GI page] session fetch failed:", sessErr?.message ?? "no data");
-        return { data: null };
-      }
-
-      // Get linked candidate IDs first (simple query, no FK join)
-      const { data: links, error: linksErr } = await supabase
-        .from("group_interview_candidates")
-        .select("candidate_id")
-        .eq("session_id", id);
-
-      if (linksErr) {
-        console.error("[GI page] junction query error:", linksErr.message);
-      }
-
-      const candidateIds = (links ?? []).map((l) => l.candidate_id).filter(Boolean);
-      console.log(`[GI page] session=${id} → ${candidateIds.length} linked candidate IDs`);
-
-      // Then fetch full candidate data by IDs (avoids FK join issues)
-      let candidates: unknown[] = [];
-      if (candidateIds.length > 0) {
-        const { data: candidateRows, error: candErr } = await supabase
-          .from("candidates")
-          .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
-          .in("id", candidateIds);
-
-        if (candErr) {
-          console.error("[GI page] candidate fetch error:", candErr.message);
-        }
-        candidates = candidateRows ?? [];
-      }
-
-      console.log(`[GI page] returning ${candidates.length} candidates for session ${id}`);
-
-      // Get notes
-      const { data: notes } = await supabase
-        .from("group_interview_notes")
-        .select("*, author:users(name)")
-        .eq("session_id", id)
-        .order("updated_at", { ascending: false });
-
-      return {
-        data: { ...session, candidates, notes: notes ?? [] },
-      };
-    })(),
-    supabase
-      .from("users")
-      .select("id, team_id, name, email, role, from_email")
-      .eq("team_id", TEAM_ID),
-    authUser?.email
-      ? supabase
-          .from("users")
-          .select("id, name")
-          .eq("team_id", TEAM_ID)
-          .eq("email", authUser.email)
-          .single()
-      : Promise.resolve({ data: null }),
-    // Fetch active group interview prompts
-    supabase
-      .from("group_interview_prompts")
-      .select("*")
-      .eq("team_id", TEAM_ID)
-      .eq("is_active", true)
-      .order("order_index"),
-    // Fetch team data for guidelines
-    supabase
-      .from("teams")
-      .select("id, settings")
-      .eq("id", TEAM_ID)
-      .single(),
-  ]);
-
-  if (!sessionResult.data) {
+  if (sessErr || !sessionRow) {
+    console.error("[GI page] session fetch failed:", sessErr?.message ?? "no data");
     notFound();
   }
 
-  const session = sessionResult.data;
+  // ── 2. Parallel fetches for candidates, notes, users, prompts, team ──
+  const [linksResult, notesResult, usersResult, profileResult, promptsResult, teamResult] =
+    await Promise.all([
+      supabase
+        .from("group_interview_candidates")
+        .select("candidate_id")
+        .eq("session_id", id),
+      supabase
+        .from("group_interview_notes")
+        .select("*, author:users(name)")
+        .eq("session_id", id)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("users")
+        .select("id, team_id, name, email, role, from_email")
+        .eq("team_id", TEAM_ID),
+      authUser?.email
+        ? supabase
+            .from("users")
+            .select("id, name")
+            .eq("team_id", TEAM_ID)
+            .eq("email", authUser.email)
+            .single()
+        : Promise.resolve({ data: null }),
+      supabase
+        .from("group_interview_prompts")
+        .select("*")
+        .eq("team_id", TEAM_ID)
+        .eq("is_active", true)
+        .order("order_index"),
+      supabase
+        .from("teams")
+        .select("id, settings")
+        .eq("id", TEAM_ID)
+        .single(),
+    ]);
+
+  // ── 3. Fetch full candidate rows from linked IDs ──────────────
+  if (linksResult.error) {
+    console.error("[GI page] junction query error:", linksResult.error.message);
+  }
+
+  const candidateIds: string[] = (linksResult.data ?? [])
+    .map((l) => l.candidate_id)
+    .filter(Boolean);
+
+  console.log(
+    `[GI page] session=${id} → ${candidateIds.length} linked candidate IDs`,
+    candidateIds.length > 0 ? candidateIds : "(none)"
+  );
+
+  let candidates: SessionCandidateRow[] = [];
+  if (candidateIds.length > 0) {
+    const { data: candidateRows, error: candErr } = await supabase
+      .from("candidates")
+      .select(CANDIDATE_SELECT)
+      .in("id", candidateIds);
+
+    if (candErr) {
+      console.error("[GI page] candidate fetch error:", candErr.message);
+    }
+    candidates = (candidateRows ?? []) as SessionCandidateRow[];
+  }
+
+  console.log(`[GI page] returning ${candidates.length} candidates for session ${id}`);
+
+  // ── 4. Assemble the session object explicitly ─────────────────
+  const session = {
+    id: sessionRow.id as string,
+    team_id: sessionRow.team_id as string,
+    title: sessionRow.title as string,
+    session_date: (sessionRow.session_date as string | null) ?? null,
+    zoom_link: (sessionRow.zoom_link as string | null) ?? null,
+    summary: (sessionRow.summary as string | null) ?? null,
+    general_notes: (sessionRow.general_notes as string | null) ?? null,
+    status: (sessionRow.status as string | undefined) ?? undefined,
+    created_by: (sessionRow.created_by as string | null) ?? null,
+    created_at: sessionRow.created_at as string,
+    creator: sessionRow.creator as { name: string } | undefined,
+    candidates,
+    notes: (notesResult.data ?? []) as (GroupInterviewNote & { author?: { name: string } })[],
+  };
+
   const leaders: TeamUser[] = (usersResult.data ?? []) as TeamUser[];
   const currentUserId: string = profileResult.data?.id ?? "";
   const currentUserName: string =
