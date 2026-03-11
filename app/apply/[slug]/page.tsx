@@ -258,7 +258,7 @@ export default function PublicApplyPage({
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
           {TABS.map((tab) => {
@@ -533,17 +533,17 @@ function ApplicationForm({
   flushGrid();
 
   return (
-    <form onSubmit={handleSubmit} className="p-8">
-      <h2 className="text-xl font-bold text-[#272727] mb-1">Candidate Details</h2>
-      <p className="text-sm text-[#a59494] mb-6">Tell us about yourself and your goals.</p>
+    <form onSubmit={handleSubmit} className="p-8 sm:p-10">
+      <h2 className="text-xl font-bold text-[#272727] mb-2">Candidate Details</h2>
+      <p className="text-sm text-[#a59494] mb-8">Tell us about yourself and your goals.</p>
 
-      {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
+      {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-8">{err}</div>}
 
-      <div className="space-y-4 mb-8">
+      <div className="space-y-6 mb-10">
         {segments.map((seg) => {
           if (seg.kind === "grid") {
             return (
-              <div key={`grid-${seg.items[0].id}`} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div key={`grid-${seg.items[0].id}`} className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {seg.items.map((f) => (
                   <DynamicField
                     key={f.id}
@@ -985,12 +985,12 @@ function InputField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-[#272727] mb-1">{label}</label>
+      <label className="block text-sm font-medium text-[#272727] mb-1.5">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition"
+        className="w-full px-4 py-3 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition"
       />
     </div>
   );
@@ -1009,11 +1009,11 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-[#272727] mb-1">{label}</label>
+      <label className="block text-sm font-medium text-[#272727] mb-1.5">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition bg-white"
+        className="w-full px-4 py-3 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition bg-white"
       >
         <option value="">Select...</option>
         {options.map((o) => (
@@ -1035,12 +1035,12 @@ function TextareaField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-[#272727] mb-1">{label}</label>
+      <label className="block text-sm font-medium text-[#272727] mb-1.5">{label}</label>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
-        className="w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition resize-none"
+        className="w-full px-4 py-3 rounded-lg border border-[#a59494]/30 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/40 focus:border-transparent transition resize-none"
       />
     </div>
   );

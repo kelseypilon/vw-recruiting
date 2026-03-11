@@ -67,7 +67,6 @@ export default async function GroupInterviewsPage() {
       leaders={leaders}
       teamId={TEAM_ID}
       currentUserId={currentUserId}
-      teamInterviewDate={teamResult.data?.group_interview_date ?? null}
       teamDefaultMeetingLink={teamDefaultMeetingLink}
     />
   );

@@ -13,7 +13,6 @@ interface Props {
   leaders: TeamUser[];
   teamId: string;
   currentUserId: string;
-  teamInterviewDate: string | null;
   teamDefaultMeetingLink?: string | null;
 }
 
@@ -24,7 +23,6 @@ export default function GroupInterviewsDashboard({
   leaders,
   teamId,
   currentUserId,
-  teamInterviewDate,
   teamDefaultMeetingLink,
 }: Props) {
   const router = useRouter();
@@ -141,7 +139,6 @@ export default function GroupInterviewsDashboard({
       {showSettings && canManage && (
         <SessionSettingsPanel
           teamId={teamId}
-          initialInterviewDate={teamInterviewDate}
           initialMeetingLink={teamDefaultMeetingLink ?? null}
           onClose={() => setShowSettings(false)}
         />
@@ -421,30 +418,14 @@ function StatCard({
 
 function SessionSettingsPanel({
   teamId,
-  initialInterviewDate,
   initialMeetingLink,
   onClose,
 }: {
   teamId: string;
-  initialInterviewDate: string | null;
   initialMeetingLink: string | null;
   onClose: () => void;
 }) {
   const router = useRouter();
-  // DateTimePicker expects "YYYY-MM-DDTHH:MM" format
-  function toDateTimeLocal(iso: string | null): string {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const min = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-  }
-
-  const [dateTimeVal, setDateTimeVal] = useState(toDateTimeLocal(initialInterviewDate));
   const [meetingLink, setMeetingLink] = useState(initialMeetingLink ?? "");
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
@@ -453,10 +434,6 @@ function SessionSettingsPanel({
     setSaving(true);
     setSaveStatus("");
     try {
-      let isoDate: string | null = null;
-      if (dateTimeVal) {
-        isoDate = new Date(dateTimeVal).toISOString();
-      }
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -464,7 +441,6 @@ function SessionSettingsPanel({
           action: "update_team",
           payload: {
             id: teamId,
-            group_interview_date: isoDate,
             default_meeting_link: meetingLink.trim() || null,
           },
         }),
@@ -474,7 +450,7 @@ function SessionSettingsPanel({
         setSaveStatus(`Error: ${json.error}`);
       } else {
         setSaveStatus("Saved!");
-        router.refresh(); // Invalidate SSR cache so settings persist on reload
+        router.refresh();
         setTimeout(() => setSaveStatus(""), 2000);
       }
     } catch {
@@ -495,7 +471,7 @@ function SessionSettingsPanel({
             Session Settings
           </h3>
           <p className="text-xs text-[#a59494] mt-0.5">
-            Default date and meeting link for group interviews
+            Default meeting link for group interviews
           </p>
         </div>
         <button
@@ -509,16 +485,6 @@ function SessionSettingsPanel({
         </button>
       </div>
       <div className="max-w-sm space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-[#272727] mb-1.5">
-            Next Group Interview Date
-          </label>
-          <DateTimePicker
-            value={dateTimeVal}
-            onChange={setDateTimeVal}
-            placeholder="Select date &amp; time"
-          />
-        </div>
         <div>
           <label className="block text-sm font-medium text-[#272727] mb-1.5">
             Default Meeting Link
@@ -577,7 +543,6 @@ function CreateSessionModal({
   onCreated: (session: GroupInterviewSession & { _candidate_count?: number }) => void;
 }) {
   const [title, setTitle] = useState("Group Interview");
-  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
   const [dateTimeVal, setDateTimeVal] = useState("");
   const [zoomLink, setZoomLink] = useState(defaultMeetingLink ?? "");
   const [notes, setNotes] = useState("");
@@ -586,15 +551,9 @@ function CreateSessionModal({
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
-  // Auto-update title when date is selected (unless user manually edited it)
+  // Update date value (title stays plain — date is shown in its own column)
   function handleDateChange(val: string) {
     setDateTimeVal(val);
-    if (!titleManuallyEdited && val) {
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        setTitle(`Group Interview — ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
-      }
-    }
   }
 
   const filtered = eligibleCandidates.filter((c) => {
@@ -691,7 +650,7 @@ function CreateSessionModal({
             <input
               type="text"
               value={title}
-              onChange={(e) => { setTitle(e.target.value); setTitleManuallyEdited(true); }}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Group Interview — Mar 15"
               className={inputClasses}
             />

@@ -26,13 +26,7 @@ export default function SendAssessmentModal({ onClose }: Props) {
   }, [teamId]);
 
   // ─── Tab 1: Application Link (copy-only) ─────────────
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [generatedUrl, setGeneratedUrl] = useState("");
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
 
   // ─── Tab 2: General Application Link (email compose) ──
   const [emailStep, setEmailStep] = useState<"compose" | "success">("compose");
@@ -56,41 +50,6 @@ export default function SendAssessmentModal({ onClose }: Props) {
 
   const inputClasses =
     "w-full px-3 py-2.5 rounded-lg border border-[#a59494]/30 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40 transition";
-
-  // Tab 1: Generate personal assessment link
-  async function handleGenerateLink(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setGenerating(true);
-    setCopied(false);
-
-    try {
-      const res = await fetch("/api/candidates/find-or-create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          email: email.trim().toLowerCase(),
-          team_id: teamId,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to create candidate");
-        return;
-      }
-
-      const cId = data.candidate_id;
-      const url = `${window.location.origin}/apply/${cId}/assessments?team=${teamId}`;
-      setGeneratedUrl(url);
-    } catch {
-      setError("Network error — please try again.");
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   function handleCopyUrl(url: string) {
     navigator.clipboard.writeText(url);
@@ -196,106 +155,33 @@ export default function SendAssessmentModal({ onClose }: Props) {
         )}
 
         {/* ─── Tab 1: Application Link (copy-only) ──────────── */}
-        {linkType === "personal" && (
+        {linkType === "personal" && teamSlug && (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-[#a59494] -mt-2 mb-1">
-              Enter the candidate&apos;s info to generate a personal assessment link.
+              Share this link with candidates to complete the application and assessments.
             </p>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-                {error}
-              </div>
-            )}
-
-            {!generatedUrl ? (
-              <form onSubmit={handleGenerateLink} className="flex flex-col gap-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-[#272727] mb-1">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      className={inputClasses}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#272727] mb-1">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className={inputClasses}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[#272727] mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClasses}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={generating}
-                  className="w-full py-2.5 bg-brand hover:bg-brand-dark text-white font-semibold text-sm rounded-lg transition disabled:opacity-50"
-                >
-                  {generating ? "Generating..." : "Generate Link"}
-                </button>
-              </form>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <div className="bg-[#f5f0f0] rounded-lg p-4">
-                  <p className="text-xs font-semibold text-[#a59494] uppercase tracking-wide mb-2">
-                    Assessment Link for {firstName} {lastName}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={generatedUrl}
-                      className={`${inputClasses} bg-white text-[#272727] text-xs flex-1`}
-                      onClick={(e) => (e.target as HTMLInputElement).select()}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleCopyUrl(generatedUrl)}
-                      className="shrink-0 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white font-semibold text-sm transition"
-                    >
-                      {copied ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
+            <div className="bg-[#f5f0f0] rounded-lg p-4">
+              <p className="text-xs font-semibold text-[#a59494] uppercase tracking-wide mb-2">
+                Application Link
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/apply/${teamSlug}`}
+                  className={`${inputClasses} bg-white text-[#272727] text-xs flex-1`}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
                 <button
                   type="button"
-                  onClick={() => {
-                    setGeneratedUrl("");
-                    setFirstName("");
-                    setLastName("");
-                    setEmail("");
-                    setCopied(false);
-                  }}
-                  className="text-sm text-[#a59494] hover:text-[#272727] transition self-start"
+                  onClick={() => handleCopyUrl(`${window.location.origin}/apply/${teamSlug}`)}
+                  className="shrink-0 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-dark text-white font-semibold text-sm transition"
                 >
-                  &larr; Generate another link
+                  {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
-            )}
+            </div>
           </div>
         )}
 

@@ -34,19 +34,23 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
 
       if (sessErr || !session) return { data: null };
 
-      // Get linked candidates (expanded fields for quick-view)
+      // Get linked candidate IDs first (simple query, no FK join)
       const { data: links } = await supabase
         .from("group_interview_candidates")
-        .select(
-          "candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier)"
-        )
+        .select("candidate_id")
         .eq("session_id", id);
 
-      const candidates = (links ?? [])
-        .map(
-          (l) => (l as unknown as { candidate: unknown }).candidate
-        )
-        .filter(Boolean); // Filter out null candidates from broken FK refs
+      const candidateIds = (links ?? []).map((l) => l.candidate_id).filter(Boolean);
+
+      // Then fetch full candidate data by IDs (avoids FK join issues)
+      let candidates: unknown[] = [];
+      if (candidateIds.length > 0) {
+        const { data: candidateRows } = await supabase
+          .from("candidates")
+          .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
+          .in("id", candidateIds);
+        candidates = candidateRows ?? [];
+      }
 
       // Get notes
       const { data: notes } = await supabase
