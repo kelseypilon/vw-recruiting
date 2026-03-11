@@ -1285,53 +1285,7 @@ function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
   const [expanded, setExpanded] = useState(false);
   const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
 
-  // Build a unified list of responses from both candidate columns and custom_fields.
-  // Each entry: { label, value } — skip nulls/empty.
-  const entries: { label: string; value: string }[] = [];
-
-  // role_interested_in → stored as role_applied on the candidate
-  if (candidate.role_applied) {
-    let roleDisplay = candidate.role_applied;
-    try {
-      const parsed = JSON.parse(candidate.role_applied);
-      if (Array.isArray(parsed)) roleDisplay = parsed.join(", ");
-    } catch { /* not JSON, use as-is */ }
-    entries.push({ label: "Role Interested In", value: roleDisplay });
-  }
-
-  // info_night_date → custom_fields
-  if (cf.info_night_date) {
-    const d = new Date(String(cf.info_night_date));
-    const formatted = isNaN(d.getTime())
-      ? String(cf.info_night_date)
-      : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    entries.push({ label: "Info Night Attended", value: formatted });
-  }
-
-  // licensed → is_licensed on candidate
-  if (candidate.is_licensed !== null && candidate.is_licensed !== undefined) {
-    entries.push({ label: "Licensed", value: candidate.is_licensed ? "Yes" : "No" });
-  }
-
-  // years_experience → candidate column
-  if (candidate.years_experience !== null && candidate.years_experience !== undefined) {
-    entries.push({ label: "Years of Experience", value: String(candidate.years_experience) });
-  }
-
-  // transactions_last_year → custom_fields (different from transactions_2024 column)
-  if (cf.transactions_last_year) {
-    entries.push({ label: "Transactions Last Year", value: String(cf.transactions_last_year) });
-  } else if (candidate.transactions_2024 !== null && candidate.transactions_2024 !== undefined) {
-    entries.push({ label: "Transactions Last Year", value: String(candidate.transactions_2024) });
-  }
-
-  // current_employment → stored as current_role on candidate
-  if (candidate.current_role) {
-    entries.push({ label: "Current Employment", value: candidate.current_role });
-  }
-
-  // Text responses from custom_fields
-  const textFields = [
+  const responseFields = [
     { key: "how_did_you_hear", label: "How Did You Hear About Us?" },
     { key: "what_stood_out", label: "What Stood Out to You?" },
     { key: "why_great_addition", label: "Why Would You Be a Great Addition?" },
@@ -1339,14 +1293,14 @@ function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
     { key: "questions_answered", label: "Were Your Questions Answered?" },
     { key: "additional_questions", label: "Additional Questions" },
   ];
-  for (const f of textFields) {
-    const val = cf[f.key];
-    if (val !== null && val !== undefined && val !== "") {
-      entries.push({ label: f.label, value: String(val) });
-    }
-  }
 
-  if (entries.length === 0) return null;
+  // Only show fields that have answers
+  const answeredFields = responseFields.filter((f) => {
+    const val = cf[f.key];
+    return val !== null && val !== undefined && val !== "";
+  });
+
+  if (answeredFields.length === 0) return null;
 
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm overflow-hidden">
@@ -1359,7 +1313,7 @@ function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <span className="text-sm font-semibold text-[#272727]">Application Responses</span>
-          <span className="text-xs text-[#a59494]">{entries.length} answer{entries.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-[#a59494]">{answeredFields.length} answer{answeredFields.length !== 1 ? "s" : ""}</span>
         </div>
         <svg
           width="16"
@@ -1375,10 +1329,10 @@ function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
       </button>
       {expanded && (
         <div className="px-5 pb-4 space-y-3 border-t border-[#a59494]/10 pt-3">
-          {entries.map((entry) => (
-            <div key={entry.label} className="bg-[#f9f7f7] rounded-lg p-3">
-              <p className="text-xs font-semibold text-[#a59494] mb-1">{entry.label}</p>
-              <p className="text-sm text-[#272727] whitespace-pre-wrap">{entry.value}</p>
+          {answeredFields.map((field) => (
+            <div key={field.key} className="bg-[#f9f7f7] rounded-lg p-3">
+              <p className="text-xs font-semibold text-[#a59494] mb-1">{field.label}</p>
+              <p className="text-sm text-[#272727] whitespace-pre-wrap">{String(cf[field.key])}</p>
             </div>
           ))}
         </div>
