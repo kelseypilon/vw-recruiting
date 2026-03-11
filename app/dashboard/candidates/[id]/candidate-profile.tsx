@@ -2193,7 +2193,7 @@ function InterviewsTab({
 
   const subTabs = [
     { key: "scheduled" as const, label: "Scheduled" },
-    { key: "guide" as const, label: "Interview Guide" },
+    { key: "guide" as const, label: "Interview Questions" },
     { key: "scorecard" as const, label: "Scorecard" },
     { key: "results" as const, label: "Results Summary" },
   ];
@@ -2778,25 +2778,25 @@ function InterviewGuideSubTab({
   teamId: string;
   currentUserId: string;
 }) {
-  const [guideNotes, setGuideNotes] = useState<Record<string, string>>({});
-  const [privateNotes, setPrivateNotes] = useState<Record<string, string>>({});
+  const [generalNotes, setGeneralNotes] = useState("");
+  const [privateNotes, setPrivateNotes] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const dirtyRef = useRef(false);
-  const guideNotesRef = useRef(guideNotes);
+  const generalNotesRef = useRef(generalNotes);
   const privateNotesRef = useRef(privateNotes);
 
   const { can } = usePermissions();
   const canViewSharedNotes = can("view_interview_notes");
 
   // Keep refs in sync
-  useEffect(() => { guideNotesRef.current = guideNotes; }, [guideNotes]);
+  useEffect(() => { generalNotesRef.current = generalNotes; }, [generalNotes]);
   useEffect(() => { privateNotesRef.current = privateNotes; }, [privateNotes]);
 
-  // Load existing guide notes on mount
+  // Load existing global notes on mount
   useEffect(() => {
     async function loadNotes() {
       try {
@@ -2810,14 +2810,13 @@ function InterviewGuideSubTab({
         });
         const json = await res.json();
         if (json.data && Array.isArray(json.data)) {
-          const notes: Record<string, string> = {};
-          const privNotes: Record<string, string> = {};
-          for (const n of json.data) {
-            if (n.note_text) notes[n.question_id] = n.note_text;
-            if (n.private_notes) privNotes[n.question_id] = n.private_notes;
+          const globalNote = json.data.find(
+            (n: Record<string, string>) => n.question_id === "__general__"
+          );
+          if (globalNote) {
+            setGeneralNotes(globalNote.note_text ?? "");
+            setPrivateNotes(globalNote.private_notes ?? "");
           }
-          setGuideNotes(notes);
-          setPrivateNotes(privNotes);
         }
       } catch {}
     }
@@ -2836,10 +2835,10 @@ function InterviewGuideSubTab({
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 
-  // Initialize first category expanded
+  // Initialize ALL categories expanded
   useEffect(() => {
     if (sortedCategoryKeys.length > 0 && expandedCategories.size === 0) {
-      setExpandedCategories(new Set([sortedCategoryKeys[0]]));
+      setExpandedCategories(new Set(sortedCategoryKeys));
     }
   }, [sortedCategoryKeys.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2853,40 +2852,33 @@ function InterviewGuideSubTab({
   }
 
   // Silent auto-save every 30 seconds
-  const saveAllNotes = useRef(async () => {
+  const saveNotes = useRef(async () => {
     if (!dirtyRef.current) return;
-    const notes = guideNotesRef.current;
-    const privNotes = privateNotesRef.current;
-    const allQuestionIds = new Set([...Object.keys(notes), ...Object.keys(privNotes)]);
-    const promises: Promise<unknown>[] = [];
-    for (const qid of allQuestionIds) {
-      promises.push(
-        fetch("/api/interview-scorecards", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "save_guide_note",
-            payload: {
-              candidate_id: candidateId,
-              question_id: qid,
-              team_id: teamId,
-              author_user_id: currentUserId,
-              note_text: notes[qid] ?? "",
-              private_notes: privNotes[qid] ?? "",
-            },
-          }),
-        }).catch(() => {})
-      );
-    }
-    await Promise.all(promises);
-    dirtyRef.current = false;
-    setIsDirty(false);
-    setLastSaved(new Date());
+    try {
+      await fetch("/api/interview-scorecards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_guide_note",
+          payload: {
+            candidate_id: candidateId,
+            question_id: "__general__",
+            team_id: teamId,
+            author_user_id: currentUserId,
+            note_text: generalNotesRef.current,
+            private_notes: privateNotesRef.current,
+          },
+        }),
+      });
+      dirtyRef.current = false;
+      setIsDirty(false);
+      setLastSaved(new Date());
+    } catch {}
   });
 
   useEffect(() => {
     autoSaveTimer.current = setInterval(() => {
-      saveAllNotes.current();
+      saveNotes.current();
     }, 30000);
     return () => {
       if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
@@ -2904,21 +2896,14 @@ function InterviewGuideSubTab({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
-  function handleNoteChange(questionId: string, text: string) {
-    setGuideNotes((prev) => ({ ...prev, [questionId]: text }));
+  function markDirty() {
     setIsDirty(true);
     dirtyRef.current = true;
   }
 
-  function handlePrivateNoteChange(questionId: string, text: string) {
-    setPrivateNotes((prev) => ({ ...prev, [questionId]: text }));
-    setIsDirty(true);
-    dirtyRef.current = true;
-  }
-
-  async function handleSubmitNotes() {
+  async function handleSaveNotes() {
     setSaving(true);
-    await saveAllNotes.current();
+    await saveNotes.current();
     setSaving(false);
   }
 
@@ -2938,6 +2923,54 @@ function InterviewGuideSubTab({
 
   return (
     <div className="space-y-2">
+      {/* Sticky Notes Header */}
+      <div className="sticky top-0 z-10 bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5 space-y-3">
+        {canViewSharedNotes && (
+          <div>
+            <label className="block text-xs font-semibold text-[#272727] mb-1">
+              General Notes
+            </label>
+            <textarea
+              placeholder="General notes about this candidate (visible to team)..."
+              value={generalNotes}
+              onChange={(e) => { setGeneralNotes(e.target.value); markDirty(); }}
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
+            />
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-[#272727] mb-1">
+            My Private Notes
+            <span className="font-normal text-[#a59494] ml-1">(only you can see)</span>
+          </label>
+          <textarea
+            placeholder="Private notes..."
+            value={privateNotes}
+            onChange={(e) => { setPrivateNotes(e.target.value); markDirty(); }}
+            rows={3}
+            className="w-full px-3 py-2 rounded-lg border border-purple-200 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition resize-none bg-purple-50/30"
+          />
+        </div>
+        {/* Save status + button */}
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-[#a59494]">
+            {lastSaved && !isDirty && (
+              <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
+            )}
+            {isDirty && <span className="text-amber-600">Unsaved changes</span>}
+          </div>
+          <button
+            onClick={handleSaveNotes}
+            disabled={saving || !isDirty}
+            className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Notes"}
+          </button>
+        </div>
+      </div>
+
+      {/* Question Accordions by Category */}
       {sortedCategoryKeys.map((category) => {
         const isExpanded = expandedCategories.has(category);
         return (
@@ -2966,39 +2999,10 @@ function InterviewGuideSubTab({
               <div className="divide-y divide-[#a59494]/5 border-t border-[#a59494]/10">
                 {grouped[category].map((q) => (
                   <div key={q.id} className="px-5 py-3">
-                    <p className="text-sm text-[#272727] mb-1.5">{q.question_text}</p>
+                    <p className="text-sm text-[#272727]">{q.question_text}</p>
                     {q.interviewer_note && (
-                      <p className="text-xs text-[#a59494] italic mb-2">{q.interviewer_note}</p>
+                      <p className="text-xs text-[#a59494] italic mt-1">{q.interviewer_note}</p>
                     )}
-                    {/* Shared notes — visible based on permission */}
-                    {canViewSharedNotes && (
-                      <div className="mb-2">
-                        <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
-                          Shared Notes
-                        </label>
-                        <textarea
-                          placeholder="Shared notes (visible to team)..."
-                          value={guideNotes[q.id] ?? ""}
-                          onChange={(e) => handleNoteChange(q.id, e.target.value)}
-                          rows={2}
-                          className="w-full px-3 py-2 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition resize-none"
-                        />
-                      </div>
-                    )}
-                    {/* Private notes — always visible to current user only */}
-                    <div>
-                      <label className="block text-[10px] font-semibold text-[#a59494] uppercase tracking-wider mb-1">
-                        Private Notes
-                        <span className="font-normal ml-1">(only you can see)</span>
-                      </label>
-                      <textarea
-                        placeholder="Private notes..."
-                        value={privateNotes[q.id] ?? ""}
-                        onChange={(e) => handlePrivateNoteChange(q.id, e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-2 rounded-lg border border-purple-200 text-sm text-[#272727] placeholder:text-[#a59494]/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition resize-none bg-purple-50/30"
-                      />
-                    </div>
                   </div>
                 ))}
               </div>
@@ -3006,23 +3010,6 @@ function InterviewGuideSubTab({
           </div>
         );
       })}
-
-      {/* Submit Notes button + auto-save status */}
-      <div className="flex items-center justify-between pt-2">
-        <div className="text-xs text-[#a59494]">
-          {lastSaved && !isDirty && (
-            <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
-          )}
-          {isDirty && <span className="text-amber-600">Unsaved changes</span>}
-        </div>
-        <button
-          onClick={handleSubmitNotes}
-          disabled={saving || !isDirty}
-          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Submit Notes"}
-        </button>
-      </div>
     </div>
   );
 }
@@ -3308,34 +3295,35 @@ function ScorecardSubTab({
           {categories.map((cat) => (
             <div key={cat} className="px-6 py-2 flex items-center justify-between">
               <span className="text-xs text-[#272727] font-medium">{cat}</span>
-              <div className="flex gap-0.5">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    disabled={isReadOnly}
-                    onClick={() => {
-                      setCategoryRatings((prev) => ({ ...prev, [cat]: star }));
-                      markDirty();
-                    }}
-                    className="transition disabled:cursor-default"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "none"}
-                      stroke={star <= (categoryRatings[cat] ?? 0) ? "var(--brand-primary)" : "#d1d5db"}
-                      strokeWidth="2"
-                    >
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  </button>
-                ))}
-                {categoryRatings[cat] > 0 && (
-                  <span className="text-xs font-semibold text-[#272727] ml-1 w-6 text-right">
-                    {categoryRatings[cat]}
+              <div className="flex items-center gap-1.5">
+                {isReadOnly ? (
+                  <span className="text-sm font-semibold text-[#272727]">
+                    {categoryRatings[cat] > 0 ? `${categoryRatings[cat]} / 10` : "— / 10"}
                   </span>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={categoryRatings[cat] ?? ""}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (e.target.value === "") {
+                          setCategoryRatings((prev) => {
+                            const next = { ...prev };
+                            delete next[cat];
+                            return next;
+                          });
+                        } else if (!isNaN(val) && val >= 1 && val <= 10) {
+                          setCategoryRatings((prev) => ({ ...prev, [cat]: val }));
+                        }
+                        markDirty();
+                      }}
+                      className="w-[60px] px-2 py-1 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] text-center focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition"
+                    />
+                    <span className="text-xs text-[#a59494]">/ 10</span>
+                  </>
                 )}
               </div>
             </div>
