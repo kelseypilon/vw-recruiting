@@ -14,7 +14,7 @@ interface SessionCandidate {
   role_applied: string | null;
   email: string | null;
   phone: string | null;
-  current_brokerage: string | null;
+  current_role: string | null;
   years_experience: number | null;
   is_licensed: boolean | null;
   disc_primary: string | null;
@@ -99,6 +99,16 @@ function recBadge(rec: string | null) {
   }
 }
 
+const SCORECARD_CRITERIA = [
+  "Coachability", "Communication Skills", "Work Ethic & Drive",
+  "Integrity & Ethics", "Client Focus", "Resilience & Adaptability",
+  "Team Collaboration", "Problem Solving", "Professional Presentation",
+  "Market Knowledge", "Tech Savviness", "Business Development",
+  "Time Management", "Goal Orientation", "Cultural Fit",
+  "Leadership Potential", "Emotional Intelligence", "Self-Motivation",
+  "Long-term Vision",
+];
+
 /* ── Main Component ────────────────────────────────────────────── */
 
 export default function SessionDetail({
@@ -155,6 +165,9 @@ export default function SessionDetail({
   const [promptResponseStatus, setPromptResponseStatus] = useState<"idle" | "saving" | "saved">("idle");
   const promptResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Per-criteria scoring state (19-criteria rubric)
+  const [criteriaScores, setCriteriaScores] = useState<Record<string, number>>({});
+
   // Universal evaluation state
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [evalStatus, setEvalStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -201,6 +214,29 @@ export default function SessionDetail({
             }
           }
           setPromptResponses(map);
+        }
+      })
+      .catch(() => {});
+  }, [session.id, currentUserId]);
+
+  // Load criteria scores on mount
+  useEffect(() => {
+    if (!session.id || !currentUserId) return;
+    fetch("/api/group-interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_criteria_scores", payload: { session_id: session.id } }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) {
+          const map: Record<string, number> = {};
+          for (const s of json.data) {
+            if (s.evaluator_user_id === currentUserId) {
+              map[`${s.candidate_id}__${s.criterion}`] = s.score;
+            }
+          }
+          setCriteriaScores(map);
         }
       })
       .catch(() => {});
@@ -266,6 +302,29 @@ export default function SessionDetail({
       });
     } catch {
       console.error("Failed to save prompt score");
+    }
+  }
+
+  async function saveCriteriaScore(candidateId: string, criterion: string, score: number) {
+    const key = `${candidateId}__${criterion}`;
+    setCriteriaScores((prev) => ({ ...prev, [key]: score }));
+    try {
+      await fetch("/api/group-interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_criteria_score",
+          payload: {
+            session_id: session.id,
+            candidate_id: candidateId,
+            criterion,
+            score,
+            evaluator_user_id: currentUserId,
+          },
+        }),
+      });
+    } catch {
+      console.error("Failed to save criteria score");
     }
   }
 
@@ -1489,6 +1548,32 @@ export default function SessionDetail({
                       </div>
                     )}
 
+                    {/* Criteria Scoring */}
+                    <div className="space-y-3 mb-6">
+                      <h4 className="text-xs font-semibold text-[#a59494] uppercase tracking-wider">Evaluation Criteria</h4>
+                      {SCORECARD_CRITERIA.map((criterion) => (
+                        <div key={criterion} className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-[#272727] flex-1">{criterion}</span>
+                          <div className="flex gap-1">
+                            {[1,2,3,4,5].map((score) => (
+                              <button
+                                key={score}
+                                disabled={isCompleted}
+                                onClick={() => selectedCandidate && saveCriteriaScore(selectedCandidate.id, criterion, score)}
+                                className={`w-7 h-7 rounded text-xs font-medium transition ${
+                                  criteriaScores[`${selectedCandidate?.id}__${criterion}`] === score
+                                    ? "bg-brand text-white"
+                                    : "bg-gray-100 text-gray-500 hover:bg-brand/20"
+                                }`}
+                              >
+                                {score}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
                     {/* Overall Score (1-10) */}
                     <div>
                       <label className="block text-xs font-semibold text-[#a59494] uppercase tracking-wider mb-2">
@@ -1723,7 +1808,7 @@ function CandidateQuickView({
           <div className="space-y-3 mb-6">
             <DetailRow label="Email" value={candidate.email} />
             <DetailRow label="Phone" value={candidate.phone} />
-            <DetailRow label="Current Brokerage" value={candidate.current_brokerage} />
+            <DetailRow label="Current Role" value={candidate.current_role} />
             <DetailRow
               label="Experience"
               value={candidate.years_experience != null ? `${candidate.years_experience} years` : null}

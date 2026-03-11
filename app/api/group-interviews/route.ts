@@ -621,6 +621,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: data ?? [] });
     }
 
+    /* ── save_criteria_score ──────────────────────────────────── */
+    if (action === "save_criteria_score") {
+      const { session_id, candidate_id, criterion, score, evaluator_user_id } = payload ?? {};
+      if (!session_id || !candidate_id || !criterion || !evaluator_user_id || !score) {
+        return NextResponse.json(
+          { error: "session_id, candidate_id, criterion, evaluator_user_id, and score are required" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabase
+        .from("group_interview_scores")
+        .upsert(
+          { session_id, candidate_id, criterion, score, evaluator_user_id, prompt_id: null, updated_at: new Date().toISOString() },
+          { onConflict: "session_id,candidate_id,criterion,evaluator_user_id" }
+        );
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data: { success: true } });
+    }
+
+    /* ── get_criteria_scores ─────────────────────────────────── */
+    if (action === "get_criteria_scores") {
+      const { session_id } = payload ?? {};
+      if (!session_id) {
+        return NextResponse.json(
+          { error: "session_id is required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("group_interview_scores")
+        .select("*")
+        .eq("session_id", session_id)
+        .not("criterion", "is", null);
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ data: data ?? [] });
+    }
+
     /* ── save_prompt_response ─────────────────────────────────── */
     if (action === "save_prompt_response") {
       const { session_id, candidate_id, prompt_id, evaluator_user_id, response_text } = payload ?? {};

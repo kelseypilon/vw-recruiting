@@ -18,7 +18,7 @@ interface SessionCandidateRow {
   role_applied: string | null;
   email: string | null;
   phone: string | null;
-  current_brokerage: string | null;
+  current_role: string | null;
   years_experience: number | null;
   is_licensed: boolean | null;
   disc_primary: string | null;
