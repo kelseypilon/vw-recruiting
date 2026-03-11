@@ -4,6 +4,8 @@ import { getTeamId } from "@/lib/get-team-id";
 import GroupInterviewsDashboard from "./group-interviews-dashboard";
 import type { Candidate, TeamUser } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export default async function GroupInterviewsPage() {
   const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();

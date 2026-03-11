@@ -5,6 +5,9 @@ import { getTeamId } from "@/lib/get-team-id";
 import SessionDetail from "./session-detail";
 import type { TeamUser, GroupInterviewPrompt } from "@/lib/types";
 
+// Ensure this page is never served from cache
+export const dynamic = "force-dynamic";
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -32,25 +35,39 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
         .eq("team_id", TEAM_ID)
         .single();
 
-      if (sessErr || !session) return { data: null };
+      if (sessErr || !session) {
+        console.error("[GI page] session fetch failed:", sessErr?.message ?? "no data");
+        return { data: null };
+      }
 
       // Get linked candidate IDs first (simple query, no FK join)
-      const { data: links } = await supabase
+      const { data: links, error: linksErr } = await supabase
         .from("group_interview_candidates")
         .select("candidate_id")
         .eq("session_id", id);
 
+      if (linksErr) {
+        console.error("[GI page] junction query error:", linksErr.message);
+      }
+
       const candidateIds = (links ?? []).map((l) => l.candidate_id).filter(Boolean);
+      console.log(`[GI page] session=${id} → ${candidateIds.length} linked candidate IDs`);
 
       // Then fetch full candidate data by IDs (avoids FK join issues)
       let candidates: unknown[] = [];
       if (candidateIds.length > 0) {
-        const { data: candidateRows } = await supabase
+        const { data: candidateRows, error: candErr } = await supabase
           .from("candidates")
           .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
           .in("id", candidateIds);
+
+        if (candErr) {
+          console.error("[GI page] candidate fetch error:", candErr.message);
+        }
         candidates = candidateRows ?? [];
       }
+
+      console.log(`[GI page] returning ${candidates.length} candidates for session ${id}`);
 
       // Get notes
       const { data: notes } = await supabase

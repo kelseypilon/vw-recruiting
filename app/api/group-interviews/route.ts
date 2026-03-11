@@ -64,15 +64,20 @@ export async function POST(req: NextRequest) {
           session_id: session.id,
           candidate_id: cid,
         }));
+        console.log(`[GI create_session] linking ${links.length} candidates to session ${session.id}`);
+
         const { error: linkErr } = await supabase
           .from("group_interview_candidates")
           .insert(links);
 
-        if (linkErr)
+        if (linkErr) {
+          console.error("[GI create_session] junction insert error:", linkErr.message);
           return NextResponse.json(
             { error: linkErr.message },
             { status: 500 }
           );
+        }
+        console.log(`[GI create_session] ${links.length} candidates linked successfully`);
       }
 
       return NextResponse.json({ data: session });
@@ -100,10 +105,14 @@ export async function POST(req: NextRequest) {
       // Get candidate counts
       if (sessions && sessions.length > 0) {
         const sessionIds = sessions.map((s) => s.id);
-        const { data: links } = await supabase
+        const { data: links, error: linksErr } = await supabase
           .from("group_interview_candidates")
           .select("session_id, candidate_id")
           .in("session_id", sessionIds);
+
+        if (linksErr) {
+          console.error("[GI list_sessions] junction query error:", linksErr.message);
+        }
 
         const countMap: Record<string, number> = {};
         for (const link of links ?? []) {
@@ -142,22 +151,33 @@ export async function POST(req: NextRequest) {
         );
 
       // Get linked candidate IDs first (simple query, no FK join)
-      const { data: links } = await supabase
+      const { data: links, error: linksErr } = await supabase
         .from("group_interview_candidates")
         .select("candidate_id")
         .eq("session_id", session_id);
 
+      if (linksErr) {
+        console.error("[GI get_session] junction query error:", linksErr.message);
+      }
+
       const candidateIds = (links ?? []).map((l: { candidate_id: string }) => l.candidate_id).filter(Boolean);
+      console.log(`[GI get_session] session=${session_id} → ${candidateIds.length} linked candidate IDs`);
 
       // Then fetch full candidate data by IDs (avoids FK join issues)
       let candidates: unknown[] = [];
       if (candidateIds.length > 0) {
-        const { data: candidateRows } = await supabase
+        const { data: candidateRows, error: candErr } = await supabase
           .from("candidates")
           .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
           .in("id", candidateIds);
+
+        if (candErr) {
+          console.error("[GI get_session] candidate fetch error:", candErr.message);
+        }
         candidates = candidateRows ?? [];
       }
+
+      console.log(`[GI get_session] returning ${candidates.length} candidates`);
 
       // Get notes
       const { data: notes } = await supabase
@@ -300,23 +320,32 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const { error } = await supabase
+      console.log(`[GI add_candidate] session=${session_id} candidate=${candidate_id}`);
+
+      const { error: upsertErr } = await supabase
         .from("group_interview_candidates")
         .upsert(
           { session_id, candidate_id },
           { onConflict: "session_id,candidate_id" }
         );
 
-      if (error)
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      if (upsertErr) {
+        console.error("[GI add_candidate] upsert error:", upsertErr.message);
+        return NextResponse.json({ error: upsertErr.message }, { status: 500 });
+      }
 
       // Return the full candidate data so the client can optimistically update
-      const { data: candidate } = await supabase
+      const { data: candidate, error: candErr } = await supabase
         .from("candidates")
         .select("id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier")
         .eq("id", candidate_id)
         .single();
 
+      if (candErr) {
+        console.error("[GI add_candidate] candidate fetch error:", candErr.message);
+      }
+
+      console.log(`[GI add_candidate] success, returning candidate: ${candidate?.first_name} ${candidate?.last_name}`);
       return NextResponse.json({ success: true, candidate });
     }
 
