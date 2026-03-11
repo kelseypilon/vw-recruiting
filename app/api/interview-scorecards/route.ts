@@ -153,6 +153,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data });
     }
 
+    /* ── unlock ─────────────────────────────────────────────────── */
+    if (action === "unlock") {
+      const { interview_id, interviewer_user_id } = payload ?? {};
+      if (!interview_id || !interviewer_user_id) {
+        return NextResponse.json(
+          { error: "interview_id and interviewer_user_id are required" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("interview_scorecards")
+        .update({
+          submitted_at: null,
+          is_submitted: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("interview_id", interview_id)
+        .eq("interviewer_user_id", interviewer_user_id)
+        .select(
+          "*, evaluator:users!interview_scorecards_interviewer_user_id_fkey(name)"
+        )
+        .single();
+
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ data });
+    }
+
     /* ── save_guide_note ────────────────────────────────────────── */
     if (action === "save_guide_note") {
       const { candidate_id, question_id, team_id, author_user_id, note_text, private_notes } =

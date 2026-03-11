@@ -147,9 +147,11 @@ export async function POST(req: NextRequest) {
         .select("candidate_id, candidate:candidates(id, first_name, last_name, stage, role_applied, email, phone, current_brokerage, years_experience, is_licensed, disc_primary, disc_secondary, aq_normalized, aq_tier)")
         .eq("session_id", session_id);
 
-      const candidates = (links ?? []).map(
-        (l) => (l as unknown as { candidate: unknown }).candidate
-      );
+      const candidates = (links ?? [])
+        .map(
+          (l) => (l as unknown as { candidate: unknown }).candidate
+        )
+        .filter(Boolean);
 
       // Get notes
       const { data: notes } = await supabase

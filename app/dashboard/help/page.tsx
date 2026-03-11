@@ -99,11 +99,11 @@ export default function HelpPage() {
       content: [
         {
           heading: "How Group Interviews Work",
-          body: 'Group interviews are a recurring event where multiple candidates join a single Zoom call to learn about the team and culture. They\'re typically held weekly or bi-weekly. The Zoom link and date are configured once in Settings → Team, and the system uses them automatically in email templates.',
+          body: 'Group interviews are sessions where multiple candidates join a single Zoom call to learn about the team and culture. Each session is manually scheduled by creating a new group interview from the Group Interviews page. You can set a default Zoom link in the session settings panel, and it will be pre-filled when creating new sessions.',
         },
         {
           heading: "Setting Up Group Interviews",
-          body: '1. Go to Settings → Team tab.\n2. Paste your recurring Zoom meeting link into the "Zoom Link" field.\n3. Set the "Next Group Interview Date" to your next scheduled session.\n4. Click Save Changes.\n\nThis information is stored on your team record and used by the "Group Interview Invite" email template.',
+          body: '1. Navigate to the Group Interviews page.\n2. Click the settings gear icon to open Session Settings.\n3. Paste your Zoom meeting link into the "Default Meeting Link" field.\n4. Optionally set the "Next Group Interview Date".\n5. Click Save Settings.\n\nWhen you create a new session, the default meeting link will be pre-filled. Each session can have its own date, link, and candidates.',
         },
         {
           heading: "Inviting Candidates",

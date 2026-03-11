@@ -339,7 +339,7 @@ export default function CandidateProfile({
                   <p className="text-xs text-[#a59494] mt-0.5">Average across submitted scorecards</p>
                 </div>
                 <span className={`text-lg font-bold px-3 py-1 rounded ${scoreColor(candidate.interview_score)}`}>
-                  {candidate.interview_score.toFixed(1)}/10
+                  {Math.round((candidate.interview_score / 10) * 100)}%
                 </span>
               </div>
             )}
@@ -2346,7 +2346,7 @@ function ResultsSummarySubTab({
             </p>
           </div>
           <span className={`text-lg font-bold px-3 py-1 rounded ${scoreColor(combinedOverall)}`}>
-            {combinedOverall.toFixed(1)}/10
+            {Math.round((combinedOverall / 10) * 100)}%
           </span>
         </div>
       )}
@@ -2412,7 +2412,7 @@ function ResultsSummarySubTab({
                     <td key={sc.id} className="text-center px-2 py-2">
                       {sc.overall_score !== null ? (
                         <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
-                          {sc.overall_score.toFixed(1)}
+                          {Math.round((sc.overall_score / 10) * 100)}%
                         </span>
                       ) : (
                         <span className="text-xs text-[#a59494]">—</span>
@@ -2422,7 +2422,7 @@ function ResultsSummarySubTab({
                   <td className="text-center px-2 py-2">
                     {combinedOverall !== null ? (
                       <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(combinedOverall)}`}>
-                        {combinedOverall.toFixed(1)}
+                        {Math.round((combinedOverall / 10) * 100)}%
                       </span>
                     ) : (
                       <span className="text-xs text-[#a59494]">—</span>
@@ -2731,6 +2731,7 @@ function InterviewGuideSubTab({
 }) {
   const [generalNotes, setGeneralNotes] = useState("");
   const [privateNotes, setPrivateNotes] = useState("");
+  const [questionNotes, setQuestionNotes] = useState<Record<string, string>>({});
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2739,6 +2740,8 @@ function InterviewGuideSubTab({
   const dirtyRef = useRef(false);
   const generalNotesRef = useRef(generalNotes);
   const privateNotesRef = useRef(privateNotes);
+  const questionNotesRef = useRef(questionNotes);
+  const dirtyQuestionsRef = useRef<Set<string>>(new Set());
 
   const { can } = usePermissions();
   const canViewSharedNotes = can("view_interview_notes");
@@ -2746,8 +2749,9 @@ function InterviewGuideSubTab({
   // Keep refs in sync
   useEffect(() => { generalNotesRef.current = generalNotes; }, [generalNotes]);
   useEffect(() => { privateNotesRef.current = privateNotes; }, [privateNotes]);
+  useEffect(() => { questionNotesRef.current = questionNotes; }, [questionNotes]);
 
-  // Load existing global notes on mount
+  // Load existing notes (general + per-question) on mount
   useEffect(() => {
     async function loadNotes() {
       try {
@@ -2768,6 +2772,14 @@ function InterviewGuideSubTab({
             setGeneralNotes(globalNote.note_text ?? "");
             setPrivateNotes(globalNote.private_notes ?? "");
           }
+          // Load per-question notes
+          const qNotes: Record<string, string> = {};
+          for (const n of json.data) {
+            if (n.question_id && n.question_id !== "__general__" && n.note_text) {
+              qNotes[n.question_id] = n.note_text;
+            }
+          }
+          setQuestionNotes(qNotes);
         }
       } catch {}
     }
@@ -2802,10 +2814,11 @@ function InterviewGuideSubTab({
     });
   }
 
-  // Silent auto-save every 30 seconds
-  const saveNotes = useRef(async () => {
+  // Save all dirty notes (general + per-question)
+  const saveAllNotes = useRef(async () => {
     if (!dirtyRef.current) return;
     try {
+      // Save general/private notes
       await fetch("/api/interview-scorecards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2821,6 +2834,29 @@ function InterviewGuideSubTab({
           },
         }),
       });
+
+      // Save dirty per-question notes
+      const dirtyIds = [...dirtyQuestionsRef.current];
+      const currentQNotes = questionNotesRef.current;
+      for (const qId of dirtyIds) {
+        await fetch("/api/interview-scorecards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_guide_note",
+            payload: {
+              candidate_id: candidateId,
+              question_id: qId,
+              team_id: teamId,
+              author_user_id: currentUserId,
+              note_text: currentQNotes[qId] ?? "",
+              private_notes: "",
+            },
+          }),
+        });
+      }
+
+      dirtyQuestionsRef.current.clear();
       dirtyRef.current = false;
       setIsDirty(false);
       setLastSaved(new Date());
@@ -2829,7 +2865,7 @@ function InterviewGuideSubTab({
 
   useEffect(() => {
     autoSaveTimer.current = setInterval(() => {
-      saveNotes.current();
+      saveAllNotes.current();
     }, 30000);
     return () => {
       if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
@@ -2847,14 +2883,20 @@ function InterviewGuideSubTab({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
-  function markDirty() {
+  function markDirty(questionId?: string) {
     setIsDirty(true);
     dirtyRef.current = true;
+    if (questionId) dirtyQuestionsRef.current.add(questionId);
+  }
+
+  function updateQuestionNote(questionId: string, value: string) {
+    setQuestionNotes((prev) => ({ ...prev, [questionId]: value }));
+    markDirty(questionId);
   }
 
   async function handleSaveNotes() {
     setSaving(true);
-    await saveNotes.current();
+    await saveAllNotes.current();
     setSaving(false);
   }
 
@@ -2954,6 +2996,13 @@ function InterviewGuideSubTab({
                     {q.interviewer_note && (
                       <p className="text-xs text-[#a59494] italic mt-1">{q.interviewer_note}</p>
                     )}
+                    <textarea
+                      placeholder="Your notes for this question..."
+                      value={questionNotes[q.id] ?? ""}
+                      onChange={(e) => updateQuestionNote(q.id, e.target.value)}
+                      rows={2}
+                      className="w-full mt-2 px-3 py-2 rounded-lg border border-[#a59494]/15 text-sm text-[#272727] placeholder:text-[#a59494]/40 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-transparent transition resize-none bg-[#fafafa]"
+                    />
                   </div>
                 ))}
               </div>
@@ -3088,8 +3137,10 @@ function ScorecardSubTab({
     return interviewId;
   }
 
-  // Auto-save every 30s (silent, no toast)
-  const autoSave = useRef(async () => {
+  // Auto-save ref — updated every render to capture fresh state
+  const autoSave = useRef<() => Promise<void>>(async () => {});
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  autoSave.current = async () => {
     if (!dirtyRef.current || submitted) return;
     const interviewId = await getOrCreateInterviewId();
     if (!interviewId) return;
@@ -3118,14 +3169,15 @@ function ScorecardSubTab({
         setLastSaved(new Date());
       }
     } catch {}
-  });
+  };
 
   useEffect(() => {
     autoSaveTimer.current = setInterval(() => {
-      autoSave.current();
+      autoSave.current?.();
     }, 30000);
     return () => {
       if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, []);
 
@@ -3143,6 +3195,11 @@ function ScorecardSubTab({
   function markDirty() {
     setIsDirty(true);
     dirtyRef.current = true;
+    // Debounced auto-save after 2s of inactivity
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      autoSave.current?.();
+    }, 2000);
   }
 
   async function handleSubmit() {
@@ -3181,6 +3238,42 @@ function ScorecardSubTab({
     setSaving(false);
   }
 
+  async function handleUnlock() {
+    setSaving(true);
+    try {
+      const interviewId = existingScorecard?.interview_id ?? activeInterview?.id;
+      if (!interviewId) { setSaving(false); return; }
+
+      const res = await fetch("/api/interview-scorecards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "unlock",
+          payload: {
+            interview_id: interviewId,
+            interviewer_user_id: currentUserId,
+          },
+        }),
+      });
+      const result = await res.json();
+      if (result.data) {
+        setLocalScorecards((prev) => {
+          const idx = prev.findIndex((sc) => sc.id === result.data.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = result.data;
+            return next;
+          }
+          return prev;
+        });
+        setSubmitted(false);
+      }
+    } catch (err) {
+      console.error("Failed to unlock scorecard:", err);
+    }
+    setSaving(false);
+  }
+
   // Visibility filtering for submitted scorecards
   const viewerHasSubmitted = localScorecards.some(
     (sc) => sc.interviewer_user_id === currentUserId && sc.submitted_at
@@ -3215,8 +3308,8 @@ function ScorecardSubTab({
         )
       : null;
 
-  // Read-only submitted state
-  const isReadOnly = submitted || isAlreadySubmitted;
+  // Read-only when locked (submitted); can be unlocked
+  const isReadOnly = submitted;
 
   return (
     <div className="space-y-4">
@@ -3228,7 +3321,7 @@ function ScorecardSubTab({
             {isReadOnly && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                Submitted
+                Locked
               </span>
             )}
           </div>
@@ -3236,7 +3329,7 @@ function ScorecardSubTab({
             <div className="flex items-center gap-2">
               <span className="text-xs text-[#a59494]">Overall</span>
               <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(overallScore)}`}>
-                {overallScore.toFixed(1)}/10
+                {Math.round((overallScore / 10) * 100)}%
               </span>
             </div>
           )}
@@ -3254,22 +3347,31 @@ function ScorecardSubTab({
                 ) : (
                   <>
                     <input
-                      type="number"
-                      min={1}
-                      max={10}
+                      type="text"
+                      inputMode="numeric"
                       value={categoryRatings[cat] ?? ""}
                       onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (e.target.value === "") {
+                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                        if (raw === "") {
                           setCategoryRatings((prev) => {
                             const next = { ...prev };
                             delete next[cat];
                             return next;
                           });
-                        } else if (!isNaN(val) && val >= 1 && val <= 10) {
-                          setCategoryRatings((prev) => ({ ...prev, [cat]: val }));
+                        } else {
+                          const val = parseInt(raw, 10);
+                          if (!isNaN(val)) {
+                            setCategoryRatings((prev) => ({ ...prev, [cat]: val }));
+                          }
                         }
                         markDirty();
+                      }}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          const clamped = Math.min(10, Math.max(0, val));
+                          setCategoryRatings((prev) => ({ ...prev, [cat]: clamped }));
+                        }
                       }}
                       className="w-[60px] px-2 py-1 rounded-lg border border-[#a59494]/20 text-sm text-[#272727] text-center focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition"
                     />
@@ -3342,24 +3444,32 @@ function ScorecardSubTab({
             />
           </div>
 
-          {/* Actions — only Submit button, no Save Draft */}
-          {!isReadOnly && (
-            <div className="flex items-center justify-between pt-1">
-              <div className="text-xs text-[#a59494]">
-                {lastSaved && !isDirty && (
-                  <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
-                )}
-                {isDirty && <span className="text-amber-600">Unsaved changes</span>}
-              </div>
+          {/* Actions — Lock / Unlock scorecard */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="text-xs text-[#a59494]">
+              {lastSaved && !isDirty && (
+                <span>Auto-saved {lastSaved.toLocaleTimeString()}</span>
+              )}
+              {isDirty && <span className="text-amber-600">Unsaved changes</span>}
+            </div>
+            {isReadOnly ? (
+              <button
+                onClick={handleUnlock}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg border border-brand text-brand hover:bg-brand/5 text-sm font-semibold transition disabled:opacity-50"
+              >
+                {saving ? "Unlocking..." : "Unlock Scorecard"}
+              </button>
+            ) : (
               <button
                 onClick={handleSubmit}
                 disabled={saving || ratedValues.length === 0}
                 className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
               >
-                {saving ? "Submitting..." : "Submit Scorecard"}
+                {saving ? "Locking..." : "Lock Scorecard"}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -3373,7 +3483,7 @@ function ScorecardSubTab({
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#a59494]">Combined</span>
                   <span className={`text-sm font-bold px-2 py-0.5 rounded ${scoreColor(combinedOverall)}`}>
-                    {combinedOverall.toFixed(1)}/10
+                    {Math.round((combinedOverall / 10) * 100)}%
                   </span>
                 </div>
               )}
@@ -3419,7 +3529,7 @@ function ScorecardSubTab({
                     <td key={sc.id} className="text-center px-2 py-2">
                       {sc.overall_score !== null ? (
                         <span className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(sc.overall_score)}`}>
-                          {sc.overall_score.toFixed(1)}
+                          {Math.round((sc.overall_score / 10) * 100)}%
                         </span>
                       ) : (
                         <span className="text-xs text-[#a59494]">—</span>

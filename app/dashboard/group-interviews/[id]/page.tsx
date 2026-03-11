@@ -42,9 +42,11 @@ export default async function GroupInterviewSessionPage({ params }: Props) {
         )
         .eq("session_id", id);
 
-      const candidates = (links ?? []).map(
-        (l) => (l as unknown as { candidate: unknown }).candidate
-      );
+      const candidates = (links ?? [])
+        .map(
+          (l) => (l as unknown as { candidate: unknown }).candidate
+        )
+        .filter(Boolean); // Filter out null candidates from broken FK refs
 
       // Get notes
       const { data: notes } = await supabase

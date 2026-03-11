@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { ApplicationFormField } from "@/lib/types";
 import { DEFAULT_FORM_FIELDS, FIELD_TYPE_LABELS } from "@/lib/default-form-fields";
 
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export default function ApplicationFormTab({ teamId }: Props) {
+  const router = useRouter();
   const [fields, setFields] = useState<ApplicationFormField[]>([]);
   const [originalFields, setOriginalFields] = useState<ApplicationFormField[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,7 @@ export default function ApplicationFormTab({ teamId }: Props) {
       }
       setOriginalFields(ordered);
       setFields(ordered);
+      router.refresh(); // Invalidate SSR cache
       showToast("Form fields saved!");
     } catch {
       showToast("Network error");
@@ -153,6 +156,7 @@ export default function ApplicationFormTab({ teamId }: Props) {
       setFields(resetFields);
       setOriginalFields(resetFields);
       setEditingFieldId(null);
+      router.refresh(); // Invalidate SSR cache
       showToast("Form reset to defaults!");
     } catch {
       // Fallback: reset locally if API fails

@@ -644,6 +644,8 @@ export default function SessionDetail({
       if (addJson.error) {
         console.error("Failed to add candidate:", addJson.error);
         alert(`Failed to add candidate: ${addJson.error}`);
+        setAddingCandidate(false);
+        setCandidateSearch("");
         return;
       }
 
@@ -704,7 +706,9 @@ export default function SessionDetail({
       setCandidateSearch("");
     } catch (err) {
       console.error("Failed to add candidate:", err);
-      alert("Failed to add candidate. Check the console for details.");
+      alert("Failed to add candidate. Please try again.");
+      setAddingCandidate(false);
+      setCandidateSearch("");
     }
   }
 

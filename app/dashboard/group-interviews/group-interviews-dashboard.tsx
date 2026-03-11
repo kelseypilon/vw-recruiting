@@ -430,6 +430,7 @@ function SessionSettingsPanel({
   initialMeetingLink: string | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   // DateTimePicker expects "YYYY-MM-DDTHH:MM" format
   function toDateTimeLocal(iso: string | null): string {
     if (!iso) return "";
@@ -473,6 +474,7 @@ function SessionSettingsPanel({
         setSaveStatus(`Error: ${json.error}`);
       } else {
         setSaveStatus("Saved!");
+        router.refresh(); // Invalidate SSR cache so settings persist on reload
         setTimeout(() => setSaveStatus(""), 2000);
       }
     } catch {
@@ -574,9 +576,8 @@ function CreateSessionModal({
   onClose: () => void;
   onCreated: (session: GroupInterviewSession & { _candidate_count?: number }) => void;
 }) {
-  const [title, setTitle] = useState(
-    `Group Interview — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-  );
+  const [title, setTitle] = useState("Group Interview");
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
   const [dateTimeVal, setDateTimeVal] = useState("");
   const [zoomLink, setZoomLink] = useState(defaultMeetingLink ?? "");
   const [notes, setNotes] = useState("");
@@ -584,6 +585,17 @@ function CreateSessionModal({
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+
+  // Auto-update title when date is selected (unless user manually edited it)
+  function handleDateChange(val: string) {
+    setDateTimeVal(val);
+    if (!titleManuallyEdited && val) {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        setTitle(`Group Interview — ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
+      }
+    }
+  }
 
   const filtered = eligibleCandidates.filter((c) => {
     const name = `${c.first_name} ${c.last_name}`.toLowerCase();
@@ -679,7 +691,7 @@ function CreateSessionModal({
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => { setTitle(e.target.value); setTitleManuallyEdited(true); }}
               placeholder="e.g. Group Interview — Mar 15"
               className={inputClasses}
             />
@@ -692,7 +704,7 @@ function CreateSessionModal({
             </label>
             <DateTimePicker
               value={dateTimeVal}
-              onChange={setDateTimeVal}
+              onChange={handleDateChange}
               placeholder="Select date &amp; time"
             />
           </div>
