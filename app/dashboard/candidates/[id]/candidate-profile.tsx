@@ -331,6 +331,9 @@ export default function CandidateProfile({
               </button>
             )}
 
+            {/* Application Responses (collapsible) */}
+            <ApplicationResponsesCard candidate={candidate} />
+
             {/* Interview Score */}
             {candidate.interview_score != null && (
               <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm px-5 py-3 flex items-center justify-between">
@@ -1051,6 +1054,10 @@ function ContactCard({
   candidate: Candidate;
   onFieldSaved: (field: string, value: string | null) => void;
 }) {
+  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+  // Fallback: if current_role is blank, try current_employment from custom_fields
+  const currentRole = candidate.current_role ?? (cf.current_employment as string | undefined) ?? null;
+
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Contact Info</h3>
@@ -1059,9 +1066,8 @@ function ContactCard({
         <EditableField label="Last Name" value={candidate.last_name} field="last_name" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Email" value={candidate.email} field="email" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Phone" value={candidate.phone} field="phone" candidateId={candidate.id} onSaved={onFieldSaved} />
-        <EditableField label="Current Role" value={candidate.current_role} field="current_role" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Current Role" value={currentRole} field="current_role" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Current Brokerage" value={candidate.current_brokerage} field="current_brokerage" candidateId={candidate.id} onSaved={onFieldSaved} />
-        <EditableField label="Heard About Us" value={candidate.heard_about} field="heard_about" candidateId={candidate.id} onSaved={onFieldSaved} />
         {candidate.website_url && (
           <div>
             <p className="text-xs text-[#a59494] mb-0.5">Website</p>
@@ -1089,11 +1095,27 @@ function ApplicationCard({
   candidate: Candidate;
   onFieldSaved: (field: string, value: string | null) => void;
 }) {
+  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+
+  // Fallback: if role_applied is blank, try role_interested_in from custom_fields
+  let roleValue = candidate.role_applied;
+  if (!roleValue && cf.role_interested_in) {
+    roleValue = typeof cf.role_interested_in === "string"
+      ? cf.role_interested_in
+      : JSON.stringify(cf.role_interested_in);
+  }
+
+  // Info night date from custom_fields
+  const infoNightDate = cf.info_night_date as string | undefined;
+
+  // Application submitted: fallback to created_at if app_submitted_at is blank
+  const submittedAt = candidate.app_submitted_at ?? candidate.created_at;
+
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Application Details</h3>
       <div className="space-y-3">
-        <RoleMultiSelect value={candidate.role_applied} candidateId={candidate.id} onSaved={onFieldSaved} />
+        <RoleMultiSelect value={roleValue} candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField
           label="Licensed"
           value={candidate.is_licensed === null ? "No" : candidate.is_licensed ? "Yes" : "No"}
@@ -1132,11 +1154,23 @@ function ApplicationCard({
             type="number"
           />
         )}
+        {infoNightDate && (
+          <div>
+            <p className="text-xs text-[#a59494] mb-0.5">Info Night Attended</p>
+            <p className="text-sm text-[#272727]">
+              {new Date(infoNightDate).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+        )}
         <div>
           <p className="text-xs text-[#a59494] mb-0.5">Application Submitted</p>
           <p className="text-sm text-[#272727]">
-            {candidate.app_submitted_at
-              ? new Date(candidate.app_submitted_at).toLocaleDateString("en-US", {
+            {submittedAt
+              ? new Date(submittedAt).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
@@ -1145,6 +1179,68 @@ function ApplicationCard({
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Application Responses Card (collapsible) ────────────────── */
+
+function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
+  const [expanded, setExpanded] = useState(false);
+  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+
+  const responseFields = [
+    { key: "how_did_you_hear", label: "How Did You Hear About Us?" },
+    { key: "what_stood_out", label: "What Stood Out to You?" },
+    { key: "why_great_addition", label: "Why Would You Be a Great Addition?" },
+    { key: "most_important", label: "What's Most Important to You?" },
+    { key: "questions_answered", label: "Were Your Questions Answered?" },
+    { key: "additional_questions", label: "Additional Questions" },
+  ];
+
+  // Only show fields that have answers
+  const answeredFields = responseFields.filter((f) => {
+    const val = cf[f.key];
+    return val !== null && val !== undefined && val !== "";
+  });
+
+  if (answeredFields.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-[#f9f7f7] transition cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-brand">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <span className="text-sm font-semibold text-[#272727]">Application Responses</span>
+          <span className="text-xs text-[#a59494]">{answeredFields.length} answer{answeredFields.length !== 1 ? "s" : ""}</span>
+        </div>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className={`text-[#a59494] transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="px-5 pb-4 space-y-3 border-t border-[#a59494]/10 pt-3">
+          {answeredFields.map((field) => (
+            <div key={field.key} className="bg-[#f9f7f7] rounded-lg p-3">
+              <p className="text-xs font-semibold text-[#a59494] mb-1">{field.label}</p>
+              <p className="text-sm text-[#272727] whitespace-pre-wrap">{String(cf[field.key])}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
