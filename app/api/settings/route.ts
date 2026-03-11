@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyAuth } from "@/lib/api-auth";
-import { DEFAULT_ROLES } from "@/lib/permissions";
+import { DEFAULT_ROLES, PROTECTED_ROLES } from "@/lib/permissions";
 import { DEFAULT_FORM_FIELDS } from "@/lib/default-form-fields";
 
 /**
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
         view_candidates: false, edit_candidates: false, send_emails: false,
         manage_interviews: false, manage_settings: false, view_reports: false,
         manage_members: false, manage_templates: false, manage_scorecards: false,
-        manage_onboarding: false, view_onboarding: false,
+        manage_onboarding: false, view_onboarding: false, view_interview_notes: false,
       };
 
       const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms };
@@ -165,8 +165,7 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.old_name || !payload?.new_name) {
         return NextResponse.json({ error: "team_id, old_name, and new_name are required" }, { status: 400 });
       }
-      const protectedRoleNames = ["Admin", "Super Admin"];
-      if (protectedRoleNames.includes(payload.old_name as string)) {
+      if ((PROTECTED_ROLES as readonly string[]).includes(payload.old_name as string)) {
         return NextResponse.json({ error: "Cannot rename a protected role" }, { status: 400 });
       }
 
@@ -177,22 +176,37 @@ export async function POST(req: NextRequest) {
       const settings = (team?.settings ?? {}) as Record<string, unknown>;
       const customRoles = (settings.custom_roles as string[]) ?? [];
       const rolePerms = (settings.role_permissions ?? {}) as Record<string, Record<string, boolean>>;
+      const hiddenDefaultRoles = (settings.hidden_default_roles as string[]) ?? [];
 
-      // Check for duplicate name (check default roles, protected roles, and custom roles)
-      const allRoleNames = [...new Set([...DEFAULT_ROLES, ...protectedRoleNames, ...customRoles])];
+      // Check for duplicate name against all visible roles
+      const hiddenSet = new Set(hiddenDefaultRoles);
+      const visibleDefaults = (DEFAULT_ROLES as readonly string[]).filter((r) => !hiddenSet.has(r));
+      const allRoleNames = [...new Set([...visibleDefaults, ...customRoles])];
       if (allRoleNames.includes(payload.new_name as string) && payload.new_name !== payload.old_name) {
         return NextResponse.json({ error: "A role with that name already exists" }, { status: 400 });
       }
 
+      const isDefaultRole = (DEFAULT_ROLES as readonly string[]).includes(payload.old_name as string);
       const idx = customRoles.indexOf(payload.old_name as string);
-      if (idx !== -1) customRoles[idx] = payload.new_name as string;
 
+      if (isDefaultRole) {
+        // Default role being renamed: hide the default name, add new name as custom
+        if (!hiddenDefaultRoles.includes(payload.old_name as string)) {
+          hiddenDefaultRoles.push(payload.old_name as string);
+        }
+        customRoles.push(payload.new_name as string);
+      } else if (idx !== -1) {
+        // Custom role: just swap the name in the array
+        customRoles[idx] = payload.new_name as string;
+      }
+
+      // Transfer permissions
       if (rolePerms[payload.old_name as string]) {
         rolePerms[payload.new_name as string] = rolePerms[payload.old_name as string];
         delete rolePerms[payload.old_name as string];
       }
 
-      const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms };
+      const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms, hidden_default_roles: hiddenDefaultRoles };
       const { error: updateErr } = await supabase.from("teams").update({ settings: newSettings }).eq("id", payload.team_id);
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
@@ -204,8 +218,7 @@ export async function POST(req: NextRequest) {
       if (!payload?.team_id || !payload?.role_name) {
         return NextResponse.json({ error: "team_id and role_name are required" }, { status: 400 });
       }
-      const protectedRoles = ["Admin", "Super Admin"];
-      if (protectedRoles.includes(payload.role_name)) {
+      if ((PROTECTED_ROLES as readonly string[]).includes(payload.role_name)) {
         return NextResponse.json({ error: "Cannot delete a protected role" }, { status: 400 });
       }
 
@@ -245,7 +258,14 @@ export async function POST(req: NextRequest) {
       const rolePerms = (settings.role_permissions ?? {}) as Record<string, Record<string, boolean>>;
       delete rolePerms[payload.role_name];
 
-      const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms };
+      // If this is a default role, add to hidden list so it doesn't reappear
+      const hiddenDefaultRoles = (settings.hidden_default_roles as string[]) ?? [];
+      const isDefaultRole = (DEFAULT_ROLES as readonly string[]).includes(payload.role_name as string);
+      if (isDefaultRole && !hiddenDefaultRoles.includes(payload.role_name as string)) {
+        hiddenDefaultRoles.push(payload.role_name as string);
+      }
+
+      const newSettings = { ...settings, custom_roles: customRoles, role_permissions: rolePerms, hidden_default_roles: hiddenDefaultRoles };
       const { error: updateErr } = await supabase.from("teams").update({ settings: newSettings }).eq("id", payload.team_id);
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
       return NextResponse.json({ success: true, settings: newSettings });

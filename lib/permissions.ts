@@ -205,12 +205,22 @@ export function resolveRolePermissions(
 /**
  * Like resolveRolePermissions but also ensures custom roles from
  * teams.settings.custom_roles appear even if they have no stored permissions yet.
+ *
+ * hiddenDefaultRoles: default roles that have been deleted or renamed by the team.
+ * These are excluded from the result so they don't reappear.
  */
 export function resolveRolePermissionsWithCustom(
   stored: Partial<TeamRolePermissions> | undefined | null,
-  customRoles: string[]
+  customRoles: string[],
+  hiddenDefaultRoles: string[] = []
 ): TeamRolePermissions {
   const result = resolveRolePermissions(stored);
+
+  // Remove any default roles the team has hidden (deleted/renamed away)
+  for (const role of hiddenDefaultRoles) {
+    delete result[role];
+  }
+
   for (const role of customRoles) {
     if (!result[role]) {
       result[role] = {} as RolePermissions;
@@ -220,6 +230,22 @@ export function resolveRolePermissionsWithCustom(
     }
   }
   return result;
+}
+
+/** Roles that cannot be deleted or renamed */
+export const PROTECTED_ROLES = ["Admin", "VP Ops"] as const;
+
+/**
+ * Build the role options list for dropdowns (invite, user edit, etc.).
+ * Respects hidden default roles and includes custom roles.
+ */
+export function getRoleOptionsList(
+  customRoles: string[],
+  hiddenDefaultRoles: string[] = []
+): string[] {
+  const hiddenSet = new Set(hiddenDefaultRoles);
+  const defaults = DEFAULT_ROLES.filter((r) => !hiddenSet.has(r));
+  return [...defaults, ...customRoles];
 }
 
 /* ── Permission check ──────────────────────────────────────────────── */

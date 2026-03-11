@@ -25,8 +25,10 @@ import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
   DEFAULT_ROLES,
+  PROTECTED_ROLES,
   resolveRolePermissions,
   resolveRolePermissionsWithCustom,
+  getRoleOptionsList,
   type TeamRolePermissions,
   type PermissionKey,
 } from "@/lib/permissions";
@@ -1027,10 +1029,10 @@ function TeamTab({
 /* ── Members Tab ───────────────────────────────────────────────── */
 
 function getRoleOptions(team: Team | null): string[] {
-  const customRoles =
-    ((team?.settings as Record<string, unknown>)?.custom_roles as string[]) ??
-    [];
-  return [...DEFAULT_ROLES, ...customRoles];
+  const teamSettings = (team?.settings ?? {}) as Record<string, unknown>;
+  const customRoles = (teamSettings.custom_roles as string[]) ?? [];
+  const hiddenDefaultRoles = (teamSettings.hidden_default_roles as string[]) ?? [];
+  return getRoleOptionsList(customRoles, hiddenDefaultRoles);
 }
 
 interface PendingInvite {
@@ -2611,9 +2613,11 @@ function RolesPermissionsTab({
     | undefined;
   const customRoles =
     (settings.custom_roles as string[]) ?? [];
+  const hiddenDefaultRoles =
+    (settings.hidden_default_roles as string[]) ?? [];
 
   const [permissions, setPermissions] = useState<TeamRolePermissions>(
-    resolveRolePermissionsWithCustom(stored, customRoles)
+    resolveRolePermissionsWithCustom(stored, customRoles, hiddenDefaultRoles)
   );
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
@@ -2667,7 +2671,7 @@ function RolesPermissionsTab({
   const [reassignTo, setReassignTo] = useState<string>("");
   const [roleActionLoading, setRoleActionLoading] = useState(false);
 
-  const protectedRoles = new Set(["Admin", "Super Admin"]);
+  const protectedRoles = new Set<string>(PROTECTED_ROLES as unknown as string[]);
   const defaultRoleSet = new Set<string>(DEFAULT_ROLES as unknown as string[]);
 
   function updateTeamState(newSettings: Record<string, unknown>) {
