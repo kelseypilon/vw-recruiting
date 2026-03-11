@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/api-auth";
 import { getGoogleAuthUrl, isGoogleOAuthConfigured } from "@/lib/google";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/auth/google
  *
@@ -9,15 +11,19 @@ import { getGoogleAuthUrl, isGoogleOAuthConfigured } from "@/lib/google";
  * Requires authenticated user — encodes userId in state parameter.
  */
 export async function GET() {
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").trim();
+  const profileUrl = `${baseUrl}/dashboard/profile`;
+
   const auth = await verifyAuth();
   if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Redirect to login instead of showing raw JSON
+    return NextResponse.redirect(`${baseUrl}/login`);
   }
 
   if (!isGoogleOAuthConfigured()) {
-    return NextResponse.json(
-      { error: "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables." },
-      { status: 503 }
+    console.error("[Google OAuth] GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing");
+    return NextResponse.redirect(
+      `${profileUrl}?google_error=${encodeURIComponent("Google OAuth is not configured. Contact your administrator.")}`
     );
   }
 

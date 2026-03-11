@@ -6,14 +6,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // Read env vars lazily at call-time (not module-load time) so that
 // Vercel env vars added after a build are picked up on next cold-start.
+// .trim() guards against trailing whitespace in Vercel dashboard values.
 function getGoogleClientId(): string {
-  return process.env.GOOGLE_CLIENT_ID ?? "";
+  return (process.env.GOOGLE_CLIENT_ID ?? "").trim();
 }
 function getGoogleClientSecret(): string {
-  return process.env.GOOGLE_CLIENT_SECRET ?? "";
+  return (process.env.GOOGLE_CLIENT_SECRET ?? "").trim();
+}
+function getRedirectBase(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").trim();
 }
 function getGoogleRedirectUri(): string {
-  return `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/auth/google/callback`;
+  return `${getRedirectBase()}/api/auth/google/callback`;
 }
 
 const SCOPES = [
@@ -28,8 +32,9 @@ const SCOPES = [
 export function isGoogleOAuthConfigured(): boolean {
   const hasClientId = !!getGoogleClientId();
   const hasClientSecret = !!getGoogleClientSecret();
-  // Debug: log env var presence at runtime (remove once confirmed working)
-  console.log(`[Google OAuth] client_id present: ${hasClientId}, client_secret present: ${hasClientSecret}`);
+  console.log(
+    `[Google OAuth] client_id: ${hasClientId}, client_secret: ${hasClientSecret}, redirect: ${getGoogleRedirectUri()}`
+  );
   return hasClientId && hasClientSecret;
 }
 

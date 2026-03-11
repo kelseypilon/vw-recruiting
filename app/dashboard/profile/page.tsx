@@ -5,6 +5,9 @@ import { getTeamId } from "@/lib/get-team-id";
 import ProfileForm from "./profile-form";
 import type { TeamUser } from "@/lib/types";
 
+// Always serve fresh data (esp. after Google OAuth callback)
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage() {
   const supabase = createAdminClient();
   const TEAM_ID = await getTeamId();
