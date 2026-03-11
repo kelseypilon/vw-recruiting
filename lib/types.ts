@@ -418,7 +418,7 @@ export interface InviteToken {
 export interface ApplicationFormField {
   id: string;
   label: string;
-  type: "text" | "email" | "tel" | "number" | "boolean" | "select" | "textarea" | "interested_in";
+  type: "text" | "email" | "tel" | "number" | "boolean" | "select" | "textarea" | "interested_in" | "date";
   required: boolean;
   locked: boolean;
   order: number;

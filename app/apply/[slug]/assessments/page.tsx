@@ -3,32 +3,7 @@
 import { useState, useEffect, use, useCallback } from "react";
 import { resolveTeamBranding, getBrandingFooter } from "@/lib/branding";
 import type { TeamBranding } from "@/lib/types";
-
-/* ══════════════════════════════════════════════════════════════
-   AQ Questions — 20 questions mapped to CORE categories
-   ══════════════════════════════════════════════════════════════ */
-const AQ_QUESTIONS: { id: string; text: string; category: string }[] = [
-  { id: "q1", text: "I follow through on my commitments even when it becomes inconvenient.", category: "C" },
-  { id: "q2", text: "I set clear goals and consistently work toward them.", category: "C" },
-  { id: "q3", text: "I show up fully even when I don't feel motivated.", category: "C" },
-  { id: "q4", text: "I keep my word to others, even in small matters.", category: "C" },
-  { id: "q5", text: "I take my professional development seriously and invest time in it.", category: "C" },
-  { id: "q6", text: "When something goes wrong, I look at what I could have done differently.", category: "O" },
-  { id: "q7", text: "I take full responsibility for my results without blaming circumstances.", category: "O" },
-  { id: "q8", text: "I proactively solve problems rather than waiting for someone to fix them.", category: "O" },
-  { id: "q9", text: "I own my mistakes and work quickly to correct them.", category: "O" },
-  { id: "q10", text: "I hold myself to a higher standard than what's required of me.", category: "O" },
-  { id: "q11", text: "I am willing to step outside my comfort zone to achieve my goals.", category: "R" },
-  { id: "q12", text: "I actively seek out new challenges and opportunities.", category: "R" },
-  { id: "q13", text: "I push myself beyond what feels safe or familiar.", category: "R" },
-  { id: "q14", text: "I set ambitious targets even when success isn't guaranteed.", category: "R" },
-  { id: "q15", text: "I take calculated risks when the potential upside is significant.", category: "R" },
-  { id: "q16", text: "I bounce back quickly after setbacks or failures.", category: "E" },
-  { id: "q17", text: "I stay focused on long-term goals when facing short-term difficulties.", category: "E" },
-  { id: "q18", text: "I maintain my effort and attitude even when results are slow.", category: "E" },
-  { id: "q19", text: "I treat rejection or failure as feedback rather than a reason to quit.", category: "E" },
-  { id: "q20", text: "I have a track record of persisting through difficult periods.", category: "E" },
-];
+import { AQ_QUESTIONS, AQ_CATEGORY_LABELS } from "@/lib/aq-questions";
 
 /* ══════════════════════════════════════════════════════════════
    DISC Word Groups — 28 groups of 4 words
@@ -231,8 +206,8 @@ export default function AssessmentsPage({
   /* ── Main Assessment Layout ── */
   const TABS: { key: Tab; label: string }[] = [
     { key: "application", label: "Application" },
-    { key: "disc", label: "DISC Assessment" },
-    { key: "aq", label: "AQ Assessment" },
+    { key: "disc", label: "Work Style Assessment" },
+    { key: "aq", label: "Problem-Solving Assessment" },
   ];
 
   return (
@@ -733,8 +708,8 @@ function AQForm({
         <div className="w-16 h-16 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
-        <h2 className="text-xl font-bold text-[#272727] mb-2">AQ Assessment Complete</h2>
-        <p className="text-[#a59494]">Your Adversity Quotient assessment has been recorded.</p>
+        <h2 className="text-xl font-bold text-[#272727] mb-2">Problem-Solving Assessment Complete</h2>
+        <p className="text-[#a59494]">Your problem-solving assessment has been recorded.</p>
       </div>
     );
   }
@@ -770,47 +745,42 @@ function AQForm({
     }
   }
 
-  const CATEGORIES: Record<string, string> = { C: "Commitment", O: "Ownership", R: "Reach", E: "Endurance" };
-  const SCALE_LABELS = ["Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"];
-
   return (
     <form onSubmit={handleSubmit} className="p-8">
-      <h2 className="text-xl font-bold text-[#272727] mb-1">AQ Assessment</h2>
-      <p className="text-sm text-[#a59494] mb-2">Rate each statement on a scale of 1–5.</p>
+      <h2 className="text-xl font-bold text-[#272727] mb-1">Problem-Solving Assessment</h2>
+      <p className="text-sm text-[#a59494] mb-2">Rate each scenario on a scale of 1–5.</p>
       <p className="text-xs text-[#a59494] mb-6">{answeredCount}/20 answered</p>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
 
-      <div className="space-y-2">
-        {(["C", "O", "R", "E"] as const).map((cat) => (
-          <div key={cat}>
-            <h3 className="text-sm font-bold text-[var(--brand-primary)] uppercase tracking-wider mb-3 mt-6">
-              {CATEGORIES[cat]}
-            </h3>
-            {AQ_QUESTIONS.filter((q) => q.category === cat).map((q, qi) => (
-              <div key={q.id} className="mb-5 p-4 bg-[#f5f0f0] rounded-xl">
-                <p className="text-sm text-[#272727] font-medium mb-3">
-                  {qi + 1}. {q.text}
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setResponses((p) => ({ ...p, [q.id]: val }))}
-                      className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all min-w-[70px] ${
-                        responses[q.id] === val
-                          ? "bg-[var(--brand-primary)] text-white shadow-md"
-                          : "bg-white text-[#272727] hover:bg-[var(--brand-primary)]/10 border border-[#a59494]/20"
-                      }`}
-                    >
-                      <span className="text-base font-bold">{val}</span>
-                      <span className="leading-tight">{SCALE_LABELS[val - 1]}</span>
-                    </button>
-                  ))}
-                </div>
+      <div className="space-y-4">
+        {AQ_QUESTIONS.map((q, idx) => (
+          <div key={q.id} className="p-4 bg-[#f5f0f0] rounded-xl">
+            <p className="text-sm text-[#272727] font-medium mb-3">
+              {idx + 1}. {q.text}
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-[#a59494] font-medium shrink-0 w-[100px] text-right hidden sm:block">{q.scaleLeft}</span>
+              <span className="text-xs text-[#a59494] font-medium sm:hidden mb-1 block w-full">← {q.scaleLeft}</span>
+              <div className="flex gap-2 flex-1 justify-center">
+                {[1, 2, 3, 4, 5].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setResponses((p) => ({ ...p, [q.id]: val }))}
+                    className={`w-10 h-10 rounded-full text-sm font-bold transition-all ${
+                      responses[q.id] === val
+                        ? "bg-[var(--brand-primary)] text-white shadow-md scale-110"
+                        : "bg-white text-[#272727] hover:bg-[var(--brand-primary)]/10 border border-[#a59494]/20"
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
               </div>
-            ))}
+              <span className="text-xs text-[#a59494] font-medium shrink-0 w-[120px] hidden sm:block">{q.scaleRight}</span>
+              <span className="text-xs text-[#a59494] font-medium sm:hidden mt-1 block w-full text-right">{q.scaleRight} →</span>
+            </div>
           </div>
         ))}
       </div>
@@ -820,7 +790,7 @@ function AQForm({
         disabled={saving || answeredCount < 20}
         className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
-        {saving ? "Submitting..." : `Submit AQ Assessment (${answeredCount}/20)`}
+        {saving ? "Submitting..." : `Submit Assessment (${answeredCount}/20)`}
       </button>
     </form>
   );
@@ -851,8 +821,8 @@ function DISCForm({
         <div className="w-16 h-16 bg-[var(--brand-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
-        <h2 className="text-xl font-bold text-[#272727] mb-2">DISC Assessment Complete</h2>
-        <p className="text-[#a59494]">Your DISC personality profile has been recorded.</p>
+        <h2 className="text-xl font-bold text-[#272727] mb-2">Work Style Assessment Complete</h2>
+        <p className="text-[#a59494]">Your work style profile has been recorded.</p>
       </div>
     );
   }
@@ -924,9 +894,9 @@ function DISCForm({
 
   return (
     <form onSubmit={handleSubmit} className="p-8">
-      <h2 className="text-xl font-bold text-[#272727] mb-1">DISC Assessment</h2>
-      <p className="text-sm text-[#a59494] mb-2">
-        For each group of 4 words, select the one that is <strong>MOST</strong> like you and the one that is <strong>LEAST</strong> like you.
+      <h2 className="text-xl font-bold text-[#272727] mb-1">Work Style Assessment</h2>
+      <p className="text-sm text-[#272727] font-semibold mb-2 bg-[#f5f0f0] rounded-lg px-4 py-3">
+        For each group of 4 words, select the one that feels <strong>MOST</strong> like you and the one that feels <strong>LEAST</strong> like you. Please answer based on what feels most natural, rather than how you think you should respond.
       </p>
       <div className="flex gap-4 items-center text-xs text-[#a59494] mb-6">
         <span className="flex items-center gap-1.5">
@@ -1003,7 +973,7 @@ function DISCForm({
         disabled={saving || totalAnswered < 28}
         className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
-        {saving ? "Submitting..." : `Submit DISC Assessment (${totalAnswered}/28)`}
+        {saving ? "Submitting..." : `Submit (${totalAnswered}/28)`}
       </button>
     </form>
   );

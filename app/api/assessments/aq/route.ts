@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateCompositeScore } from "@/lib/scoring";
+import { CORE_DIMENSION_QUESTIONS } from "@/lib/aq-questions";
 
 /**
  * POST /api/assessments/aq
  *
- * Public endpoint — saves AQ (Adversity Quotient / CORE) assessment.
- * Scores are calculated server-side — never trust client math.
+ * Public endpoint — saves AQ (Adversity Response Profile) assessment.
+ * Uses Stoltz CORE dimensions with the correct question mapping:
  *
- * Questions 1-5   → C (Commitment)
- * Questions 6-10  → O (Ownership)
- * Questions 11-15 → R (Reach)
- * Questions 16-20 → E (Endurance)
+ *   C (Control)    → q1, q7, q13, q15, q17
+ *   O (Ownership)  → q2, q6, q11, q16, q18
+ *   R (Reach)      → q3, q5, q9,  q12, q20
+ *   E (Endurance)  → q4, q8, q10, q14, q19
  *
- * total = (C + O + R + E) × 2  (max 200, displayed as /100)
+ * ARP Score = (C + O + R + E) × 2  →  range 40–200
  */
 export async function POST(req: NextRequest) {
   try {
@@ -84,12 +85,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Calculate CORE scores server-side
+    // Calculate CORE scores using correct Stoltz dimension mapping
     const r = responses;
-    const score_c = Number(r.q1) + Number(r.q2) + Number(r.q3) + Number(r.q4) + Number(r.q5);
-    const score_o = Number(r.q6) + Number(r.q7) + Number(r.q8) + Number(r.q9) + Number(r.q10);
-    const score_r = Number(r.q11) + Number(r.q12) + Number(r.q13) + Number(r.q14) + Number(r.q15);
-    const score_e = Number(r.q16) + Number(r.q17) + Number(r.q18) + Number(r.q19) + Number(r.q20);
+    const sumQuestions = (qIds: string[]) =>
+      qIds.reduce((sum, qId) => sum + Number(r[qId]), 0);
+
+    const score_c = sumQuestions(CORE_DIMENSION_QUESTIONS.C);
+    const score_o = sumQuestions(CORE_DIMENSION_QUESTIONS.O);
+    const score_r = sumQuestions(CORE_DIMENSION_QUESTIONS.R);
+    const score_e = sumQuestions(CORE_DIMENSION_QUESTIONS.E);
     const total_score = (score_c + score_o + score_r + score_e) * 2;
 
     // Derive normalized score (0-100) and tier

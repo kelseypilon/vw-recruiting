@@ -30,6 +30,7 @@ import OnboardingEmailModal from "@/app/dashboard/onboarding/onboarding-email-mo
 import NotAFitModal from "@/app/dashboard/candidates/not-a-fit-modal";
 import InterviewStageModal from "@/app/dashboard/candidates/interview-stage-modal";
 import DateTimePicker from "@/components/date-time-picker";
+import { AQ_QUESTIONS, AQ_CATEGORY_LABELS } from "@/lib/aq-questions";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -3712,36 +3713,7 @@ function SlideOutPanel({
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   AQ QUESTIONS (duplicated from assessments page for display)
-   ══════════════════════════════════════════════════════════════════ */
-const AQ_QUESTIONS: { id: string; text: string; category: string }[] = [
-  { id: "q1", text: "I follow through on my commitments even when it becomes inconvenient.", category: "C" },
-  { id: "q2", text: "I set clear goals and consistently work toward them.", category: "C" },
-  { id: "q3", text: "I show up fully even when I don't feel motivated.", category: "C" },
-  { id: "q4", text: "I keep my word to others, even in small matters.", category: "C" },
-  { id: "q5", text: "I take my professional development seriously and invest time in it.", category: "C" },
-  { id: "q6", text: "When something goes wrong, I look at what I could have done differently.", category: "O" },
-  { id: "q7", text: "I take full responsibility for my results without blaming circumstances.", category: "O" },
-  { id: "q8", text: "I proactively solve problems rather than waiting for someone to fix them.", category: "O" },
-  { id: "q9", text: "I own my mistakes and work quickly to correct them.", category: "O" },
-  { id: "q10", text: "I hold myself to a higher standard than what's required of me.", category: "O" },
-  { id: "q11", text: "I am willing to step outside my comfort zone to achieve my goals.", category: "R" },
-  { id: "q12", text: "I actively seek out new challenges and opportunities.", category: "R" },
-  { id: "q13", text: "I push myself beyond what feels safe or familiar.", category: "R" },
-  { id: "q14", text: "I set ambitious targets even when success isn't guaranteed.", category: "R" },
-  { id: "q15", text: "I take calculated risks when the potential upside is significant.", category: "R" },
-  { id: "q16", text: "I bounce back quickly after setbacks or failures.", category: "E" },
-  { id: "q17", text: "I stay focused on long-term goals when facing short-term difficulties.", category: "E" },
-  { id: "q18", text: "I maintain my effort and attitude even when results are slow.", category: "E" },
-  { id: "q19", text: "I treat rejection or failure as feedback rather than a reason to quit.", category: "E" },
-  { id: "q20", text: "I have a track record of persisting through difficult periods.", category: "E" },
-];
-
-const AQ_CATEGORY_LABELS: Record<string, string> = { C: "Commitment", O: "Ownership", R: "Reach", E: "Endurance" };
-const AQ_ANSWER_LABELS: Record<number, string> = { 1: "Strongly Disagree", 2: "Disagree", 3: "Neutral", 4: "Agree", 5: "Strongly Agree" };
-
-/* ══════════════════════════════════════════════════════════════════
-   AQ RESPONSES PANEL (FIX 1)
+   AQ RESPONSES PANEL — uses shared AQ_QUESTIONS from lib/aq-questions
    ══════════════════════════════════════════════════════════════════ */
 
 function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
@@ -3774,7 +3746,7 @@ function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClos
   }));
 
   return (
-    <SlideOutPanel title={`AQ Assessment — ${candidate.first_name} ${candidate.last_name}`} onClose={onClose}>
+    <SlideOutPanel title={`Problem-Solving Assessment — ${candidate.first_name} ${candidate.last_name}`} onClose={onClose}>
       {/* Score header */}
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#a59494]/10">
         <div className="w-12 h-12 rounded-full bg-brand/10 flex items-center justify-center">
@@ -3809,22 +3781,25 @@ function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClos
                         {q.text}
                       </p>
                       {answer !== undefined ? (
-                        <div className="flex items-center gap-1.5">
-                          {[1, 2, 3, 4, 5].map((val) => (
-                            <span
-                              key={val}
-                              className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border ${
-                                val === answer
-                                  ? "bg-brand text-white border-brand"
-                                  : "bg-white text-[#a59494] border-[#a59494]/20"
-                              }`}
-                            >
-                              {val}
-                            </span>
-                          ))}
-                          <span className="text-xs text-[#a59494] ml-2">
-                            {AQ_ANSWER_LABELS[answer] ?? answer}
-                          </span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            {[1, 2, 3, 4, 5].map((val) => (
+                              <span
+                                key={val}
+                                className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border ${
+                                  val === answer
+                                    ? "bg-brand text-white border-brand"
+                                    : "bg-white text-[#a59494] border-[#a59494]/20"
+                                }`}
+                              >
+                                {val}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[10px] text-[#a59494]">{q.scaleLeft}</span>
+                            <span className="text-[10px] text-[#a59494]">{q.scaleRight}</span>
+                          </div>
                         </div>
                       ) : (
                         <span className="text-xs text-[#a59494]">Not answered</span>
@@ -3840,7 +3815,7 @@ function AQResponsesPanel({ candidate, onClose }: { candidate: Candidate; onClos
 
       {/* Footer */}
       <div className="mt-6 pt-4 border-t border-[#a59494]/10 flex items-center justify-between">
-        <span className="text-sm font-semibold text-[#272727]">Overall AQ Score</span>
+        <span className="text-sm font-semibold text-[#272727]">Overall ARP Score</span>
         <span className="text-sm font-bold text-brand">{Math.round(score)} — {tier}</span>
       </div>
     </SlideOutPanel>
