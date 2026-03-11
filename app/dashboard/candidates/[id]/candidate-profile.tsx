@@ -1102,30 +1102,36 @@ function ApplicationCard({
           onSaved={onFieldSaved}
           type="boolean"
         />
-        <EditableField
-          label="Years Experience"
-          value={candidate.years_experience !== null ? String(candidate.years_experience) : null}
-          field="years_experience"
-          candidateId={candidate.id}
-          onSaved={onFieldSaved}
-          type="number"
-        />
-        <EditableField
-          label="Deals Done Last Year"
-          value={candidate.transactions_2024 !== null ? String(candidate.transactions_2024) : null}
-          field="transactions_2024"
-          candidateId={candidate.id}
-          onSaved={onFieldSaved}
-          type="number"
-        />
-        <EditableField
-          label="Active Listings"
-          value={candidate.active_listings != null ? String(candidate.active_listings) : null}
-          field="active_listings"
-          candidateId={candidate.id}
-          onSaved={onFieldSaved}
-          type="number"
-        />
+        {(candidate.years_experience !== null && candidate.years_experience !== undefined) && (
+          <EditableField
+            label="Years Experience"
+            value={String(candidate.years_experience)}
+            field="years_experience"
+            candidateId={candidate.id}
+            onSaved={onFieldSaved}
+            type="number"
+          />
+        )}
+        {(candidate.transactions_2024 !== null && candidate.transactions_2024 !== undefined) && (
+          <EditableField
+            label="Deals Done Last Year"
+            value={String(candidate.transactions_2024)}
+            field="transactions_2024"
+            candidateId={candidate.id}
+            onSaved={onFieldSaved}
+            type="number"
+          />
+        )}
+        {(candidate.active_listings != null && candidate.active_listings !== undefined) && (
+          <EditableField
+            label="Active Listings"
+            value={String(candidate.active_listings)}
+            field="active_listings"
+            candidateId={candidate.id}
+            onSaved={onFieldSaved}
+            type="number"
+          />
+        )}
         <div>
           <p className="text-xs text-[#a59494] mb-0.5">Application Submitted</p>
           <p className="text-sm text-[#272727]">
@@ -4068,6 +4074,9 @@ function ApplicationResponsesPanel({
       currently_licensed: "has_license",
     };
     if (mappings[fieldId] && mappings[fieldId] in submission) return submission[mappings[fieldId]];
+    // Check custom_fields on submission (fields like role_interested_in, info_night_date stored there)
+    const customFields = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+    if (fieldId in customFields) return customFields[fieldId];
     // Fallback to candidate record
     const candidateRecord = candidate as unknown as Record<string, unknown>;
     if (fieldId in candidateRecord) return candidateRecord[fieldId];

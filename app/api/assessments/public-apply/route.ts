@@ -175,10 +175,23 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Update candidate record with form fields ───
+    // Collect custom fields: anything not explicitly mapped below
+    const explicitlyHandled = new Set([
+      "first_name", "last_name", "email", "phone", "current_role",
+      "years_experience", "currently_licensed", "has_license",
+      "license_number", "referral_source",
+    ]);
     const customFields: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(form_data)) {
-      if (key.startsWith("custom_") && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
+      if (!explicitlyHandled.has(key) && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
         customFields[key] = val;
+      }
+    }
+    // Also store known form fields that don't have a direct candidate column
+    const formOnlyFields = ["role_interested_in", "info_night_date", "hours_per_week", "city"];
+    for (const key of formOnlyFields) {
+      if (form_data[key] !== undefined && form_data[key] !== "") {
+        customFields[key] = form_data[key];
       }
     }
 
@@ -195,6 +208,9 @@ export async function POST(req: NextRequest) {
       candidateUpdate.years_experience = parseFloat(yearsExperience);
     candidateUpdate.is_licensed = !!hasLicense;
     if (referralSource) candidateUpdate.heard_about = referralSource;
+    // Map role_interested_in → role_applied
+    const roleInterestedIn = form_data.role_interested_in ?? "";
+    if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
     if (Object.keys(customFields).length > 0) {
       candidateUpdate.custom_fields = customFields;
     }

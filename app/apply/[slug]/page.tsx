@@ -717,7 +717,6 @@ function AQForm({
   return (
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">Problem-Solving Assessment</h2>
-      <p className="text-sm text-[#a59494] mb-2">Rate each scenario on a scale of 1–5.</p>
       <p className="text-xs text-[#a59494] mb-6">{answeredCount}/20 answered</p>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
@@ -759,7 +758,7 @@ function AQForm({
         disabled={saving || answeredCount < 20}
         className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
-        {saving ? "Submitting..." : `Submit Assessment (${answeredCount}/20)`}
+        {saving ? "Submitting..." : "Submit"}
       </button>
     </form>
   );
@@ -939,7 +938,7 @@ function DISCForm({
         disabled={saving || totalAnswered < 28}
         className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
-        {saving ? "Submitting..." : `Submit (${totalAnswered}/28)`}
+        {saving ? "Submitting..." : "Continue to Next Step"}
       </button>
     </form>
   );
