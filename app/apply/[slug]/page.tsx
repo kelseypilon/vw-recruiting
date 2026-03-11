@@ -737,7 +737,7 @@ function AQForm({
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">Problem-Solving Assessment</h2>
       <p className="text-sm text-[#a59494] italic mb-4">
-        Each scenario describes a situation you might encounter. Read the scenario, then answer the question that follows by selecting a number from 1 to 5.
+        Imagine the following events as if they were happening right now. Then circle the number that represents your answer to each of the related questions.
       </p>
       <p className="text-xs text-[#a59494] mb-6">{answeredCount}/20 answered</p>
 

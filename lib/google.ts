@@ -4,10 +4,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /* ── Google OAuth Configuration ──────────────────────────────── */
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
-const GOOGLE_REDIRECT_URI =
-  `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/auth/google/callback`;
+// Read env vars lazily at call-time (not module-load time) so that
+// Vercel env vars added after a build are picked up on next cold-start.
+function getGoogleClientId(): string {
+  return process.env.GOOGLE_CLIENT_ID ?? "";
+}
+function getGoogleClientSecret(): string {
+  return process.env.GOOGLE_CLIENT_SECRET ?? "";
+}
+function getGoogleRedirectUri(): string {
+  return `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/api/auth/google/callback`;
+}
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
@@ -19,19 +26,25 @@ const SCOPES = [
 
 /** Returns true if the required Google OAuth env vars are configured */
 export function isGoogleOAuthConfigured(): boolean {
-  return !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+  const hasClientId = !!getGoogleClientId();
+  const hasClientSecret = !!getGoogleClientSecret();
+  // Debug: log env var presence at runtime (remove once confirmed working)
+  console.log(`[Google OAuth] client_id present: ${hasClientId}, client_secret present: ${hasClientSecret}`);
+  return hasClientId && hasClientSecret;
 }
 
 export function createOAuth2Client() {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  const clientId = getGoogleClientId();
+  const clientSecret = getGoogleClientSecret();
+  if (!clientId || !clientSecret) {
     throw new Error(
       "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables."
     );
   }
   return new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URI
+    clientId,
+    clientSecret,
+    getGoogleRedirectUri()
   );
 }
 

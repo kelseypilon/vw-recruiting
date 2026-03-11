@@ -748,6 +748,9 @@ function AQForm({
   return (
     <form onSubmit={handleSubmit} className="p-8">
       <h2 className="text-xl font-bold text-[#272727] mb-1">Problem-Solving Assessment</h2>
+      <p className="text-sm text-[#a59494] italic mb-4">
+        Imagine the following events as if they were happening right now. Then circle the number that represents your answer to each of the related questions.
+      </p>
       <p className="text-xs text-[#a59494] mb-6">{answeredCount}/20 answered</p>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
@@ -755,8 +758,11 @@ function AQForm({
       <div className="space-y-4">
         {AQ_QUESTIONS.map((q, idx) => (
           <div key={q.id} className="p-4 bg-[#f5f0f0] rounded-xl">
-            <p className="text-sm text-[#272727] font-medium mb-3">
+            <p className="text-sm text-[#272727] font-bold mb-1">
               {idx + 1}. {q.text}
+            </p>
+            <p className="text-sm text-[#272727]/70 italic mb-3">
+              {q.prompt}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-[#a59494] font-medium shrink-0 w-[100px] text-right hidden sm:block">{q.scaleLeft}</span>

@@ -29,14 +29,14 @@ export interface AQQuestion {
 /** Sub-question prompts keyed by CORE dimension */
 const CORE_PROMPTS: Record<string, string> = {
   C: "To what extent can you influence this situation?",
-  O: "To what extent do you feel responsible for improving the situation?",
-  R: "To what extent does the outcome of this situation reach into other areas of your life?",
-  E: "How long will the effects of this situation last?",
+  O: "To what extent do you feel responsible for improving this situation?",
+  R: "The consequences of this situation will:",
+  E: "The consequences of this situation will:",
 };
 
 export const AQ_QUESTIONS: AQQuestion[] = [
   { id: "q1",  text: "You suffer a financial setback.",                                                    prompt: CORE_PROMPTS.C, category: "C", scaleLeft: "Not at all",              scaleRight: "Completely" },
-  { id: "q2",  text: "You are overlooked for a promotion.",                                                prompt: CORE_PROMPTS.O, category: "O", scaleLeft: "Not responsible at all",   scaleRight: "Completely responsible" },
+  { id: "q2",  text: "You are overlooked for a promotion.",                                                prompt: "To what extent do you feel responsible for improving the situation?", category: "O", scaleLeft: "Not responsible at all",   scaleRight: "Completely responsible" },
   { id: "q3",  text: "You are criticized for a big project that you just completed.",                      prompt: CORE_PROMPTS.R, category: "R", scaleLeft: "Affect all aspects of my life", scaleRight: "Be limited to this situation" },
   { id: "q4",  text: "You accidentally delete an important email.",                                        prompt: CORE_PROMPTS.E, category: "E", scaleLeft: "Last forever",             scaleRight: "Quickly pass" },
   { id: "q5",  text: "The high-priority project you are working on gets canceled.",                        prompt: CORE_PROMPTS.R, category: "R", scaleLeft: "Affect all aspects of my life", scaleRight: "Be limited to this situation" },
