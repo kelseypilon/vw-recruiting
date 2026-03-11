@@ -187,7 +187,7 @@ async function sendEmail(
   cc?: string
 ): Promise<boolean> {
   const payload: { from: string; to: string[]; subject: string; text: string; cc?: string[] } = {
-    from: "noreply@recruiting.app",
+    from: "VW Recruiting <onboarding@resend.dev>",
     to: [to],
     subject,
     text: body,

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       .eq("id", auth.userId)
       .single();
 
-    const fromAddress = sender?.from_email || "noreply@recruiting.app";
+    const fromAddress = sender?.from_email || "VW Recruiting <onboarding@resend.dev>";
 
     // ── Try Gmail first (if user has connected Google) ──────────
     if (sender?.google_refresh_token) {

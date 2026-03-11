@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       } else {
         try {
           await resend.emails.send({
-            from: `${teamName} <no-reply@vwrecruiting.com>`,
+            from: `VW Recruiting <onboarding@resend.dev>`,
             to: email,
             subject: `You've been invited to join ${teamName}`,
             html: `
