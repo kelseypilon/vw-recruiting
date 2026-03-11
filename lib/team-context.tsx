@@ -42,8 +42,16 @@ export function TeamProvider({
       setTeamId(id);
       // Store preference in cookie for server components
       document.cookie = `vw_team_id=${id};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Strict;Secure`;
-      // Reload to pick up new team in server components
-      window.location.reload();
+      // If on a detail page (e.g. /group-interviews/[id], /candidates/[id]),
+      // navigate to the parent list to avoid crashing on a stale entity ID.
+      const path = window.location.pathname;
+      const detailPattern = /^\/dashboard\/(group-interviews|candidates)\/[^/]+$/;
+      if (detailPattern.test(path)) {
+        const listPath = path.replace(/\/[^/]+$/, "");
+        window.location.href = listPath;
+      } else {
+        window.location.reload();
+      }
     },
     []
   );
