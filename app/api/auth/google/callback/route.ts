@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const error = searchParams.get("error");
 
   // Base redirect — go back to profile page
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   const profileUrl = `${siteUrl}/dashboard/profile`;
 
   if (error) {

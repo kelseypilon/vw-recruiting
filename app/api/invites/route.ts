@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       const teamName = team?.brand_name ?? team?.name ?? "Your Team";
-      const setupUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/setup/${invite.token}`;
+      const setupUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/setup/${invite.token}`;
 
       // Send invite email via Resend (if configured)
       let emailSent = false;
