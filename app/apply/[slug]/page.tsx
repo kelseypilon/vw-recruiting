@@ -472,13 +472,65 @@ function ApplicationForm({
     }
   }
 
-  const shortFields = fields.filter(
-    (f) => ["text", "email", "tel", "number", "date", "select"].includes(f.type) && !resolveFieldCondition(f)
-  );
-  const booleanFields = fields.filter((f) => f.type === "boolean");
-  const textareaFields = fields.filter((f) => f.type === "textarea" && !resolveFieldCondition(f));
-  const interestedInField = fields.find((f) => f.type === "interested_in");
-  const conditionalFields = fields.filter((f) => resolveFieldCondition(f));
+  // ── Build render groups: top-level fields in sort_order, sub-questions inline ──
+  const subQuestionsByParent: Record<string, FormField[]> = {};
+  const topLevelFields: FormField[] = [];
+
+  for (const f of fields) {
+    const cond = resolveFieldCondition(f);
+    if (cond) {
+      if (!subQuestionsByParent[cond.field_id]) subQuestionsByParent[cond.field_id] = [];
+      subQuestionsByParent[cond.field_id].push(f);
+    } else {
+      topLevelFields.push(f);
+    }
+  }
+
+  // Helper: update parent and clear children when parent value changes
+  function updateParent(f: FormField, v: string | boolean) {
+    update(f.id, v);
+    const children = subQuestionsByParent[f.id];
+    if (children) {
+      for (const child of children) {
+        const cond = resolveFieldCondition(child);
+        if (cond && v !== cond.value) {
+          update(child.id, child.type === "boolean" ? false : "");
+        }
+      }
+    }
+  }
+
+  // Group consecutive "short" top-level fields (non-textarea, non-boolean, non-interested_in)
+  // into grid batches; textareas, booleans, and fields with children break the grid.
+  type Segment =
+    | { kind: "grid"; items: FormField[] }
+    | { kind: "block"; field: FormField; children: FormField[] };
+
+  const segments: Segment[] = [];
+  let currentGrid: FormField[] = [];
+
+  function flushGrid() {
+    if (currentGrid.length > 0) {
+      segments.push({ kind: "grid", items: [...currentGrid] });
+      currentGrid = [];
+    }
+  }
+
+  for (const f of topLevelFields) {
+    const hasChildren = (subQuestionsByParent[f.id] ?? []).length > 0;
+    const isShort = ["text", "email", "tel", "number", "date", "select"].includes(f.type);
+
+    if (f.type === "textarea" || f.type === "boolean" || f.type === "interested_in" || hasChildren) {
+      flushGrid();
+      segments.push({ kind: "block", field: f, children: subQuestionsByParent[f.id] ?? [] });
+    } else if (isShort) {
+      currentGrid.push(f);
+    } else {
+      flushGrid();
+      segments.push({ kind: "block", field: f, children: [] });
+    }
+  }
+  flushGrid();
 
   return (
     <form onSubmit={handleSubmit} className="p-8">
@@ -487,130 +539,97 @@ function ApplicationForm({
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
 
-      {shortFields.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {shortFields.map((f) => (
-            <DynamicField
-              key={f.id}
-              field={f}
-              value={form[f.id] ?? ""}
-              onChange={(v) => {
-                update(f.id, v);
-                for (const child of conditionalFields) {
-                  const cond = resolveFieldCondition(child);
-                  if (cond?.field_id === f.id && v !== cond.value) {
-                    update(child.id, child.type === "boolean" ? false : "");
-                  }
-                }
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {conditionalFields
-        .filter((c) => {
-          const cond = resolveFieldCondition(c);
-          if (!cond) return false;
-          const parent = fields.find((f) => f.id === cond.field_id);
-          return parent && parent.type !== "boolean" && isFieldVisible(c, form);
-        })
-        .map((c) => (
-          <div key={c.id} className="mb-4 ml-4 pl-4 border-l-2 border-[var(--brand-primary)]/20">
-            <DynamicField
-              field={c}
-              value={form[c.id] ?? ""}
-              onChange={(v) => update(c.id, v)}
-            />
-          </div>
-        ))}
-
-      {booleanFields.map((f) => {
-        const childFields = conditionalFields.filter((c) => {
-          const cond = resolveFieldCondition(c);
-          return cond?.field_id === f.id;
-        });
-        return (
-          <div key={f.id} className="mb-6 p-4 bg-[#f5f0f0] rounded-xl">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <div
-                className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[var(--brand-primary)]" : "bg-[#a59494]/40"}`}
-                onClick={() => {
-                  const newVal = !form[f.id];
-                  update(f.id, newVal);
-                  for (const child of childFields) {
-                    const cond = resolveFieldCondition(child);
-                    if (cond && newVal !== cond.value) {
-                      update(child.id, child.type === "boolean" ? false : "");
-                    }
-                  }
-                }}
-              >
-                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form[f.id] ? "translate-x-5" : "translate-x-0.5"}`} />
+      <div className="space-y-4 mb-8">
+        {segments.map((seg) => {
+          if (seg.kind === "grid") {
+            return (
+              <div key={`grid-${seg.items[0].id}`} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {seg.items.map((f) => (
+                  <DynamicField
+                    key={f.id}
+                    field={f}
+                    value={form[f.id] ?? ""}
+                    onChange={(v) => updateParent(f, v)}
+                  />
+                ))}
               </div>
-              <span className="text-sm font-medium text-[#272727]">
-                {f.label}{f.required ? " *" : ""}
-              </span>
-            </label>
-            {childFields.filter((child) => isFieldVisible(child, form)).map((child) => (
-              <div key={child.id} className="mt-3">
-                <DynamicField
-                  field={child}
-                  value={form[child.id] ?? ""}
-                  onChange={(v) => update(child.id, v)}
-                />
-              </div>
-            ))}
-          </div>
-        );
-      })}
+            );
+          }
 
-      {interestedInField && interestedInOptions.length > 0 && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-[#272727] mb-2">
-            {interestedInField.label}
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {interestedInOptions.map((opt) => {
-              const selected = Array.isArray(form[interestedInField.id])
-                && (form[interestedInField.id] as string[]).includes(opt.id);
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => {
-                    const current = (form[interestedInField.id] as string[]) || [];
-                    update(
-                      interestedInField.id,
-                      selected ? current.filter((id) => id !== opt.id) : [...current, opt.id]
+          const { field: f, children } = seg;
+
+          // Boolean toggle field
+          if (f.type === "boolean") {
+            return (
+              <div key={f.id} className="p-4 bg-[#f5f0f0] rounded-xl">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div
+                    className={`w-11 h-6 rounded-full transition-colors relative ${form[f.id] ? "bg-[var(--brand-primary)]" : "bg-[#a59494]/40"}`}
+                    onClick={() => updateParent(f, !form[f.id])}
+                  >
+                    <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form[f.id] ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </div>
+                  <span className="text-sm font-medium text-[#272727]">
+                    {f.label}{f.required ? " *" : ""}
+                  </span>
+                </label>
+                {children.filter((c) => isFieldVisible(c, form)).map((child) => (
+                  <div key={child.id} className="mt-3 pl-6">
+                    <DynamicField field={child} value={form[child.id] ?? ""} onChange={(v) => update(child.id, v)} />
+                  </div>
+                ))}
+              </div>
+            );
+          }
+
+          // Interested-in tag picker
+          if (f.type === "interested_in" && interestedInOptions.length > 0) {
+            return (
+              <div key={f.id}>
+                <label className="block text-sm font-medium text-[#272727] mb-2">{f.label}</label>
+                <div className="flex flex-wrap gap-2">
+                  {interestedInOptions.map((opt) => {
+                    const selected = Array.isArray(form[f.id]) && (form[f.id] as string[]).includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          const current = (form[f.id] as string[]) || [];
+                          update(f.id, selected ? current.filter((id) => id !== opt.id) : [...current, opt.id]);
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
+                          selected
+                            ? "bg-[var(--brand-primary)] text-white"
+                            : "bg-[#f5f0f0] text-[#272727] hover:bg-[var(--brand-primary)]/10"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
                     );
-                  }}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
-                    selected
-                      ? "bg-[var(--brand-primary)] text-white"
-                      : "bg-[#f5f0f0] text-[#272727] hover:bg-[var(--brand-primary)]/10"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                  })}
+                </div>
+              </div>
+            );
+          }
 
-      {textareaFields.length > 0 && (
-        <div className="space-y-4 mb-8">
-          {textareaFields.map((f) => (
-            <TextareaField
-              key={f.id}
-              label={`${f.label}${f.required ? " *" : ""}`}
-              value={(form[f.id] as string) ?? ""}
-              onChange={(v) => update(f.id, v)}
-            />
-          ))}
-        </div>
-      )}
+          // Regular block field (select/text with children, or textarea)
+          return (
+            <div key={f.id}>
+              <DynamicField
+                field={f}
+                value={form[f.id] ?? ""}
+                onChange={(v) => updateParent(f, v)}
+              />
+              {children.filter((c) => isFieldVisible(c, form)).map((child) => (
+                <div key={child.id} className="pl-6 mt-3 border-l-2 border-[var(--brand-primary)]/20">
+                  <DynamicField field={child} value={form[child.id] ?? ""} onChange={(v) => update(child.id, v)} />
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
 
       <button
         type="submit"

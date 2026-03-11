@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyAuth } from "@/lib/api-auth";
 import { DEFAULT_ROLES } from "@/lib/permissions";
+import { DEFAULT_FORM_FIELDS } from "@/lib/default-form-fields";
 
 /**
  * POST /api/settings
@@ -939,6 +940,29 @@ export async function POST(req: NextRequest) {
         .eq("id", payload.team_id);
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
       return NextResponse.json({ success: true, settings: newSettings });
+    }
+
+    if (action === "reset_form_fields") {
+      if (!payload?.team_id) {
+        return NextResponse.json({ error: "team_id is required" }, { status: 400 });
+      }
+
+      const { data: team, error: fetchErr } = await supabase
+        .from("teams")
+        .select("settings")
+        .eq("id", payload.team_id)
+        .single();
+      if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+      const settings = (team?.settings ?? {}) as Record<string, unknown>;
+      const newSettings = { ...settings, application_form_fields: DEFAULT_FORM_FIELDS };
+
+      const { error: updateErr } = await supabase
+        .from("teams")
+        .update({ settings: newSettings })
+        .eq("id", payload.team_id);
+      if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, fields: DEFAULT_FORM_FIELDS });
     }
 
     // ── Business Units ──────────────────────────────────────────────

@@ -35,6 +35,7 @@ const EDITABLE_TYPES: ApplicationFormField["type"][] = [
   "email",
   "tel",
   "number",
+  "date",
   "boolean",
   "select",
   "textarea",
@@ -132,9 +133,36 @@ export default function ApplicationFormTab({ teamId }: Props) {
     setEditingFieldId(null);
   }
 
-  function handleResetDefaults() {
-    setFields([...DEFAULT_FORM_FIELDS]);
-    setEditingFieldId(null);
+  async function handleResetDefaults() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset_form_fields",
+          payload: { team_id: teamId },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to reset");
+        return;
+      }
+      const resetFields = (data.fields as ApplicationFormField[]) ?? [...DEFAULT_FORM_FIELDS];
+      setFields(resetFields);
+      setOriginalFields(resetFields);
+      setEditingFieldId(null);
+      showToast("Form reset to defaults!");
+    } catch {
+      // Fallback: reset locally if API fails
+      setFields([...DEFAULT_FORM_FIELDS]);
+      setOriginalFields([...DEFAULT_FORM_FIELDS]);
+      setEditingFieldId(null);
+      showToast("Reset to defaults (local)");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function toggleRequired(id: string) {

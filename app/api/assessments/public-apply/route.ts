@@ -132,39 +132,39 @@ export async function POST(req: NextRequest) {
 
     // ─── Insert application submission ───
     const phone = (form_data.phone ?? "").trim();
-    const city = form_data.city ?? "";
-    const currentRole = form_data.current_role ?? "";
+    const currentEmployment = form_data.current_employment ?? form_data.current_role ?? "";
     const yearsExperience = form_data.years_experience ?? "";
-    const whyRealEstate = form_data.why_real_estate ?? "";
-    const whyVantage = form_data.why_vantage ?? "";
-    const biggestAchievement = form_data.biggest_achievement ?? "";
-    const oneYearGoal = form_data.one_year_goal ?? "";
-    const hoursPerWeek = form_data.hours_per_week ?? "";
-    const hasLicense =
-      form_data.currently_licensed ?? form_data.has_license ?? false;
-    const licenseNumber = form_data.license_number ?? "";
-    const referralSource = form_data.referral_source ?? "";
+    const transactionsLastYear = form_data.transactions_last_year ?? "";
+    // Handle both new "licensed" (select) and legacy "currently_licensed" (boolean) fields
+    const licensedRaw = form_data.licensed ?? form_data.currently_licensed ?? form_data.has_license;
+    const hasLicense = licensedRaw === "Yes" || licensedRaw === true;
+
+    // Build application submission — map to existing columns where available,
+    // store full form_data for complete record
+    const submissionData: Record<string, unknown> = {
+      candidate_id: candidateId,
+      team_id,
+      full_name: `${firstName} ${lastName}`.trim(),
+      email,
+      phone,
+      current_role: currentEmployment,
+      years_experience: yearsExperience ? parseFloat(yearsExperience) : null,
+      has_license: hasLicense,
+      // Map new text fields to existing columns when they exist
+      why_real_estate: form_data.how_did_you_hear ?? form_data.why_real_estate ?? "",
+      why_vantage: form_data.what_stood_out ?? form_data.why_vantage ?? "",
+      biggest_achievement: form_data.why_great_addition ?? form_data.biggest_achievement ?? "",
+      one_year_goal: form_data.most_important ?? form_data.one_year_goal ?? "",
+      // Legacy columns — fill from form_data if present
+      city: form_data.city ?? "",
+      hours_per_week: form_data.hours_per_week ?? "",
+      license_number: form_data.license_number ?? "",
+      referral_source: form_data.referral_source ?? "",
+    };
 
     const { error: insertErr } = await supabase
       .from("application_submissions")
-      .insert({
-        candidate_id: candidateId,
-        team_id,
-        full_name: `${firstName} ${lastName}`.trim(),
-        email,
-        phone,
-        city,
-        current_role: currentRole,
-        years_experience: yearsExperience ? parseFloat(yearsExperience) : null,
-        why_real_estate: whyRealEstate,
-        why_vantage: whyVantage,
-        biggest_achievement: biggestAchievement,
-        one_year_goal: oneYearGoal,
-        hours_per_week: hoursPerWeek,
-        has_license: !!hasLicense,
-        license_number: hasLicense ? licenseNumber : null,
-        referral_source: referralSource,
-      });
+      .insert(submissionData);
 
     if (insertErr) {
       console.error("Public apply — application insert error:", insertErr);
@@ -175,20 +175,28 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Update candidate record with form fields ───
-    // Collect custom fields: anything not explicitly mapped below
+    // Fields explicitly mapped to candidate columns
     const explicitlyHandled = new Set([
-      "first_name", "last_name", "email", "phone", "current_role",
-      "years_experience", "currently_licensed", "has_license",
-      "license_number", "referral_source",
+      "first_name", "last_name", "email", "phone",
+      "current_employment", "current_role",
+      "years_experience", "licensed", "currently_licensed", "has_license",
+      "license_number", "referral_source", "role_interested_in",
     ]);
+
+    // Collect everything not explicitly handled into custom_fields
     const customFields: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(form_data)) {
       if (!explicitlyHandled.has(key) && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
         customFields[key] = val;
       }
     }
-    // Also store known form fields that don't have a direct candidate column
-    const formOnlyFields = ["role_interested_in", "info_night_date", "hours_per_week", "city"];
+    // Store form-only fields (no candidate column) in custom_fields
+    const formOnlyFields = [
+      "info_night_date", "transactions_last_year",
+      "how_did_you_hear", "what_stood_out", "why_great_addition",
+      "most_important", "questions_answered", "additional_questions",
+      "hours_per_week", "city",
+    ];
     for (const key of formOnlyFields) {
       if (form_data[key] !== undefined && form_data[key] !== "") {
         customFields[key] = form_data[key];
@@ -203,11 +211,9 @@ export async function POST(req: NextRequest) {
     };
 
     if (phone) candidateUpdate.phone = phone;
-    if (currentRole) candidateUpdate.current_role = currentRole;
-    if (yearsExperience)
-      candidateUpdate.years_experience = parseFloat(yearsExperience);
-    candidateUpdate.is_licensed = !!hasLicense;
-    if (referralSource) candidateUpdate.heard_about = referralSource;
+    if (currentEmployment) candidateUpdate.current_role = currentEmployment;
+    if (yearsExperience) candidateUpdate.years_experience = parseFloat(yearsExperience);
+    candidateUpdate.is_licensed = hasLicense;
     // Map role_interested_in → role_applied
     const roleInterestedIn = form_data.role_interested_in ?? "";
     if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
