@@ -47,6 +47,44 @@ export async function POST(req: NextRequest) {
 
     const stageName = newLeadStage?.name ?? "New Lead";
 
+    // ─── Extract all form fields up front ───
+    const phone = (form_data.phone ?? "").trim();
+    const currentEmployment = form_data.current_employment ?? form_data.current_role ?? "";
+    const yearsExperience = form_data.years_experience ?? "";
+    const transactionsLastYear = form_data.transactions_last_year ?? "";
+    // Handle both new "licensed" (select) and legacy "currently_licensed" (boolean) fields
+    const licensedRaw = form_data.licensed ?? form_data.currently_licensed ?? form_data.has_license;
+    const hasLicense = licensedRaw === "Yes" || licensedRaw === true;
+    const roleInterestedIn = form_data.role_interested_in ?? "";
+    const howDidYouHear = form_data.how_did_you_hear ?? form_data.heard_about ?? "";
+
+    // Build custom_fields JSONB — text responses that have no dedicated candidate column
+    const explicitlyHandled = new Set([
+      "first_name", "last_name", "email", "phone",
+      "current_employment", "current_role",
+      "years_experience", "licensed", "currently_licensed", "has_license",
+      "license_number", "referral_source", "role_interested_in",
+    ]);
+
+    const customFields: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(form_data)) {
+      if (!explicitlyHandled.has(key) && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
+        customFields[key] = val;
+      }
+    }
+    // Explicitly ensure text response fields end up in custom_fields
+    const formOnlyFields = [
+      "info_night_date", "transactions_last_year",
+      "how_did_you_hear", "what_stood_out", "why_great_addition",
+      "most_important", "questions_answered", "additional_questions",
+      "hours_per_week", "city",
+    ];
+    for (const key of formOnlyFields) {
+      if (form_data[key] !== undefined && form_data[key] !== "") {
+        customFields[key] = form_data[key];
+      }
+    }
+
     // Check if candidate with email exists on this team
     const { data: existingCandidate } = await supabase
       .from("candidates")
@@ -104,18 +142,33 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", candidateId);
     } else {
-      // Create new candidate
+      // Create new candidate — include ALL mapped form fields in a single insert
+      const insertData: Record<string, unknown> = {
+        team_id,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone: phone || null,
+        stage: stageName,
+        stage_entered_at: now,
+        app_submitted_at: now,
+        is_licensed: hasLicense,
+      };
+      if (currentEmployment) insertData.current_role = currentEmployment;
+      if (howDidYouHear) insertData.heard_about = howDidYouHear;
+      if (roleInterestedIn) insertData.role_applied = roleInterestedIn;
+      if (yearsExperience) insertData.years_experience = parseFloat(yearsExperience);
+      if (transactionsLastYear) {
+        const parsed = parseInt(transactionsLastYear);
+        if (!isNaN(parsed)) insertData.transactions_2024 = parsed;
+      }
+      if (Object.keys(customFields).length > 0) {
+        insertData.custom_fields = customFields;
+      }
+
       const { data: newCandidate, error: createErr } = await supabase
         .from("candidates")
-        .insert({
-          team_id,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          phone: (form_data.phone ?? "").trim() || null,
-          stage: stageName,
-          stage_entered_at: now,
-        })
+        .insert(insertData)
         .select("id")
         .single();
 
@@ -129,15 +182,6 @@ export async function POST(req: NextRequest) {
 
       candidateId = newCandidate.id;
     }
-
-    // ─── Insert application submission ───
-    const phone = (form_data.phone ?? "").trim();
-    const currentEmployment = form_data.current_employment ?? form_data.current_role ?? "";
-    const yearsExperience = form_data.years_experience ?? "";
-    const transactionsLastYear = form_data.transactions_last_year ?? "";
-    // Handle both new "licensed" (select) and legacy "currently_licensed" (boolean) fields
-    const licensedRaw = form_data.licensed ?? form_data.currently_licensed ?? form_data.has_license;
-    const hasLicense = licensedRaw === "Yes" || licensedRaw === true;
 
     // Build application submission — map to existing columns where available,
     // store full form_data for complete record
@@ -174,53 +218,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ─── Update candidate record with form fields ───
-    // Fields explicitly mapped to candidate columns
-    const explicitlyHandled = new Set([
-      "first_name", "last_name", "email", "phone",
-      "current_employment", "current_role",
-      "years_experience", "licensed", "currently_licensed", "has_license",
-      "license_number", "referral_source", "role_interested_in",
-    ]);
-
-    // Collect everything not explicitly handled into custom_fields
-    const customFields: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(form_data)) {
-      if (!explicitlyHandled.has(key) && !KNOWN_CANDIDATE_COLUMNS.has(key)) {
-        customFields[key] = val;
-      }
-    }
-    // Store form-only fields (no candidate column) in custom_fields
-    const formOnlyFields = [
-      "info_night_date", "transactions_last_year",
-      "how_did_you_hear", "what_stood_out", "why_great_addition",
-      "most_important", "questions_answered", "additional_questions",
-      "hours_per_week", "city",
-    ];
-    for (const key of formOnlyFields) {
-      if (form_data[key] !== undefined && form_data[key] !== "") {
-        customFields[key] = form_data[key];
-      }
-    }
-
+    // ─── Update candidate record with all form fields ───
+    // (For new candidates this reinforces the INSERT; for returning candidates
+    // it applies the fresh form data after the score reset above.)
     const candidateUpdate: Record<string, unknown> = {
       first_name: firstName,
       last_name: lastName,
       email,
       app_submitted_at: now,
+      is_licensed: hasLicense,
     };
 
     if (phone) candidateUpdate.phone = phone;
     if (currentEmployment) candidateUpdate.current_role = currentEmployment;
     if (yearsExperience) candidateUpdate.years_experience = parseFloat(yearsExperience);
-    candidateUpdate.is_licensed = hasLicense;
-    // Map role_interested_in → role_applied
-    const roleInterestedIn = form_data.role_interested_in ?? "";
     if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
-    // Map how_did_you_hear → heard_about
-    const howDidYouHear = form_data.how_did_you_hear ?? form_data.heard_about ?? "";
     if (howDidYouHear) candidateUpdate.heard_about = howDidYouHear;
-    // Map transactions_last_year → transactions_2024
     if (transactionsLastYear) {
       const parsed = parseInt(transactionsLastYear);
       if (!isNaN(parsed)) candidateUpdate.transactions_2024 = parsed;
@@ -229,10 +242,14 @@ export async function POST(req: NextRequest) {
       candidateUpdate.custom_fields = customFields;
     }
 
-    await supabase
+    const { error: updateErr } = await supabase
       .from("candidates")
       .update(candidateUpdate)
       .eq("id", candidateId);
+
+    if (updateErr) {
+      console.error("Public apply — candidate update error:", updateErr);
+    }
 
     // ─── Stage history entry ───
     await supabase.from("stage_history").insert({
