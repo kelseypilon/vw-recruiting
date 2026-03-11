@@ -91,7 +91,7 @@ export default function PublicApplyPage({
 
     async function init() {
       try {
-        const res = await fetch(`/api/teams/by-slug?slug=${encodeURIComponent(teamSlug)}`);
+        const res = await fetch(`/api/teams/by-slug?slug=${encodeURIComponent(teamSlug)}`, { cache: "no-store" });
         if (!res.ok) {
           setError("This application link is invalid or the team was not found.");
           setLoading(false);
@@ -385,7 +385,7 @@ function ApplicationForm({
 
     async function loadConfig() {
       try {
-        const res = await fetch(`/api/assessments/form-config?team_id=${teamId}`);
+        const res = await fetch(`/api/assessments/form-config?team_id=${teamId}`, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) {

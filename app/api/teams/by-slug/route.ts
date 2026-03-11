@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Never serve cached team data — branding and settings change
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/teams/by-slug?slug=xxx
  *

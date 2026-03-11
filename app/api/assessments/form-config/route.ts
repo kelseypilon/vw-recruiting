@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_FORM_FIELDS } from "@/lib/default-form-fields";
 
+// Never serve cached form config — admins update fields in Settings
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/assessments/form-config?team_id=xxx
  *

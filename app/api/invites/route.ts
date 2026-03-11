@@ -70,20 +70,38 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Protected actions (require auth) ─────────────────────────
-    // create_invite, list_invites, revoke_invite all require authenticated user
+    // ── Protected actions (require auth + team access) ──────────
+    // create_invite, list_invites, revoke_invite require authenticated user
+    // who belongs to the target team OR is a super admin
+
+    let authContext: { userId: string; email: string; teamId: string } | null = null;
+    let isSuperAdmin = false;
 
     if (["create_invite", "list_invites", "revoke_invite"].includes(action)) {
-      const auth = await verifyAuth();
-      if (!auth) {
+      authContext = await verifyAuth();
+      if (!authContext) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      // Check super admin status
+      const { data: authUser } = await supabase
+        .from("users")
+        .select("is_super_admin")
+        .eq("id", authContext.userId)
+        .single();
+      isSuperAdmin = authUser?.is_super_admin === true;
+
+      // Verify team access: must belong to the target team or be super admin
+      const targetTeamId = body.team_id;
+      if (targetTeamId && targetTeamId !== authContext.teamId && !isSuperAdmin) {
+        return NextResponse.json({ error: "You don't have access to this team" }, { status: 403 });
       }
     }
 
     // ── Create Invite ───────────────────────────────────────────
 
     if (action === "create_invite") {
-      const { team_id, email, role, invited_by } = body;
+      const { team_id, email, role } = body;
       if (!team_id || !email || !role) {
         return NextResponse.json(
           { error: "team_id, email, and role are required" },
@@ -115,7 +133,7 @@ export async function POST(req: NextRequest) {
           team_id,
           email: email.toLowerCase().trim(),
           role,
-          invited_by: invited_by ?? null,
+          invited_by: authContext?.userId ?? null,
         })
         .select()
         .single();
