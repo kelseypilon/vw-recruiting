@@ -39,13 +39,13 @@ export function TeamProvider({
 
   const switchTeam = useCallback(
     (id: string) => {
-      setTeamId(id);
-      // Store preference in cookie for server components
+      // Store preference in cookie FIRST (server components read this on next load)
       document.cookie = `vw_team_id=${id};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Strict;Secure`;
+      // Navigate BEFORE updating React state to avoid re-rendering with stale data.
       // If on a detail page (e.g. /group-interviews/[id], /candidates/[id]),
       // navigate to the parent list to avoid crashing on a stale entity ID.
       const path = window.location.pathname;
-      const detailPattern = /^\/dashboard\/(group-interviews|candidates)\/[^/]+$/;
+      const detailPattern = /^\/dashboard\/(group-interviews|candidates|interviews)\/[^/]+$/;
       if (detailPattern.test(path)) {
         const listPath = path.replace(/\/[^/]+$/, "");
         window.location.href = listPath;
