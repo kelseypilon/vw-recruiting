@@ -31,6 +31,29 @@ export default function HelpPage() {
       ],
     },
     {
+      id: "google-account",
+      title: "Connect Your Google Account",
+      icon: "🔑",
+      content: [
+        {
+          heading: "Why You Need to Connect",
+          body: "Email sending in this app works through your own Google account. This means emails to candidates come from your email address — not a generic system address. Until you connect, no emails will be sent.",
+        },
+        {
+          heading: "How to Connect",
+          body: '1. Click your name or "Profile" in the left sidebar.\n2. Scroll to the Google Workspace section and click "Connect Google Account".\n3. Sign in with the Google account you want to send emails from.\n4. You\'ll be redirected back to the app — you\'re connected!',
+        },
+        {
+          heading: "Things to Know",
+          body: "You only need to do this once. Your connection stays active until you manually disconnect. If you ever switch Google accounts or need to reconnect, just visit your Profile page and repeat these steps.",
+        },
+        {
+          heading: "⚠️ Important",
+          body: "If you haven't connected your Google account, emails to candidates will not send. This is the most common reason for emails not going out. Check your Profile page to verify your connection status.",
+        },
+      ],
+    },
+    {
       id: "google-scheduling",
       title: "Google Appointment Scheduling",
       icon: "📅",
@@ -216,16 +239,34 @@ export default function HelpPage() {
             </div>
 
             <div className="space-y-8">
-              {section.content.map((item, i) => (
-                <div key={i}>
-                  <h3 className="text-base font-semibold text-[#272727] mb-2">
-                    {item.heading}
-                  </h3>
-                  <div className="text-sm text-[#272727]/70 leading-relaxed whitespace-pre-line">
-                    {item.body}
+              {section.content.map((item, i) => {
+                const isWarning = item.heading.startsWith("⚠️");
+                if (isWarning) {
+                  return (
+                    <div
+                      key={i}
+                      className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200"
+                    >
+                      <h3 className="text-sm font-semibold text-amber-800 mb-1">
+                        {item.heading}
+                      </h3>
+                      <div className="text-sm text-amber-700 leading-relaxed whitespace-pre-line">
+                        {item.body}
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={i}>
+                    <h3 className="text-base font-semibold text-[#272727] mb-2">
+                      {item.heading}
+                    </h3>
+                    <div className="text-sm text-[#272727]/70 leading-relaxed whitespace-pre-line">
+                      {item.body}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

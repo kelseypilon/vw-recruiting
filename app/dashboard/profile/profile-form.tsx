@@ -385,6 +385,33 @@ export default function ProfileForm({ user }: Props) {
             Connect your Google account to send emails directly from your Gmail address.
           </p>
 
+          {/* Connection status banner */}
+          {isGoogleConnected && googleEmail ? (
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-lg">
+              <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              <p className="text-sm text-green-800">
+                Google account connected — <span className="font-medium">{googleEmail}</span>
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+              <span className="text-amber-600 shrink-0">⚠️</span>
+              <div className="flex-1">
+                <p className="text-sm text-amber-800">
+                  You haven&apos;t connected your Google account yet. Connect it now to enable email sending.
+                </p>
+              </div>
+              <a
+                href="/api/auth/google"
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition"
+              >
+                Connect Now
+              </a>
+            </div>
+          )}
+
           {isGoogleConnected && googleEmail ? (
             <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center gap-3">
