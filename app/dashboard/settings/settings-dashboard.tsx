@@ -1557,8 +1557,8 @@ function MembersTab({
           teamId={teamId}
           team={team}
           onClose={() => setShowAddModal(false)}
-          onMemberAdded={(newUser) => {
-            onUsersUpdated([...users, newUser]);
+          onInviteSent={(invite) => {
+            setPendingInvites((prev) => [invite, ...prev]);
             setShowAddModal(false);
           }}
         />
@@ -1758,51 +1758,53 @@ function AddMemberModal({
   teamId,
   team,
   onClose,
-  onMemberAdded,
+  onInviteSent,
 }: {
   teamId: string;
   team: Team | null;
   onClose: () => void;
-  onMemberAdded: (user: TeamUser) => void;
+  onInviteSent: (invite: PendingInvite) => void;
 }) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Leader");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const resolvedRole = role;
-
   async function handleSave() {
-    if (!firstName.trim() || !email.trim()) {
-      setError("First name and email are required");
+    if (!email.trim() || !email.includes("@")) {
+      setError("A valid email is required");
       return;
     }
     setIsSaving(true);
     setError("");
 
-    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
-
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "create_user",
-        payload: {
+    try {
+      const res = await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_invite",
           team_id: teamId,
-          name: fullName,
           email: email.trim(),
-          role: resolvedRole,
-        },
-      }),
-    });
-    const result = await res.json();
+          role,
+        }),
+      });
+      const result = await res.json();
 
-    if (result.error) {
-      setError(result.error);
-    } else if (result.data) {
-      onMemberAdded(result.data as TeamUser);
+      if (!res.ok || result.error) {
+        setError(result.error || "Failed to send invite");
+      } else if (result.success && result.invite) {
+        onInviteSent({
+          id: result.invite.id,
+          email: result.invite.email,
+          role,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          accepted_at: null,
+        });
+      }
+    } catch {
+      setError("Network error — please try again");
     }
     setIsSaving(false);
   }
@@ -1824,33 +1826,9 @@ function AddMemberModal({
         </div>
 
         <div className="p-6 space-y-4">
-          {/* First + Last Name */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1">
-                First Name
-              </label>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Brooklyn"
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#272727] mb-1">
-                Last Name
-              </label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Smith"
-                className="w-full px-3 py-2 rounded-lg border border-[#a59494]/40 text-sm text-[#272727] placeholder:text-[#a59494] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-              />
-            </div>
-          </div>
+          <p className="text-xs text-[#a59494]">
+            An invite link will be emailed. They&apos;ll set up their account when they accept.
+          </p>
 
           {/* Email */}
           <div>
@@ -1895,10 +1873,10 @@ function AddMemberModal({
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving || !firstName.trim() || !email.trim()}
+              disabled={isSaving || !email.includes("@")}
               className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark active:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50"
             >
-              {isSaving ? "Saving..." : "Add Member"}
+              {isSaving ? "Sending..." : "Send Invite"}
             </button>
           </div>
         </div>
