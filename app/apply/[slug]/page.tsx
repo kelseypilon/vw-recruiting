@@ -6,37 +6,33 @@ import type { TeamBranding } from "@/lib/types";
 import { AQ_QUESTIONS, AQ_CATEGORY_LABELS } from "@/lib/aq-questions";
 
 /* ══════════════════════════════════════════════════════════════
-   DISC Word Groups — 28 groups of 4 words
+   DiSC Classic — 24 word groups of 4 words
    ══════════════════════════════════════════════════════════════ */
 const DISC_GROUPS: { id: number; words: { label: string; letter: string }[] }[] = [
-  { id: 1, words: [{ label: "Decisive", letter: "D" }, { label: "Enthusiastic", letter: "I" }, { label: "Harmonious", letter: "S" }, { label: "Accurate", letter: "C" }] },
-  { id: 2, words: [{ label: "Pioneering", letter: "D" }, { label: "Sociable", letter: "I" }, { label: "Patient", letter: "S" }, { label: "Precise", letter: "C" }] },
-  { id: 3, words: [{ label: "Competitive", letter: "D" }, { label: "Talkative", letter: "I" }, { label: "Gentle", letter: "S" }, { label: "Systematic", letter: "C" }] },
-  { id: 4, words: [{ label: "Direct", letter: "D" }, { label: "Influential", letter: "I" }, { label: "Stable", letter: "S" }, { label: "Analytical", letter: "C" }] },
-  { id: 5, words: [{ label: "Bold", letter: "D" }, { label: "Optimistic", letter: "I" }, { label: "Supportive", letter: "S" }, { label: "Careful", letter: "C" }] },
-  { id: 6, words: [{ label: "Results-driven", letter: "D" }, { label: "Expressive", letter: "I" }, { label: "Consistent", letter: "S" }, { label: "Thorough", letter: "C" }] },
-  { id: 7, words: [{ label: "Assertive", letter: "D" }, { label: "Inspiring", letter: "I" }, { label: "Cooperative", letter: "S" }, { label: "Detail-oriented", letter: "C" }] },
-  { id: 8, words: [{ label: "Daring", letter: "D" }, { label: "Persuasive", letter: "I" }, { label: "Loyal", letter: "S" }, { label: "Cautious", letter: "C" }] },
-  { id: 9, words: [{ label: "Driven", letter: "D" }, { label: "Outgoing", letter: "I" }, { label: "Dependable", letter: "S" }, { label: "Methodical", letter: "C" }] },
-  { id: 10, words: [{ label: "Demanding", letter: "D" }, { label: "Lively", letter: "I" }, { label: "Relaxed", letter: "S" }, { label: "Disciplined", letter: "C" }] },
-  { id: 11, words: [{ label: "Strong-willed", letter: "D" }, { label: "Gregarious", letter: "I" }, { label: "Steady", letter: "S" }, { label: "Conscientious", letter: "C" }] },
-  { id: 12, words: [{ label: "Independent", letter: "D" }, { label: "Animated", letter: "I" }, { label: "Team-oriented", letter: "S" }, { label: "Perfectionistic", letter: "C" }] },
-  { id: 13, words: [{ label: "Forceful", letter: "D" }, { label: "Warm", letter: "I" }, { label: "Reserved", letter: "S" }, { label: "Logical", letter: "C" }] },
-  { id: 14, words: [{ label: "Self-confident", letter: "D" }, { label: "Trusting", letter: "I" }, { label: "Predictable", letter: "S" }, { label: "Factual", letter: "C" }] },
-  { id: 15, words: [{ label: "Adventurous", letter: "D" }, { label: "Cheerful", letter: "I" }, { label: "Accommodating", letter: "S" }, { label: "Restrained", letter: "C" }] },
-  { id: 16, words: [{ label: "Determined", letter: "D" }, { label: "Convincing", letter: "I" }, { label: "Easy-going", letter: "S" }, { label: "Orderly", letter: "C" }] },
-  { id: 17, words: [{ label: "Tough", letter: "D" }, { label: "Playful", letter: "I" }, { label: "Lenient", letter: "S" }, { label: "Particular", letter: "C" }] },
-  { id: 18, words: [{ label: "Vigorous", letter: "D" }, { label: "Charming", letter: "I" }, { label: "Kind", letter: "S" }, { label: "Compliant", letter: "C" }] },
-  { id: 19, words: [{ label: "Dominant", letter: "D" }, { label: "Communicative", letter: "I" }, { label: "Tolerant", letter: "S" }, { label: "Conventional", letter: "C" }] },
-  { id: 20, words: [{ label: "Persistent", letter: "D" }, { label: "Fun-loving", letter: "I" }, { label: "Sympathetic", letter: "S" }, { label: "Rule-following", letter: "C" }] },
-  { id: 21, words: [{ label: "Risk-taking", letter: "D" }, { label: "Motivating", letter: "I" }, { label: "Modest", letter: "S" }, { label: "Deliberate", letter: "C" }] },
-  { id: 22, words: [{ label: "Resolute", letter: "D" }, { label: "Spontaneous", letter: "I" }, { label: "Sincere", letter: "S" }, { label: "Structured", letter: "C" }] },
-  { id: 23, words: [{ label: "Inquisitive", letter: "D" }, { label: "Charismatic", letter: "I" }, { label: "Attentive", letter: "S" }, { label: "Composed", letter: "C" }] },
-  { id: 24, words: [{ label: "Action-oriented", letter: "D" }, { label: "Positive", letter: "I" }, { label: "Thoughtful", letter: "S" }, { label: "Exacting", letter: "C" }] },
-  { id: 25, words: [{ label: "Fearless", letter: "D" }, { label: "Popular", letter: "I" }, { label: "Agreeable", letter: "S" }, { label: "Meticulous", letter: "C" }] },
-  { id: 26, words: [{ label: "Ambitious", letter: "D" }, { label: "Sociable", letter: "I" }, { label: "Reliable", letter: "S" }, { label: "Composed", letter: "C" }] },
-  { id: 27, words: [{ label: "Resolute", letter: "D" }, { label: "Enthusiastic", letter: "I" }, { label: "Even-tempered", letter: "S" }, { label: "Principled", letter: "C" }] },
-  { id: 28, words: [{ label: "Forthright", letter: "D" }, { label: "Engaging", letter: "I" }, { label: "Considerate", letter: "S" }, { label: "Rigorous", letter: "C" }] },
+  { id: 1, words: [{ label: "Expressive", letter: "I" }, { label: "Compliant", letter: "C" }, { label: "Forceful", letter: "D" }, { label: "Restrained", letter: "S" }] },
+  { id: 2, words: [{ label: "Force-of-Character", letter: "D" }, { label: "Careful", letter: "C" }, { label: "Emotional", letter: "I" }, { label: "Satisfied", letter: "S" }] },
+  { id: 3, words: [{ label: "Correct", letter: "C" }, { label: "Pioneering", letter: "D" }, { label: "Easy Mark", letter: "S" }, { label: "Influential", letter: "I" }] },
+  { id: 4, words: [{ label: "Precise", letter: "C" }, { label: "Domineering", letter: "D" }, { label: "Willing", letter: "S" }, { label: "Attractive", letter: "I" }] },
+  { id: 5, words: [{ label: "Even-tempered", letter: "S" }, { label: "Stimulating", letter: "I" }, { label: "Fussy", letter: "C" }, { label: "Determined", letter: "D" }] },
+  { id: 6, words: [{ label: "Timid", letter: "C" }, { label: "Demanding", letter: "D" }, { label: "Patient", letter: "S" }, { label: "Captivating", letter: "I" }] },
+  { id: 7, words: [{ label: "Open-minded", letter: "C" }, { label: "Companionable", letter: "I" }, { label: "Kind", letter: "S" }, { label: "Self-reliant", letter: "D" }] },
+  { id: 8, words: [{ label: "Agreeable", letter: "C" }, { label: "Self-controlled", letter: "S" }, { label: "Playful", letter: "I" }, { label: "Persistent", letter: "D" }] },
+  { id: 9, words: [{ label: "High-spirited", letter: "D" }, { label: "Talkative", letter: "I" }, { label: "Good-natured", letter: "S" }, { label: "Softspoken", letter: "C" }] },
+  { id: 10, words: [{ label: "Contented", letter: "S" }, { label: "Impatient", letter: "D" }, { label: "Convincing", letter: "I" }, { label: "Resigned", letter: "C" }] },
+  { id: 11, words: [{ label: "Respectful", letter: "C" }, { label: "Good Mixer", letter: "I" }, { label: "Aggressive", letter: "D" }, { label: "Gentle", letter: "S" }] },
+  { id: 12, words: [{ label: "Poised", letter: "I" }, { label: "Conventional", letter: "C" }, { label: "Nervy", letter: "D" }, { label: "Accommodating", letter: "S" }] },
+  { id: 13, words: [{ label: "Confident", letter: "I" }, { label: "Cooperative", letter: "C" }, { label: "Argumentative", letter: "D" }, { label: "Relaxed", letter: "S" }] },
+  { id: 14, words: [{ label: "Restless", letter: "D" }, { label: "Well-disciplined", letter: "C" }, { label: "Inspiring", letter: "I" }, { label: "Considerate", letter: "S" }] },
+  { id: 15, words: [{ label: "Diplomatic", letter: "C" }, { label: "Courageous", letter: "D" }, { label: "Sympathetic", letter: "S" }, { label: "Optimistic", letter: "I" }] },
+  { id: 16, words: [{ label: "Eager", letter: "I" }, { label: "Positive", letter: "D" }, { label: "Lenient", letter: "S" }, { label: "Exacting", letter: "C" }] },
+  { id: 17, words: [{ label: "Adventurous", letter: "D" }, { label: "Enthusiastic", letter: "I" }, { label: "Adaptable", letter: "C" }, { label: "Loyal", letter: "S" }] },
+  { id: 18, words: [{ label: "Humble", letter: "C" }, { label: "Good Listener", letter: "S" }, { label: "Entertaining", letter: "I" }, { label: "Will Power", letter: "D" }] },
+  { id: 19, words: [{ label: "Life-of-the-Party", letter: "I" }, { label: "Obedient", letter: "S" }, { label: "Tolerant", letter: "C" }, { label: "Competitive", letter: "D" }] },
+  { id: 20, words: [{ label: "Cautious", letter: "C" }, { label: "Neighborly", letter: "S" }, { label: "Vigorous", letter: "D" }, { label: "Persuasive", letter: "I" }] },
+  { id: 21, words: [{ label: "Reserved", letter: "S" }, { label: "Outspoken", letter: "D" }, { label: "Strict", letter: "C" }, { label: "Eloquent", letter: "I" }] },
+  { id: 22, words: [{ label: "Obliging", letter: "S" }, { label: "Animated", letter: "I" }, { label: "Dogged", letter: "D" }, { label: "Devout", letter: "C" }] },
+  { id: 23, words: [{ label: "Assertive", letter: "D" }, { label: "Gregarious", letter: "I" }, { label: "Nonchalant", letter: "S" }, { label: "Docile", letter: "C" }] },
+  { id: 24, words: [{ label: "Outgoing", letter: "I" }, { label: "Bold", letter: "D" }, { label: "Moderate", letter: "S" }, { label: "Perfectionist", letter: "C" }] },
 ];
 
 /* ══════════════════════════════════════════════════════════════
@@ -850,13 +846,13 @@ function DISCForm({
     e.preventDefault();
     setErr("");
 
-    if (mostCount < 28 || leastCount < 28) {
-      setErr(`Please select MOST and LEAST for all 28 groups. Completed: ${totalAnswered}/28.`);
+    if (mostCount < 24 || leastCount < 24) {
+      setErr(`Please select MOST and LEAST for all 24 groups. Completed: ${totalAnswered}/24.`);
       return;
     }
 
     const responses: Record<string, string> = {};
-    for (let i = 1; i <= 28; i++) {
+    for (let i = 1; i <= 24; i++) {
       const key = `g${i}`;
       responses[key] = mostResponses[key];
       responses[`${key}_least`] = leastResponses[key];
@@ -895,7 +891,7 @@ function DISCForm({
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-[var(--brand-secondary)]" /> LEAST like me
         </span>
-        <span className="ml-auto">{totalAnswered}/28 complete</span>
+        <span className="ml-auto">{totalAnswered}/24 complete</span>
       </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{err}</div>}
@@ -960,7 +956,7 @@ function DISCForm({
 
       <button
         type="submit"
-        disabled={saving || totalAnswered < 28}
+        disabled={saving || totalAnswered < 24}
         className="w-full py-3.5 mt-6 bg-[var(--brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--brand-primary-dark)] transition disabled:opacity-50"
       >
         {saving ? "Submitting..." : "Continue to Next Step"}

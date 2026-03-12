@@ -13,7 +13,7 @@ const PROFILE_LABELS: Record<string, string> = {
  * POST /api/assessments/disc
  *
  * Public endpoint — saves DISC assessment.
- * 28 word groups, each response maps to D/I/S/C.
+ * 24 word groups, each response maps to D/I/S/C.
  * We score by counting how many times each letter was picked as "most".
  */
 export async function POST(req: NextRequest) {
@@ -35,10 +35,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate all 28 MOST responses present and valid (D, I, S, or C)
+    // Validate all 24 MOST responses present and valid (D, I, S, or C)
     const validLetters = new Set(["D", "I", "S", "C"]);
     const hasLeast = responses.g1_least !== undefined;
-    for (let i = 1; i <= 28; i++) {
+    for (let i = 1; i <= 24; i++) {
       const key = `g${i}`;
       const val = responses[key];
       if (!val || !validLetters.has(val)) {
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     let score_s = 0;
     let score_c = 0;
 
-    for (let i = 1; i <= 28; i++) {
+    for (let i = 1; i <= 24; i++) {
       // MOST: +1
       const mostLetter = responses[`g${i}`];
       if (mostLetter === "D") score_d++;
