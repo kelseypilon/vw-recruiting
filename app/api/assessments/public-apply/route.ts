@@ -229,6 +229,16 @@ export async function POST(req: NextRequest) {
       if (!isNaN(txParsed)) candidateUpdate.transactions_2024 = txParsed;
     }
 
+    // Store long-form text responses in custom_fields JSONB
+    candidateUpdate.custom_fields = {
+      what_stood_out: form_data.what_stood_out || null,
+      why_great_addition: form_data.why_great_addition || null,
+      most_important: form_data.most_important || null,
+      questions_answered: form_data.questions_answered || null,
+      additional_questions: form_data.additional_questions || null,
+      info_night_date: form_data.info_night_date || null,
+    };
+
     const { error: updateErr } = await supabase
       .from("candidates")
       .update(candidateUpdate)

@@ -133,7 +133,10 @@ export async function POST(req: NextRequest) {
     candidateUpdate.is_licensed = !!hasLicense;
     if (referralSource) candidateUpdate.heard_about = referralSource;
 
-    // custom_fields column does not exist in production DB yet — skip for now
+    // Store any custom_ prefixed fields in the JSONB column
+    if (Object.keys(customFields).length > 0) {
+      candidateUpdate.custom_fields = customFields;
+    }
 
     const { error: updateErr } = await supabase
       .from("candidates")
