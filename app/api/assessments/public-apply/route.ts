@@ -230,14 +230,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Store long-form text responses in custom_fields JSONB
-    candidateUpdate.custom_fields = {
-      what_stood_out: form_data.what_stood_out || null,
-      why_great_addition: form_data.why_great_addition || null,
-      most_important: form_data.most_important || null,
-      questions_answered: form_data.questions_answered || null,
-      additional_questions: form_data.additional_questions || null,
-      info_night_date: form_data.info_night_date || null,
-    };
+    // Uses the customFields object built earlier which captures all form fields
+    // that don't map to a dedicated candidate column — including:
+    // what_stood_out, why_great_addition, most_important,
+    // questions_answered, additional_questions, info_night_date, etc.
+    if (Object.keys(customFields).length > 0) {
+      candidateUpdate.custom_fields = customFields;
+    }
 
     const { error: updateErr } = await supabase
       .from("candidates")
