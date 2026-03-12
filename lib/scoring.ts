@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *  Component         Weight   Range   Normalized to 0-100
  *  ─────────────────────────────────────────────────────────
  *  AQ (normalized)    30%     0-100   already 0-100
- *  DISC (coverage)    20%     0-28    (max / 28) × 100
+ *  DISC (coverage)    20%     0-24    (max / 24) × 100
  *  Interview avg      50%     0-10    (score / 10) × 100
  *
  * Only components that have data are included; weights are redistributed
@@ -70,13 +70,13 @@ export async function calculateCompositeScore(candidateId: string): Promise<{
     });
   }
 
-  // DISC — use highest score out of 28 as a proxy for profile strength
+  // DISC — use highest score out of 24 as a proxy for profile strength
   const discScores = [candidate.disc_d, candidate.disc_i, candidate.disc_s, candidate.disc_c];
   const hasDisc = discScores.some((s) => s !== null && s !== undefined);
   if (hasDisc) {
     const maxDisc = Math.max(...discScores.filter((s): s is number => s !== null && s !== undefined));
-    // Normalize: max possible per letter is 28 (if every group picked same letter)
-    const discNormalized = Math.min((maxDisc / 28) * 100, 100);
+    // Normalize: max possible per letter is 24 (if every group picked same letter)
+    const discNormalized = Math.min((maxDisc / 24) * 100, 100);
     components.push({
       key: "disc",
       normalizedScore: discNormalized,
