@@ -1150,10 +1150,6 @@ function ContactCard({
   candidate: Candidate;
   onFieldSaved: (field: string, value: string | null) => void;
 }) {
-  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
-  // Fallback: if current_role is blank, try current_employment from custom_fields
-  const currentRole = candidate.current_role ?? (cf.current_employment as string | undefined) ?? null;
-
   return (
     <div className="bg-white rounded-xl border border-[#a59494]/10 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-[#272727] mb-4">Contact Info</h3>
@@ -1162,7 +1158,7 @@ function ContactCard({
         <EditableField label="Last Name" value={candidate.last_name} field="last_name" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Email" value={candidate.email} field="email" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Phone" value={candidate.phone} field="phone" candidateId={candidate.id} onSaved={onFieldSaved} />
-        <EditableField label="Current Role" value={currentRole} field="current_role" candidateId={candidate.id} onSaved={onFieldSaved} />
+        <EditableField label="Current Role" value={candidate.current_employer} field="current_employer" candidateId={candidate.id} onSaved={onFieldSaved} />
         <EditableField label="Current Brokerage" value={candidate.current_brokerage} field="current_brokerage" candidateId={candidate.id} onSaved={onFieldSaved} />
         {candidate.website_url && (
           <div>
@@ -1191,18 +1187,10 @@ function ApplicationCard({
   candidate: Candidate;
   onFieldSaved: (field: string, value: string | null) => void;
 }) {
-  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+  const roleValue = candidate.role_applied;
 
-  // Fallback: if role_applied is blank, try role_interested_in from custom_fields
-  let roleValue = candidate.role_applied;
-  if (!roleValue && cf.role_interested_in) {
-    roleValue = typeof cf.role_interested_in === "string"
-      ? cf.role_interested_in
-      : JSON.stringify(cf.role_interested_in);
-  }
-
-  // Info night date from custom_fields
-  const infoNightDate = cf.info_night_date as string | undefined;
+  // Info night date — not a dedicated column yet, skip for now
+  const infoNightDate: string | undefined = undefined;
 
   // Application submitted: fallback to created_at if app_submitted_at is blank
   const submittedAt = candidate.app_submitted_at ?? candidate.created_at;
@@ -1283,71 +1271,42 @@ function ApplicationCard({
 
 function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
   const [expanded, setExpanded] = useState(false);
-  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
 
-  // Build entries from exact DB columns + custom_fields.
-  // Mapping verified against public-apply route.ts and initial_schema.sql.
+  // Build entries using ONLY columns verified to exist in the live candidates table.
+  // Verified via: SELECT column_name FROM information_schema.columns
+  //   WHERE table_name = 'candidates' AND table_schema = 'public';
   const entries: { label: string; value: string }[] = [];
 
-  // role_interested_in → saved to candidates.role_applied (text)
+  // role_interested_in → candidates.role_applied (text)
   if (candidate.role_applied) {
     let display = candidate.role_applied;
     try { const p = JSON.parse(display); if (Array.isArray(p)) display = p.join(", "); } catch { /* plain text */ }
     entries.push({ label: "Role Interested In", value: display });
   }
 
-  // info_night_date → saved to custom_fields.info_night_date
-  if (cf.info_night_date) {
-    const d = new Date(String(cf.info_night_date));
-    entries.push({
-      label: "Date of Info Night Attended",
-      value: isNaN(d.getTime()) ? String(cf.info_night_date)
-        : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    });
-  }
-
-  // licensed → saved to candidates.is_licensed (boolean)
+  // licensed → candidates.is_licensed (boolean)
   if (candidate.is_licensed !== null && candidate.is_licensed !== undefined) {
     entries.push({ label: "Licensed", value: candidate.is_licensed ? "Yes" : "No" });
   }
 
-  // years_experience → saved to candidates.years_experience (numeric)
+  // years_experience → candidates.years_experience (numeric)
   if (candidate.years_experience !== null && candidate.years_experience !== undefined) {
     entries.push({ label: "Years of Experience", value: String(candidate.years_experience) });
   }
 
-  // transactions_last_year → saved to candidates.transactions_2024 (integer),
-  // also to custom_fields.transactions_last_year
-  const txn = candidate.transactions_2024 ?? cf.transactions_last_year;
-  if (txn !== null && txn !== undefined && txn !== "") {
-    entries.push({ label: "Transactions Last Year", value: String(txn) });
+  // transactions_last_year → candidates.transactions_2024 (integer)
+  if (candidate.transactions_2024 !== null && candidate.transactions_2024 !== undefined) {
+    entries.push({ label: "Transactions Last Year", value: String(candidate.transactions_2024) });
   }
 
-  // current_employment → saved to candidates.current_role (text)
-  if (candidate.current_role) {
-    entries.push({ label: "Current Employment", value: candidate.current_role });
+  // current_employment → candidates.current_employer (text)
+  if (candidate.current_employer) {
+    entries.push({ label: "Current Employment", value: candidate.current_employer });
   }
 
-  // how_did_you_hear → saved to candidates.heard_about (text),
-  // also to custom_fields.how_did_you_hear
-  const howHeard = candidate.heard_about ?? (cf.how_did_you_hear ? String(cf.how_did_you_hear) : null);
-  if (howHeard) {
-    entries.push({ label: "How Did You Hear About Us?", value: howHeard });
-  }
-
-  // Remaining text responses — stored only in custom_fields
-  const cfTextFields = [
-    { key: "what_stood_out", label: "What Stood Out to You?" },
-    { key: "why_great_addition", label: "Why Would You Be a Great Addition?" },
-    { key: "most_important", label: "What's Most Important to You?" },
-    { key: "questions_answered", label: "Were Your Questions Answered?" },
-    { key: "additional_questions", label: "Additional Questions" },
-  ];
-  for (const f of cfTextFields) {
-    const val = cf[f.key];
-    if (val !== null && val !== undefined && val !== "") {
-      entries.push({ label: f.label, value: String(val) });
-    }
+  // how_did_you_hear → candidates.heard_about (text)
+  if (candidate.heard_about) {
+    entries.push({ label: "How Did You Hear About Us?", value: candidate.heard_about });
   }
 
   if (entries.length === 0) return null;
@@ -4002,13 +3961,11 @@ function ApplicationResponsesPanel({
         .limit(1)
         .maybeSingle();
 
-      // Also get custom fields from candidate
-      const customFields = (candidate.custom_fields ?? {}) as Record<string, unknown>;
-      setSubmission(data ? { ...(data as Record<string, unknown>), ...customFields } : null);
+      setSubmission(data ? (data as Record<string, unknown>) : null);
       setLoading(false);
     }
     load();
-  }, [candidate.id, teamId, candidate.custom_fields]);
+  }, [candidate.id, teamId]);
 
   // Map field ids to their stored column names
   function getFieldValue(fieldId: string): unknown {
@@ -4026,9 +3983,6 @@ function ApplicationResponsesPanel({
       current_employment: "current_role",
     };
     if (mappings[fieldId] && mappings[fieldId] in submission) return submission[mappings[fieldId]];
-    // Check custom_fields on submission (fields like role_interested_in, info_night_date stored there)
-    const customFields = (candidate.custom_fields ?? {}) as Record<string, unknown>;
-    if (fieldId in customFields) return customFields[fieldId];
     // Fallback to candidate record
     const candidateRecord = candidate as unknown as Record<string, unknown>;
     if (fieldId in candidateRecord) return candidateRecord[fieldId];

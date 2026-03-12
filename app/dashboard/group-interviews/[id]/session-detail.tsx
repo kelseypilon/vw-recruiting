@@ -14,7 +14,7 @@ interface SessionCandidate {
   role_applied: string | null;
   email: string | null;
   phone: string | null;
-  current_role: string | null;
+  current_employer: string | null;
   years_experience: number | null;
   is_licensed: boolean | null;
   disc_primary: string | null;
@@ -1811,7 +1811,7 @@ function CandidateQuickView({
           <div className="space-y-3 mb-6">
             <DetailRow label="Email" value={candidate.email} />
             <DetailRow label="Phone" value={candidate.phone} />
-            <DetailRow label="Current Role" value={candidate.current_role} />
+            <DetailRow label="Current Employment" value={candidate.current_employer} />
             <DetailRow
               label="Experience"
               value={candidate.years_experience != null ? `${candidate.years_experience} years` : null}

@@ -125,15 +125,15 @@ export async function POST(req: NextRequest) {
     if (lastName) candidateUpdate.last_name = lastName;
     if (email) candidateUpdate.email = email;
     if (phone) candidateUpdate.phone = phone;
-    if (currentRole) candidateUpdate.current_role = currentRole;
-    if (yearsExperience) candidateUpdate.years_experience = parseFloat(yearsExperience);
+    if (currentRole) candidateUpdate.current_employer = currentRole;
+    if (yearsExperience) {
+      const yeParsed = parseFloat(yearsExperience);
+      if (!isNaN(yeParsed)) candidateUpdate.years_experience = yeParsed;
+    }
     candidateUpdate.is_licensed = !!hasLicense;
     if (referralSource) candidateUpdate.heard_about = referralSource;
 
-    // Store custom fields in the jsonb column
-    if (Object.keys(customFields).length > 0) {
-      candidateUpdate.custom_fields = customFields;
-    }
+    // custom_fields column does not exist in production DB yet — skip for now
 
     const { error: updateErr } = await supabase
       .from("candidates")

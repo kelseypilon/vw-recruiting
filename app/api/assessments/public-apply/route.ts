@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (phone) candidateUpdate.phone = phone;
-    if (currentEmployment) candidateUpdate.current_role = currentEmployment;
+    if (currentEmployment) candidateUpdate.current_employer = currentEmployment;
     if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
     if (howDidYouHear) candidateUpdate.heard_about = howDidYouHear;
     // Guard against NaN — numeric(4,1) column rejects NaN
@@ -227,9 +227,6 @@ export async function POST(req: NextRequest) {
     if (transactionsLastYear) {
       const txParsed = parseInt(transactionsLastYear);
       if (!isNaN(txParsed)) candidateUpdate.transactions_2024 = txParsed;
-    }
-    if (Object.keys(customFields).length > 0) {
-      candidateUpdate.custom_fields = customFields;
     }
 
     const { error: updateErr } = await supabase

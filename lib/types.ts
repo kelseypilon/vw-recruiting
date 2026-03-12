@@ -96,7 +96,7 @@ export interface Candidate {
   is_licensed: boolean | null;
   years_experience: string | number | null;
   transactions_2024: number | null;
-  current_role: string | null;
+  current_employer: string | null;
   heard_about: string | null;
   stage: string;
   disc_d: number | null;
@@ -134,7 +134,8 @@ export interface Candidate {
   is_isa: boolean;
   stage_entered_at: string | null;
   created_at: string;
-  custom_fields: Record<string, unknown> | null;
+  // custom_fields column does not exist in production DB yet
+  custom_fields?: Record<string, unknown> | null;
 }
 
 export interface CandidateCard extends Candidate {
