@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTeamId } from "@/lib/get-team-id";
 import { verifyAuth } from "@/lib/api-auth";
 
 /**
@@ -23,16 +22,17 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
-    const TEAM_ID = await getTeamId();
 
-    // Resolve author: use provided author_id or fall back to the authenticated user
+    // Resolve author: use provided author_id or fall back to the authenticated user.
+    // Look up by email only (no team_id filter) so cross-team users are found.
     let resolvedAuthorId = author_id;
     if (!resolvedAuthorId) {
       const { data: authProfile } = await supabase
         .from("users")
         .select("id")
-        .eq("team_id", TEAM_ID)
         .eq("email", auth.email)
+        .eq("is_active", true)
+        .limit(1)
         .single();
       resolvedAuthorId = authProfile?.id ?? null;
     }

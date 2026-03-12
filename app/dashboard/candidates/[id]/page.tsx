@@ -123,8 +123,9 @@ export default async function CandidateProfilePage({ params }: Props) {
       ? supabase
           .from("users")
           .select("id")
-          .eq("team_id", TEAM_ID)
           .eq("email", authUser.email)
+          .eq("is_active", true)
+          .limit(1)
           .single()
       : Promise.resolve({ data: null }),
     // Group interview sessions this candidate participated in
