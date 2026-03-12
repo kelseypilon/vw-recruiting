@@ -1309,6 +1309,28 @@ function ApplicationResponsesCard({ candidate }: { candidate: Candidate }) {
     entries.push({ label: "How Did You Hear About Us?", value: candidate.heard_about });
   }
 
+  // Long-form responses stored in candidates.custom_fields JSONB
+  const cf = (candidate.custom_fields ?? {}) as Record<string, unknown>;
+
+  if (cf.info_night_date) {
+    entries.push({ label: "Info Night Date", value: String(cf.info_night_date) });
+  }
+  if (cf.what_stood_out) {
+    entries.push({ label: "What Stood Out", value: String(cf.what_stood_out) });
+  }
+  if (cf.why_great_addition) {
+    entries.push({ label: "Why Great Addition", value: String(cf.why_great_addition) });
+  }
+  if (cf.most_important) {
+    entries.push({ label: "Most Important", value: String(cf.most_important) });
+  }
+  if (cf.questions_answered) {
+    entries.push({ label: "Questions Answered", value: String(cf.questions_answered) });
+  }
+  if (cf.additional_questions) {
+    entries.push({ label: "Additional Questions", value: String(cf.additional_questions) });
+  }
+
   if (entries.length === 0) return null;
 
   return (
