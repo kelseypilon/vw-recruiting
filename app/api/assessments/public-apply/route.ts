@@ -142,38 +142,25 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", candidateId);
     } else {
-      // Create new candidate — include ALL mapped form fields in a single insert
-      const insertData: Record<string, unknown> = {
-        team_id,
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone: phone || null,
-        stage: stageName,
-        stage_entered_at: now,
-        app_submitted_at: now,
-        is_licensed: hasLicense,
-      };
-      if (currentEmployment) insertData.current_role = currentEmployment;
-      if (howDidYouHear) insertData.heard_about = howDidYouHear;
-      if (roleInterestedIn) insertData.role_applied = roleInterestedIn;
-      if (yearsExperience) insertData.years_experience = parseFloat(yearsExperience);
-      if (transactionsLastYear) {
-        const parsed = parseInt(transactionsLastYear);
-        if (!isNaN(parsed)) insertData.transactions_2024 = parsed;
-      }
-      if (Object.keys(customFields).length > 0) {
-        insertData.custom_fields = customFields;
-      }
-
+      // Create new candidate — minimal insert to guarantee creation succeeds.
+      // Extra fields (current_role, heard_about, custom_fields, etc.) are
+      // applied in the UPDATE step below which handles both new & returning.
       const { data: newCandidate, error: createErr } = await supabase
         .from("candidates")
-        .insert(insertData)
+        .insert({
+          team_id,
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone: phone || null,
+          stage: stageName,
+          stage_entered_at: now,
+        })
         .select("id")
         .single();
 
       if (createErr || !newCandidate) {
-        console.error("Public apply — create candidate error:", createErr);
+        console.error("Public apply — create candidate error:", JSON.stringify(createErr, null, 2));
         return NextResponse.json(
           { error: "Failed to create candidate" },
           { status: 500 }
@@ -192,7 +179,7 @@ export async function POST(req: NextRequest) {
       email,
       phone,
       current_role: currentEmployment,
-      years_experience: yearsExperience ? parseFloat(yearsExperience) : null,
+      years_experience: yearsExperience && !isNaN(parseFloat(yearsExperience)) ? parseFloat(yearsExperience) : null,
       has_license: hasLicense,
       // Map new text fields to existing columns when they exist
       why_real_estate: form_data.how_did_you_hear ?? form_data.why_real_estate ?? "",
@@ -219,8 +206,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Update candidate record with all form fields ───
-    // (For new candidates this reinforces the INSERT; for returning candidates
-    // it applies the fresh form data after the score reset above.)
+    // Applies form data for both new and returning candidates.
     const candidateUpdate: Record<string, unknown> = {
       first_name: firstName,
       last_name: lastName,
@@ -231,12 +217,16 @@ export async function POST(req: NextRequest) {
 
     if (phone) candidateUpdate.phone = phone;
     if (currentEmployment) candidateUpdate.current_role = currentEmployment;
-    if (yearsExperience) candidateUpdate.years_experience = parseFloat(yearsExperience);
     if (roleInterestedIn) candidateUpdate.role_applied = roleInterestedIn;
     if (howDidYouHear) candidateUpdate.heard_about = howDidYouHear;
+    // Guard against NaN — numeric(4,1) column rejects NaN
+    if (yearsExperience) {
+      const yeParsed = parseFloat(yearsExperience);
+      if (!isNaN(yeParsed)) candidateUpdate.years_experience = yeParsed;
+    }
     if (transactionsLastYear) {
-      const parsed = parseInt(transactionsLastYear);
-      if (!isNaN(parsed)) candidateUpdate.transactions_2024 = parsed;
+      const txParsed = parseInt(transactionsLastYear);
+      if (!isNaN(txParsed)) candidateUpdate.transactions_2024 = txParsed;
     }
     if (Object.keys(customFields).length > 0) {
       candidateUpdate.custom_fields = customFields;
@@ -248,7 +238,7 @@ export async function POST(req: NextRequest) {
       .eq("id", candidateId);
 
     if (updateErr) {
-      console.error("Public apply — candidate update error:", updateErr);
+      console.error("Public apply — candidate update error:", JSON.stringify(updateErr, null, 2));
     }
 
     // ─── Stage history entry ───
